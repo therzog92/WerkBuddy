@@ -1,0 +1,138 @@
+#include "ui/scr_idle.h"
+
+#include "app/app.h"
+#include "ui/chrome.h"
+#include "ui/fonts.h"
+#include "ui/nav.h"
+#include "ui/theme.h"
+
+#include <ctime>
+
+namespace wp {
+namespace ui {
+namespace {
+
+lv_obj_t * g_time = nullptr;
+lv_obj_t * g_date = nullptr;
+lv_timer_t * g_timer = nullptr;
+
+void format_now(char * time_buf, size_t tn, char * date_buf, size_t dn) {
+  std::tm tm{};
+  app::local_time(&tm);
+  int hour = tm.tm_hour % 12;
+  if (hour == 0) hour = 12;
+  const char * ampm = tm.tm_hour >= 12 ? "PM" : "AM";
+  lv_snprintf(time_buf, (uint32_t)tn, "%d:%02d %s", hour, tm.tm_min, ampm);
+  static const char * kWd[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
+                               "Thursday", "Friday", "Saturday"};
+  static const char * kMo[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  lv_snprintf(date_buf, (uint32_t)dn, "%s, %s %d", kWd[tm.tm_wday], kMo[tm.tm_mon], tm.tm_mday);
+}
+
+void tick(lv_timer_t * /*t*/) {
+  if (!g_time || !g_date) return;
+  char tb[16], db[32];
+  format_now(tb, sizeof(tb), db, sizeof(db));
+  lv_label_set_text(g_time, tb);
+  lv_label_set_text(g_date, db);
+}
+
+void on_deleted(lv_event_t * /*e*/) {
+  g_time = nullptr;
+  g_date = nullptr;
+  if (g_timer) {
+    lv_timer_delete(g_timer);
+    g_timer = nullptr;
+  }
+}
+
+void apply_idle_bg(lv_obj_t * scr, bool deep) {
+  /* Theme-aware wash — not flat black. Deep mode stays darker for "Black" idle. */
+  static lv_grad_dsc_t grad;
+  const lv_color_t colors[] = {
+      deep ? theme::bg0() : theme::grad_top(),
+      theme::bg1(),
+      theme::panel(),
+      deep ? theme::bg0() : theme::grad_bot(),
+  };
+  const lv_opa_t opas[] = {LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER};
+  const uint8_t fracs[] = {0, 70, 160, 255};
+  lv_grad_init_stops(&grad, colors, opas, fracs, 4);
+  lv_grad_vertical_init(&grad);
+  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(scr, theme::bg0(), 0);
+  lv_obj_set_style_bg_grad(scr, &grad, 0);
+}
+
+}  // namespace
+
+lv_obj_t * idle_screen() {
+  lv_obj_t * scr = lv_obj_create(nullptr);
+  lv_obj_remove_style_all(scr);
+  lv_obj_set_size(scr, WP_HOR_RES, WP_VER_RES);
+  lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(scr, [](lv_event_t * /*e*/) { wake_from_idle(); }, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_event_cb(scr, on_deleted, LV_EVENT_DELETE, nullptr);
+
+  const bool clock_mode = app::desk().idle_mode == 1;
+  apply_idle_bg(scr, !clock_mode);
+
+  if (clock_mode) {
+    /* Soft hot accent pool behind the clock */
+    lv_obj_t * glow = lv_obj_create(scr);
+    lv_obj_remove_style_all(glow);
+    lv_obj_set_size(glow, 280, 280);
+    lv_obj_center(glow);
+    lv_obj_set_style_radius(glow, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(glow, theme::hot(), 0);
+    lv_obj_set_style_bg_opa(glow, 22, 0);
+    lv_obj_remove_flag(glow, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t * col = lv_obj_create(scr);
+    lv_obj_remove_style_all(col);
+    lv_obj_set_size(col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_center(col);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(col, 6, 0);
+    lv_obj_remove_flag(col, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t * desk = lv_label_create(col);
+    char desk_buf[48];
+    lv_snprintf(desk_buf, sizeof(desk_buf), "%s's Desk", app::desk().name);
+    lv_label_set_text(desk, desk_buf);
+    lv_obj_set_style_text_color(desk, theme::gold(), 0);
+    lv_obj_set_style_text_font(desk, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_letter_space(desk, 1, 0);
+
+    char tb[16], db[32];
+    format_now(tb, sizeof(tb), db, sizeof(db));
+
+    g_time = lv_label_create(col);
+    lv_label_set_text(g_time, tb);
+    lv_obj_set_style_text_color(g_time, theme::ink(), 0);
+    lv_obj_set_style_text_font(g_time, font_display(88), 0);
+    lv_obj_set_style_text_letter_space(g_time, 2, 0);
+
+    g_date = lv_label_create(col);
+    lv_label_set_text(g_date, db);
+    lv_obj_set_style_text_color(g_date, theme::muted(), 0);
+    lv_obj_set_style_text_font(g_date, &lv_font_montserrat_16, 0);
+
+    lv_obj_t * hint = lv_label_create(col);
+    lv_label_set_text(hint, "tap to wake");
+    lv_obj_set_style_text_color(hint, theme::muted(), 0);
+    lv_obj_set_style_text_opa(hint, LV_OPA_50, 0);
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_margin_top(hint, 20, 0);
+
+    g_timer = lv_timer_create(tick, 1000, nullptr);
+  }
+
+  return scr;
+}
+
+}  // namespace ui
+}  // namespace wp

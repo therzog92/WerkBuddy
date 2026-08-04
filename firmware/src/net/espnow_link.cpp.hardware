@@ -1,0 +1,58 @@
+/*
+ * ESP-NOW transport — HARDWARE PLACEHOLDER (not compiled in the PC sim).
+ *
+ * When the Guition 4848S040 boards arrive (Phase 0 in docs/ESP32_PORT_PLAN.md):
+ *   1. Rename to espnow_link.cpp and swap it for sim_link.cpp in the firmware
+ *      build (CMake/PlatformIO source list).
+ *   2. Implement pack()/unpack() as compact binary per plan §4.2/§4.3:
+ *        header: u8 type, u8 ver=1, u8 flags, u8 reserved, mac from/to
+ *        payloads: ttt_move 2B, c4_drop 2B, ck_move 4B, mem_flip 2B,
+ *                  bs_fire/result ≤6B, doodle chunks ≤200B pts.
+ *   3. Peer ids become MAC hex strings ("a1b2c3d4e5f6") — one identity layer.
+ *   4. Discover = ESP-NOW broadcast; replies register peers via
+ *      esp_now_add_peer before unicast.
+ *
+ * Everything above this layer (app/, games/, ui/) is already transport
+ * agnostic: link_send() in, app::handle_msg() out.
+ */
+
+#include "net/link.h"
+
+#if 0 /* sketch — fill in at board bring-up */
+
+#include <esp_now.h>
+#include <WiFi.h>
+
+namespace wp {
+namespace net {
+
+namespace {
+uint8_t kBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+void on_recv(const esp_now_recv_info_t * info, const uint8_t * data, int len) {
+  proto::Msg msg;
+  if (!unpack(data, len, &msg)) return;
+  /* hop to the LVGL thread before touching app state */
+  app::handle_msg(msg);
+}
+}  // namespace
+
+void link_init() {
+  WiFi.mode(WIFI_STA);
+  esp_now_init();
+  esp_now_register_recv_cb(on_recv);
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, kBroadcast, 6);
+  esp_now_add_peer(&peer);
+}
+
+void link_send(const proto::Msg & msg) {
+  uint8_t buf[250];
+  const int len = pack(msg, buf, sizeof(buf));
+  esp_now_send(/* to mac from msg.to_id, or broadcast */ kBroadcast, buf, len);
+}
+
+}  // namespace net
+}  // namespace wp
+
+#endif

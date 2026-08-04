@@ -1,0 +1,24 @@
+# PC sim build / LVGL clone
+firmware/build/
+firmware/sim-out/
+firmware/third_party/lvgl/
+*.o
+*.exe
+*.obj
+.cache/
+
+# Local desk settings (machine-specific)
+**/werkpager_settings.ini
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+*.user
+
+# Env / secrets (never commit Wi‑Fi passwords or tokens)
+.env
+.env.*
+**/wifi_secrets.h

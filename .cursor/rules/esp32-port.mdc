@@ -1,0 +1,17 @@
+---
+description: WerkPager ESP32 port — follow the hardware plan when touching firmware or protocol
+alwaysApply: true
+---
+
+# WerkPager ESP32 port guidance
+
+When working on this project toward real desks / GUITION **ESP32-4848S040C_I** / ESP-NOW:
+
+1. **Read** `docs/ESP32_PORT_PLAN.md` before writing firmware or changing the wire protocol.
+2. When boards arrive (or Tommy asks what to plug in / flash), **also read** `docs/HARDWARE_BRINGUP_MANUAL.md`. Walk Tommy through **exactly one Session** at a time — do not dump the whole ladder.
+3. Treat **`web/` as the UX + behavior spec**. Prefer fixing flows in the web/PC sim when iterating product behavior; **shipping UI is LVGL** under `firmware/` (PC SDL sim now → ESP32 later).
+4. Keep **`protocol/messages.js` type names** in sync with any C/C++ enums; don’t silently rename.
+5. Prefer **binary ESP-NOW payloads** on device (JSON is sim-only). Respect ~250B practical limits (doodle chunking already designed).
+6. Do **not** invent hover-only UI, cloud/Wi‑Fi requirements for v1, or mid-game “resume many games” unless the plan/phases are updated.
+7. **Phase −1 (pre-hardware):** edit `firmware/src/ui/*`, run `firmware/scripts/run-sim.ps1` (or `-Shot` for `sim-out/preview.png`). PC sim already has the full v1 UI surface.
+8. When boards arrive, start at **Session 0** in the bring-up manual (unbox), then Phase 0 glass + ping, then Phase 1 shell — **not games first**.
