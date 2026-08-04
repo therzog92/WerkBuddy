@@ -23,6 +23,8 @@ enum class Screen {
   Settings,
   Keyboard,
   EmojiPicker,
+  WifiScan,
+  OtaReleases,
   Idle,
 };
 
@@ -47,6 +49,9 @@ void go_settings();
 void go_keyboard_name();
 void go_keyboard_canned(int index);
 void go_keyboard_compose();
+void go_wifi_scan();
+void go_keyboard_wifi_pass();
+void go_ota_releases();
 void go_emoji_picker(int slot);
 
 /** Re-open compose with the current draft (emoji/message) intact. */

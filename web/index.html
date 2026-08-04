@@ -51,21 +51,19 @@
           </button>
           <button type="button" class="app-icon" data-go="gamesfolder">
             <span class="app-glyph app-glyph-folder" aria-hidden="true">
-              <span class="folder-mini">
-                <span class="folder-mini-tile ttt"></span>
-                <span class="folder-mini-tile c4"></span>
-                <span class="folder-mini-tile ck"></span>
-                <span class="folder-mini-tile mem"></span>
-              </span>
+              <svg viewBox="0 0 48 48" fill="none">
+                <rect x="7" y="15" width="34" height="18" rx="9" fill="currentColor"/>
+                <rect x="12" y="21" width="9" height="3.5" rx="1" fill="#3d4a66"/>
+                <rect x="14.75" y="18" width="3.5" height="9.5" rx="1" fill="#3d4a66"/>
+                <circle cx="30" cy="20" r="2.5" fill="#3d4a66"/>
+                <circle cx="35" cy="25" r="2.5" fill="#3d4a66"/>
+              </svg>
             </span>
             <span class="app-label">Games</span>
           </button>
           <button type="button" class="app-icon" data-go="doodle">
             <span class="app-glyph app-glyph-doodle" aria-hidden="true">
-              <svg viewBox="0 0 48 48" fill="none">
-                <path d="M12 36c8-14 16-18 24-22" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                <path d="M30 10l6 6-16 16H14V26l16-16z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
-              </svg>
+              <img src="./assets/paintbrush.png" alt="" width="44" height="44" />
             </span>
             <span class="app-label">Doodle</span>
           </button>
@@ -417,6 +415,18 @@
             <p class="field-hint">Incoming pages always use full brightness.</p>
           </div>
           <div class="field">
+            <label>WiFi (optional) - clock sync &amp; OTA updates</label>
+            <p class="wifi-status" id="wifiStatus">Not connected</p>
+            <div class="option-row">
+              <button type="button" id="btnWifiScan">Scan Wi‑Fi</button>
+              <button type="button" id="btnWifiDisconnect" hidden>Disconnect</button>
+            </div>
+            <div class="option-row">
+              <button type="button" id="btnWifiSyncTime">Sync time</button>
+              <button type="button" id="btnWifiUpdates">Updates</button>
+            </div>
+          </div>
+          <div class="field">
             <label>Screen timeout</label>
             <div class="option-row" id="timeoutRow"></div>
           </div>
@@ -430,16 +440,6 @@
               <input type="date" id="dateInput" />
               <input type="time" id="clockInput" />
               <button type="button" class="btn primary" id="btnSetClock">Set</button>
-            </div>
-          </div>
-          <div class="field">
-            <label>Wi‑Fi (optional)</label>
-            <p class="field-hint">
-              Clock sync &amp; OTA updates. Desk paging still uses ESP-NOW offline.
-            </p>
-            <div class="option-row">
-              <button type="button" id="btnWifiSyncTime">Sync time</button>
-              <button type="button" id="btnWifiCheckUpdate">Check update</button>
             </div>
           </div>
           <div class="field">
@@ -470,6 +470,27 @@
       </section>
 
       <!-- EMOJI PICKER -->
+      <section class="screen" data-screen="wifi-scan">
+        <p class="tagline">Choose a network</p>
+        <p class="field-hint">Networks nearby</p>
+        <div class="wifi-scan-list" id="wifiScanList"></div>
+        <div class="dock">
+          <button type="button" id="btnWifiScanBack">Cancel</button>
+          <button type="button" class="primary" id="btnWifiRescan">Rescan</button>
+        </div>
+      </section>
+
+      <section class="screen" data-screen="ota-releases">
+        <p class="tagline">Install a release</p>
+        <p class="field-hint" id="otaCurrentVersion">Running …</p>
+        <p class="field-hint">Pick any version to upgrade or downgrade.</p>
+        <div class="wifi-scan-list" id="otaReleaseList"></div>
+        <div class="dock">
+          <button type="button" id="btnOtaBack">Back</button>
+          <button type="button" class="primary" id="btnOtaRefresh">Refresh</button>
+        </div>
+      </section>
+
       <section class="screen" data-screen="emoji-picker">
         <p class="tagline">Pick an emoji</p>
         <div class="emoji-palette" id="emojiPalette"></div>

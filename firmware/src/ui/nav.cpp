@@ -39,6 +39,7 @@ void idle_tick(lv_timer_t * /*t*/) {
   if (!spec.ms) return;
   if (g_screen == Screen::Idle || g_screen == Screen::Incoming || g_screen == Screen::Outgoing ||
       g_screen == Screen::Keyboard || g_screen == Screen::EmojiPicker ||
+      g_screen == Screen::WifiScan || g_screen == Screen::OtaReleases ||
       g_screen == Screen::Splash) {
     return;
   }
@@ -83,6 +84,9 @@ void go_settings() { load(settings_screen(), Screen::Settings); }
 void go_keyboard_name() { load(keyboard_screen_name(), Screen::Keyboard); }
 void go_keyboard_canned(int index) { load(keyboard_screen_canned(index), Screen::Keyboard); }
 void go_keyboard_compose() { load(keyboard_screen_compose(), Screen::Keyboard); }
+void go_wifi_scan() { load(wifi_scan_screen(), Screen::WifiScan); }
+void go_keyboard_wifi_pass() { load(keyboard_screen_wifi_pass(), Screen::Keyboard); }
+void go_ota_releases() { load(ota_releases_screen(), Screen::OtaReleases); }
 void go_emoji_picker(int slot) { load(emoji_picker_screen(slot), Screen::EmojiPicker); }
 
 void go_idle() {

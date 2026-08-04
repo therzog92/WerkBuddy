@@ -18,12 +18,14 @@ namespace ui {
 namespace {
 
 lv_obj_t * g_osk_value = nullptr;
-char g_osk_buf[48] = "";
+char g_osk_buf[64] = "";
 bool g_caps = true;
 lv_obj_t * g_osk_letters[32];
 int g_osk_letter_n = 0;
 lv_obj_t * g_caps_btn = nullptr;
-int g_osk_canned_index = -1; /* -1 = name, >=0 = canned slot, -2 = compose custom */
+/* -1 name, >=0 canned, -2 compose, -3 wifi ssid, -4 wifi password */
+int g_osk_canned_index = -1;
+char g_wifi_ssid_draft[33] = "";
 
 const char * kPalette[] = {
     "💅", "👑", "📢", "👀", "✨", "☕", "🆘", "🎉", "🔥", "💯", "😎", "🤝",
@@ -59,13 +61,25 @@ lv_obj_t * chip(lv_obj_t * row, const char * label, bool selected, lv_event_cb_t
 
 void osk_refresh() {
   if (!g_osk_value) return;
-  char shown[64];
-  lv_snprintf(shown, sizeof(shown), "%s|", g_osk_buf);
+  char shown[72];
+  if (g_osk_canned_index == -4) {
+    /* Mask password while typing */
+    const size_t n = std::strlen(g_osk_buf);
+    size_t i = 0;
+    for (; i < n && i + 1 < sizeof(shown); ++i) shown[i] = '*';
+    shown[i++] = '|';
+    shown[i] = '\0';
+  } else {
+    lv_snprintf(shown, sizeof(shown), "%s|", g_osk_buf);
+  }
   lv_label_set_text(g_osk_value, shown);
 }
 
 void osk_type(const char * ch) {
-  const int max = g_osk_canned_index == -1 ? 12 : 22;
+  int max = 22;
+  if (g_osk_canned_index == -1) max = 12;
+  else if (g_osk_canned_index == -3) max = 32;
+  else if (g_osk_canned_index == -4) max = 63;
   if ((int)std::strlen(g_osk_buf) >= max) return;
   char c = ch[0];
   if (g_caps && c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
@@ -125,7 +139,7 @@ void add_osk_row(lv_obj_t * parent, const char * keys, int inset, bool letters) 
 
 lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_index) {
   g_osk_canned_index = canned_index;
-  g_caps = canned_index == -1; /* name starts CAPS; canned/compose start lower */
+  g_caps = canned_index == -1; /* name starts CAPS; others start lower */
   std::snprintf(g_osk_buf, sizeof(g_osk_buf), "%s", initial ? initial : "");
 
   lv_obj_t * scr = make_screen();
@@ -208,6 +222,18 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
     if (g_osk_canned_index == -2) {
       compose_set_message(g_osk_buf);
       go_compose_refresh();
+      return;
+    }
+    if (g_osk_canned_index == -4) {
+      /* PC sim: accept any password; device will join STA for real. */
+      app::Desk & d = app::desk();
+      std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", g_wifi_ssid_draft);
+      d.wifi_connected = true;
+      g_wifi_ssid_draft[0] = '\0';
+      g_osk_buf[0] = '\0'; /* don't keep password */
+      app::save();
+      toast_fmt("Connected to %s", d.wifi_ssid);
+      go_settings();
       return;
     }
     app::Desk & d = app::desk();
@@ -762,6 +788,74 @@ lv_obj_t * settings_screen() {
     lv_obj_set_style_text_font(hi, &lv_font_montserrat_12, 0);
   }
 
+  add_section(body, "WiFi (optional) - clock sync & OTA updates");
+  {
+    lv_obj_t * status = lv_label_create(body);
+    if (d.wifi_connected && d.wifi_ssid[0]) {
+      char st[48];
+      lv_snprintf(st, sizeof(st), "Connected - %s", d.wifi_ssid);
+      lv_label_set_text(status, st);
+      lv_obj_set_style_text_color(status, theme::mint(), 0);
+    } else {
+      lv_label_set_text(status, "Not connected");
+      lv_obj_set_style_text_color(status, theme::muted(), 0);
+    }
+    lv_obj_set_style_text_font(status, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(status, lv_pct(100));
+
+    lv_obj_t * wifi_row = lv_obj_create(body);
+    lv_obj_remove_style_all(wifi_row);
+    lv_obj_set_width(wifi_row, lv_pct(100));
+    lv_obj_set_height(wifi_row, 40);
+    lv_obj_set_flex_flow(wifi_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(wifi_row, 6, 0);
+    lv_obj_remove_flag(wifi_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    chip(wifi_row, d.wifi_connected ? "Change" : "Scan Wi-Fi", false,
+         [](lv_event_t * /*e*/) { go_wifi_scan(); }, nullptr);
+    if (d.wifi_connected) {
+      chip(wifi_row, "Disconnect", false,
+           [](lv_event_t * /*e*/) {
+             app::desk().wifi_connected = false;
+             app::desk().wifi_ssid[0] = '\0';
+             app::save();
+             toast("Wi-Fi disconnected");
+             go_settings();
+           },
+           nullptr);
+    }
+
+    lv_obj_t * wifi_acts = lv_obj_create(body);
+    lv_obj_remove_style_all(wifi_acts);
+    lv_obj_set_width(wifi_acts, lv_pct(100));
+    lv_obj_set_height(wifi_acts, 40);
+    lv_obj_set_flex_flow(wifi_acts, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(wifi_acts, 6, 0);
+    lv_obj_remove_flag(wifi_acts, LV_OBJ_FLAG_SCROLLABLE);
+
+    chip(wifi_acts, "Sync time", false,
+         [](lv_event_t * /*e*/) {
+           if (!app::desk().wifi_connected) {
+             toast("Connect to Wi-Fi first");
+             return;
+           }
+           app::desk().clock_offset_ms = 0;
+           app::save();
+           toast("Time synced");
+           /* stay put — go_settings() would jump scroll to top */
+         },
+         nullptr);
+    chip(wifi_acts, "Updates", false,
+         [](lv_event_t * /*e*/) {
+           if (!app::desk().wifi_connected) {
+             toast("Connect to Wi-Fi first");
+             return;
+           }
+           go_ota_releases();
+         },
+         nullptr);
+  }
+
   add_section(body, "Screen timeout");
   lv_obj_t * to = lv_obj_create(body);
   lv_obj_remove_style_all(to);
@@ -823,40 +917,6 @@ lv_obj_t * settings_screen() {
     lv_obj_set_style_pad_column(dt, 6, 0);
     chip(dt, date_lbl, false, [](lv_event_t * /*e*/) { open_date_picker(); }, nullptr);
     chip(dt, time_lbl, false, [](lv_event_t * /*e*/) { open_time_picker(); }, nullptr);
-  }
-
-  add_section(body, "Wi-Fi (optional)");
-  {
-    lv_obj_t * hint = lv_label_create(body);
-    lv_label_set_text(hint, "Clock sync & OTA updates. Desk paging still uses ESP-NOW offline.");
-    lv_obj_set_style_text_color(hint, theme::muted(), 0);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
-    lv_obj_set_width(hint, lv_pct(100));
-    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
-
-    lv_obj_t * wifi_row = lv_obj_create(body);
-    lv_obj_remove_style_all(wifi_row);
-    lv_obj_set_width(wifi_row, lv_pct(100));
-    lv_obj_set_height(wifi_row, 40);
-    lv_obj_set_flex_flow(wifi_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(wifi_row, 6, 0);
-    lv_obj_remove_flag(wifi_row, LV_OBJ_FLAG_SCROLLABLE);
-
-    chip(wifi_row, "Sync time", false,
-         [](lv_event_t * /*e*/) {
-           /* PC sim: match host clock. Device: SNTP after STA join. */
-           app::desk().clock_offset_ms = 0;
-           app::save();
-           toast("Time synced");
-           go_settings();
-         },
-         nullptr);
-    chip(wifi_row, "Check update", false,
-         [](lv_event_t * /*e*/) {
-           /* Device: fetch GitHub Releases. PC sim is a stub. */
-           toast("OTA via GitHub Releases (on device)");
-         },
-         nullptr);
   }
 
   add_section(body, "Werk emojis (tap to change)");
@@ -985,6 +1045,218 @@ lv_obj_t * keyboard_screen_canned(int index) {
 
 lv_obj_t * keyboard_screen_compose() {
   return build_keyboard("Custom message", compose_message(), -2);
+}
+
+lv_obj_t * keyboard_screen_wifi_pass() {
+  char title[48];
+  if (g_wifi_ssid_draft[0])
+    lv_snprintf(title, sizeof(title), "Password - %s", g_wifi_ssid_draft);
+  else
+    lv_snprintf(title, sizeof(title), "WiFi password");
+  return build_keyboard(title, "", -4);
+}
+
+namespace {
+
+struct ScanAp {
+  const char * ssid;
+  int bars; /* 1..4 */
+  bool open;
+};
+
+/* PC sim mock scan — device will fill from WiFi.scanNetworks(). */
+const ScanAp kScanAps[] = {
+    {"WerkOffice", 4, false},
+    {"Studio-5G", 3, false},
+    {"Guest", 3, true},
+    {"ATT-WiFi-8821", 2, false},
+    {"xfinitywifi", 1, true},
+    {"PIXELATE", 2, false},
+};
+constexpr int kScanApCount = (int)(sizeof(kScanAps) / sizeof(kScanAps[0]));
+
+void on_pick_ap(lv_event_t * e) {
+  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  if (idx < 0 || idx >= kScanApCount) return;
+  const ScanAp & ap = kScanAps[idx];
+  std::snprintf(g_wifi_ssid_draft, sizeof(g_wifi_ssid_draft), "%s", ap.ssid);
+  if (ap.open) {
+    app::Desk & d = app::desk();
+    std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", ap.ssid);
+    d.wifi_connected = true;
+    g_wifi_ssid_draft[0] = '\0';
+    app::save();
+    toast_fmt("Connected to %s", d.wifi_ssid);
+    go_settings();
+    return;
+  }
+  go_keyboard_wifi_pass();
+}
+
+}  // namespace
+
+lv_obj_t * wifi_scan_screen() {
+  lv_obj_t * scr = make_screen();
+  make_topbar(scr, "SETTINGS", app::desk().name);
+  lv_obj_t * body = make_body(scr, true);
+  make_tagline(body, "Choose a network");
+
+  lv_obj_t * scanning = lv_label_create(body);
+  lv_label_set_text(scanning, "Networks nearby");
+  lv_obj_set_style_text_color(scanning, theme::muted(), 0);
+  lv_obj_set_style_text_font(scanning, &lv_font_montserrat_12, 0);
+
+  for (int i = 0; i < kScanApCount; ++i) {
+    const ScanAp & ap = kScanAps[i];
+    lv_obj_t * b = lv_button_create(body);
+    lv_obj_set_width(b, lv_pct(100));
+    lv_obj_set_height(b, 48);
+    lv_obj_set_style_radius(b, 12, 0);
+    lv_obj_set_style_bg_color(b, theme::panel(), 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_border_width(b, 1, 0);
+    lv_obj_set_style_border_color(b, theme::border(), 0);
+    lv_obj_set_style_pad_hor(b, 12, 0);
+    lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(b, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t * left = lv_obj_create(b);
+    lv_obj_remove_style_all(left);
+    lv_obj_set_size(left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(left, 2, 0);
+    lv_obj_t * name = lv_label_create(left);
+    lv_label_set_text(name, ap.ssid);
+    lv_obj_set_style_text_color(name, theme::ink(), 0);
+    lv_obj_set_style_text_font(name, &lv_font_montserrat_14, 0);
+    lv_obj_t * meta = lv_label_create(left);
+    lv_label_set_text(meta, ap.open ? "Open" : "Secured");
+    lv_obj_set_style_text_color(meta, theme::muted(), 0);
+    lv_obj_set_style_text_font(meta, &lv_font_montserrat_12, 0);
+
+    char bars[8];
+    int n = ap.bars;
+    if (n < 1) n = 1;
+    if (n > 4) n = 4;
+    for (int k = 0; k < n; ++k) bars[k] = '|';
+    bars[n] = '\0';
+    lv_obj_t * sig = lv_label_create(b);
+    lv_label_set_text(sig, bars);
+    lv_obj_set_style_text_color(sig, theme::gold(), 0);
+    lv_obj_set_style_text_font(sig, &lv_font_montserrat_16, 0);
+
+    lv_obj_add_event_cb(b, on_pick_ap, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+  }
+
+  lv_obj_t * dock = make_dock(scr);
+  dock_btn(dock, "Cancel", false, false, [](lv_event_t * /*e*/) { go_settings(); });
+  dock_btn(dock, "Rescan", true, false, [](lv_event_t * /*e*/) {
+    toast("Scanning…");
+    go_wifi_scan();
+  });
+  return scr;
+}
+
+namespace {
+
+struct OtaRelease {
+  const char * tag;  /* e.g. v0.1.0 */
+  const char * note; /* short label */
+};
+
+/* PC sim mock list — device fetches GitHub Releases API. */
+const OtaRelease kOtaReleases[] = {
+    {"v0.2.0", "latest"},
+    {"v0.1.0-sim", "this build"},
+    {"v0.1.0", "stable"},
+    {"v0.0.9", "older"},
+};
+constexpr int kOtaReleaseCount = (int)(sizeof(kOtaReleases) / sizeof(kOtaReleases[0]));
+
+void on_pick_release(lv_event_t * e) {
+  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  if (idx < 0 || idx >= kOtaReleaseCount) return;
+  const OtaRelease & r = kOtaReleases[idx];
+  /* Match "0.1.0-sim" against tag "v0.1.0-sim" */
+  const char * cur = app::kFirmwareVersion;
+  const char * tag_body = r.tag[0] == 'v' ? r.tag + 1 : r.tag;
+  if (std::strcmp(tag_body, cur) == 0) {
+    toast("Already on this version");
+    return;
+  }
+  /* Real desks: download asset + flash. Sim: pretend. */
+  toast_fmt("Would install %s", r.tag);
+  go_settings();
+}
+
+}  // namespace
+
+lv_obj_t * ota_releases_screen() {
+  lv_obj_t * scr = make_screen();
+  make_topbar(scr, "SETTINGS", app::desk().name);
+  lv_obj_t * body = make_body(scr, true);
+  make_tagline(body, "Install a release");
+
+  lv_obj_t * cur = lv_label_create(body);
+  char cur_lbl[48];
+  lv_snprintf(cur_lbl, sizeof(cur_lbl), "Running %s", app::kFirmwareVersion);
+  lv_label_set_text(cur, cur_lbl);
+  lv_obj_set_style_text_color(cur, theme::muted(), 0);
+  lv_obj_set_style_text_font(cur, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(cur, lv_pct(100));
+
+  lv_obj_t * hint = lv_label_create(body);
+  lv_label_set_text(hint, "Pick any version to upgrade or downgrade.");
+  lv_obj_set_style_text_color(hint, theme::muted(), 0);
+  lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(hint, lv_pct(100));
+
+  for (int i = 0; i < kOtaReleaseCount; ++i) {
+    const OtaRelease & r = kOtaReleases[i];
+    const char * tag_body = r.tag[0] == 'v' ? r.tag + 1 : r.tag;
+    const bool is_current = std::strcmp(tag_body, app::kFirmwareVersion) == 0;
+
+    lv_obj_t * b = lv_button_create(body);
+    lv_obj_set_width(b, lv_pct(100));
+    lv_obj_set_height(b, 52);
+    lv_obj_set_style_radius(b, 12, 0);
+    lv_obj_set_style_bg_color(b, theme::panel(), 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_border_width(b, is_current ? 2 : 1, 0);
+    lv_obj_set_style_border_color(b, is_current ? theme::gold() : theme::border(), 0);
+    lv_obj_set_style_pad_hor(b, 12, 0);
+    lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(b, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t * left = lv_obj_create(b);
+    lv_obj_remove_style_all(left);
+    lv_obj_set_size(left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(left, 2, 0);
+    lv_obj_t * name = lv_label_create(left);
+    lv_label_set_text(name, r.tag);
+    lv_obj_set_style_text_color(name, theme::ink(), 0);
+    lv_obj_set_style_text_font(name, &lv_font_montserrat_16, 0);
+    lv_obj_t * meta = lv_label_create(left);
+    lv_label_set_text(meta, is_current ? "current" : r.note);
+    lv_obj_set_style_text_color(meta, is_current ? theme::gold() : theme::muted(), 0);
+    lv_obj_set_style_text_font(meta, &lv_font_montserrat_12, 0);
+
+    lv_obj_t * action = lv_label_create(b);
+    lv_label_set_text(action, is_current ? "OK" : "Install");
+    lv_obj_set_style_text_color(action, is_current ? theme::muted() : theme::mint(), 0);
+    lv_obj_set_style_text_font(action, &lv_font_montserrat_14, 0);
+
+    lv_obj_add_event_cb(b, on_pick_release, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+  }
+
+  lv_obj_t * dock = make_dock(scr);
+  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_settings(); });
+  dock_btn(dock, "Refresh", true, false, [](lv_event_t * /*e*/) {
+    toast("Fetching releases…");
+    go_ota_releases();
+  });
+  return scr;
 }
 
 lv_obj_t * emoji_picker_screen(int slot) {

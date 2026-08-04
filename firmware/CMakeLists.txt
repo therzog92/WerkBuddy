@@ -71,4 +71,7 @@ add_custom_command(TARGET werkpager_sim POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           "${CMAKE_SOURCE_DIR}/assets/memory"
           "${CMAKE_BINARY_DIR}/assets/memory"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          "${CMAKE_SOURCE_DIR}/assets/icons"
+          "${CMAKE_BINARY_DIR}/assets/icons"
 )

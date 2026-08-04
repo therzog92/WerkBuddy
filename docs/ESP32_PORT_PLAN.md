@@ -331,7 +331,7 @@ Settings **Date & time** writes the clock (same UX as sim). Idle clock reads it.
 Wi‑Fi is **not** required for paging/games. Settings exposes optional actions:
 
 1. **Sync time** — join STA → SNTP → write RTC / `clock_offset` (fixes “unplugged for 2 days” when online).  
-2. **Check update** — HTTPS fetch of latest firmware from **GitHub Releases**.
+2. **Updates** — list GitHub Releases (not only latest); user picks a tag to **upgrade or downgrade**, then download + flash.
 
 **Yes, OTA binaries can live on GitHub:**
 
@@ -339,7 +339,8 @@ Wi‑Fi is **not** required for paging/games. Settings exposes optional actions:
 |-------|--------|
 | Source + roadmap | This git repo (`docs/`, `firmware/`, `web/`) |
 | Firmware binaries | GitHub **Release** assets, e.g. `werkpager-v1.2.0.bin` |
-| Desk checks | `GET https://api.github.com/repos/<owner>/<repo>/releases/latest` → download `browser_download_url` over TLS |
+| Desk lists | `GET …/repos/<owner>/<repo>/releases` (paged) → show tags; highlight current `kFirmwareVersion` |
+| Desk installs | Chosen release’s `browser_download_url` over TLS |
 | Apply | ESP-IDF / Arduino OTA partition write + reboot |
 
 Notes:

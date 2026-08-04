@@ -20,8 +20,7 @@ namespace {
 Desk g_desk;
 
 const char * kDefaultEmojis[kEmojiSlots] = {"💅", "👑", "📢", "👀", "✨", "☕", "🆘", "🎉"};
-const char * kDefaultCanned[kCannedCount] = {"Got a sec?", "Come here", "Lunch?", "Urgent",
-                                             "Hey!"};
+const char * kDefaultCanned[kCannedCount] = {"Got a sec?", "Come here", "Lunch?", "Urgent"};
 
 void copy_str(char * dst, size_t cap, const char * src) {
   std::snprintf(dst, cap, "%s", src ? src : "");

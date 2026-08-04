@@ -104,35 +104,16 @@ lv_obj_t * hub_screen() {
   char cb[24], db[40];
   format_clock(cb, sizeof(cb), db, sizeof(db));
 
-  /* Hero clock card */
+  /* Clock block — open type on the theme bg (no card/pill chrome) */
   lv_obj_t * hero = lv_obj_create(body);
   lv_obj_remove_style_all(hero);
   lv_obj_set_width(hero, lv_pct(100));
-  lv_obj_set_height(hero, 128);
+  lv_obj_set_height(hero, 118);
   lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(hero, 4, 0);
-  lv_obj_set_style_radius(hero, 24, 0);
-  lv_obj_set_style_bg_color(hero, theme::panel(), 0);
-  lv_obj_set_style_bg_grad_color(hero, theme::bg1(), 0);
-  lv_obj_set_style_bg_grad_dir(hero, LV_GRAD_DIR_VER, 0);
-  lv_obj_set_style_bg_opa(hero, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(hero, 1, 0);
-  lv_obj_set_style_border_color(hero, theme::border(), 0);
-  lv_obj_set_style_border_opa(hero, LV_OPA_40, 0);
+  lv_obj_set_style_pad_row(hero, 2, 0);
   lv_obj_remove_flag(hero, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
-
-  /* Soft accent glow behind the time */
-  lv_obj_t * glow = lv_obj_create(hero);
-  lv_obj_remove_style_all(glow);
-  lv_obj_set_size(glow, 220, 70);
-  lv_obj_set_style_radius(glow, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(glow, theme::hot(), 0);
-  lv_obj_set_style_bg_opa(glow, 36, 0);
-  lv_obj_add_flag(glow, LV_OBJ_FLAG_FLOATING);
-  lv_obj_align(glow, LV_ALIGN_CENTER, 0, -6);
-  lv_obj_remove_flag(glow, LV_OBJ_FLAG_CLICKABLE);
 
   g_desk = lv_label_create(hero);
   char desk[48];

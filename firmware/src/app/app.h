@@ -19,7 +19,9 @@ namespace app {
 
 constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 8;
-constexpr int kCannedCount = 5;
+constexpr int kCannedCount = 4;
+/** Shown in Updates UI; bump when shipping a Release. */
+constexpr const char * kFirmwareVersion = "0.1.0-sim";
 
 struct Peer {
   char id[proto::kMaxId] = {};
@@ -114,6 +116,8 @@ struct Desk {
   uint8_t idle_mode = 1;   /* 0=black 1=clock */
   uint8_t brightness = 100; /* 10..100; pages force full */
   int64_t clock_offset_ms = 0;
+  char wifi_ssid[33] = {}; /* optional STA; empty = not configured */
+  bool wifi_connected = false;
   char emojis[kEmojiSlots][proto::kMaxEmoji] = {};
   char canned[kCannedCount][proto::kMaxMessage] = {};
 

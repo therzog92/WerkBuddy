@@ -222,6 +222,51 @@ body {
   font-size: 0.78rem;
 }
 
+.wifi-status {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font: 600 0.9rem var(--font-body);
+}
+
+.wifi-status.is-on {
+  color: var(--mint);
+}
+
+.wifi-scan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.wifi-ap {
+  appearance: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: 600 0.95rem var(--font-body);
+  cursor: pointer;
+  text-align: left;
+}
+
+.wifi-ap small {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.wifi-ap.is-current {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold);
+}
+
 .device.is-ringing {
   border-color: var(--hot);
   animation: device-strobe 0.45s steps(2, end) infinite;
@@ -1890,22 +1935,13 @@ body {
 /* ?? Games folder ?? */
 .app-glyph-folder {
   background: linear-gradient(145deg, #5a6a88, #3d4a66);
-  padding: 10px;
+  color: #fff;
 }
-.folder-mini {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
+.app-glyph-folder svg {
   width: 44px;
   height: 44px;
+  display: block;
 }
-.folder-mini-tile {
-  border-radius: 6px;
-}
-.folder-mini-tile.ttt { background: linear-gradient(145deg, #5b8cff, #7c5cff); }
-.folder-mini-tile.c4 { background: linear-gradient(145deg, #e8899c, #6aa8d8); }
-.folder-mini-tile.ck { background: linear-gradient(145deg, #c45a5a, #2a2438); }
-.folder-mini-tile.mem { background: linear-gradient(145deg, #e8c46a, #c45a9a); }
 
 .app-glyph-ck {
   background: linear-gradient(145deg, #8b3a3a, #2a2438);
@@ -1915,6 +1951,12 @@ body {
 }
 .app-glyph-doodle {
   background: linear-gradient(145deg, #e87858, #9a7ad4);
+  color: #fff;
+}
+.app-glyph-doodle svg {
+  width: 44px;
+  height: 44px;
+  display: block;
 }
 .app-glyph-settings {
   background: linear-gradient(145deg, #6a7280, #4a5568);

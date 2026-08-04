@@ -27,7 +27,6 @@ const DEFAULT_CANNED = [
   "Come here",
   "Lunch?",
   "Urgent",
-  "Hey!",
 ];
 const MARK_GLYPH = { X: "✖", O: "○" };
 
@@ -109,6 +108,8 @@ function makeDesk(id, name) {
     idleMode: "clock",
     brightness: 100,
     clockOffsetMs: 0,
+    wifiSsid: "",
+    wifiConnected: false,
     emojis: [...DEFAULT_EMOJIS],
     canned: [...DEFAULT_CANNED],
     peers: new Map(),
@@ -132,6 +133,8 @@ function persistDesk(d = desk()) {
         idleMode: d.idleMode,
         brightness: d.brightness,
         clockOffsetMs: d.clockOffsetMs,
+        wifiSsid: d.wifiSsid,
+        wifiConnected: d.wifiConnected,
         emojis: d.emojis,
         canned: d.canned,
       })
@@ -154,6 +157,8 @@ function hydrateDesk(d) {
       d.brightness = Math.min(100, Math.max(10, Math.round(saved.brightness)));
     }
     if (typeof saved.clockOffsetMs === "number") d.clockOffsetMs = saved.clockOffsetMs;
+    if (typeof saved.wifiSsid === "string") d.wifiSsid = saved.wifiSsid.slice(0, 32);
+    if (typeof saved.wifiConnected === "boolean") d.wifiConnected = saved.wifiConnected;
     if (Array.isArray(saved.emojis) && saved.emojis.length === DEFAULT_EMOJIS.length) {
       d.emojis = saved.emojis;
     }
@@ -339,7 +344,13 @@ function showScreen(name) {
     else if (name === "doodle") brand.textContent = "DOODLE";
     else if (name === "gamesfolder") brand.textContent = "GAMES";
     else if (name === "keyboard" && oskMode === "compose") brand.textContent = "WERK ROOM";
-    else if (name === "settings" || name === "keyboard" || name === "emoji-picker") {
+    else if (
+      name === "settings" ||
+      name === "keyboard" ||
+      name === "emoji-picker" ||
+      name === "wifi-scan" ||
+      name === "ota-releases"
+    ) {
       brand.textContent = "SETTINGS";
     } else brand.textContent = "WERKPAGER";
   }
@@ -608,6 +619,21 @@ function renderSettings() {
     bright.value = String(d.brightness ?? 100);
     if (brightLbl) brightLbl.textContent = `${bright.value}%`;
   }
+
+  const wifiStatus = document.getElementById("wifiStatus");
+  const wifiScan = document.getElementById("btnWifiScan");
+  const wifiDisc = document.getElementById("btnWifiDisconnect");
+  if (wifiStatus) {
+    if (d.wifiConnected && d.wifiSsid) {
+      wifiStatus.textContent = `Connected - ${d.wifiSsid}`;
+      wifiStatus.classList.add("is-on");
+    } else {
+      wifiStatus.textContent = "Not connected";
+      wifiStatus.classList.remove("is-on");
+    }
+  }
+  if (wifiScan) wifiScan.textContent = d.wifiConnected ? "Change" : "Scan Wi‑Fi";
+  if (wifiDisc) wifiDisc.hidden = !d.wifiConnected;
 
   renderOptionRow("timeoutRow", TIMEOUTS, d.timeoutId, (id) => {
     d.timeoutId = id;
@@ -1476,16 +1502,130 @@ clockTimer = setInterval(() => {
   if (currentScreen === "idle" && desk().idleMode === "clock") updateIdleClock();
 }, 1000);
 
+const MOCK_WIFI_APS = [
+  { ssid: "WerkOffice", open: false },
+  { ssid: "Studio-5G", open: false },
+  { ssid: "Guest", open: true },
+  { ssid: "ATT-WiFi-8821", open: false },
+  { ssid: "xfinitywifi", open: true },
+  { ssid: "PIXELATE", open: false },
+];
+
+function openWifiScan() {
+  const list = document.getElementById("wifiScanList");
+  list.innerHTML = "";
+  for (const ap of MOCK_WIFI_APS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wifi-ap";
+    btn.innerHTML = `<span>${escapeHtml(ap.ssid)}</span><small>${ap.open ? "Open" : "Secured"}</small>`;
+    btn.addEventListener("click", () => {
+      if (ap.open) {
+        desk().wifiSsid = ap.ssid;
+        desk().wifiConnected = true;
+        persistDesk();
+        toast(`Connected to ${ap.ssid}`);
+        showScreen("settings");
+        renderSettings();
+        return;
+      }
+      const pass = window.prompt(`Password for ${ap.ssid}`, "");
+      if (pass == null) return;
+      desk().wifiSsid = ap.ssid;
+      desk().wifiConnected = true;
+      persistDesk();
+      toast(`Connected to ${ap.ssid}`);
+      showScreen("settings");
+      renderSettings();
+    });
+    list.appendChild(btn);
+  }
+  showScreen("wifi-scan");
+}
+
+document.getElementById("btnWifiScan")?.addEventListener("click", openWifiScan);
+
+document.getElementById("btnWifiDisconnect")?.addEventListener("click", () => {
+  desk().wifiConnected = false;
+  desk().wifiSsid = "";
+  persistDesk();
+  toast("Wi‑Fi disconnected");
+  renderSettings();
+});
+
+document.getElementById("btnWifiScanBack")?.addEventListener("click", () => {
+  renderSettings();
+  showScreen("settings");
+});
+
+document.getElementById("btnWifiRescan")?.addEventListener("click", () => {
+  toast("Scanning…");
+  openWifiScan();
+});
+
 document.getElementById("btnWifiSyncTime")?.addEventListener("click", () => {
+  if (!desk().wifiConnected) {
+    toast("Connect to Wi‑Fi first");
+    return;
+  }
   desk().clockOffsetMs = 0;
   persistDesk();
   updateHubClock();
   toast("Time synced");
-  renderSettings();
 });
 
-document.getElementById("btnWifiCheckUpdate")?.addEventListener("click", () => {
-  toast("OTA via GitHub Releases (on device)");
+const FIRMWARE_VERSION = "0.1.0-sim";
+const MOCK_OTA_RELEASES = [
+  { tag: "v0.2.0", note: "latest" },
+  { tag: "v0.1.0-sim", note: "this build" },
+  { tag: "v0.1.0", note: "stable" },
+  { tag: "v0.0.9", note: "older" },
+];
+
+function openOtaReleases() {
+  document.getElementById("otaCurrentVersion").textContent = `Running ${FIRMWARE_VERSION}`;
+  const list = document.getElementById("otaReleaseList");
+  list.innerHTML = "";
+  for (const r of MOCK_OTA_RELEASES) {
+    const body = r.tag.startsWith("v") ? r.tag.slice(1) : r.tag;
+    const isCurrent = body === FIRMWARE_VERSION;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wifi-ap";
+    if (isCurrent) btn.classList.add("is-current");
+    btn.innerHTML = `<span><strong>${escapeHtml(r.tag)}</strong><br><small>${
+      isCurrent ? "current" : escapeHtml(r.note)
+    }</small></span><small>${isCurrent ? "OK" : "Install"}</small>`;
+    btn.addEventListener("click", () => {
+      if (isCurrent) {
+        toast("Already on this version");
+        return;
+      }
+      toast(`Would install ${r.tag}`);
+      showScreen("settings");
+      renderSettings();
+    });
+    list.appendChild(btn);
+  }
+  showScreen("ota-releases");
+}
+
+document.getElementById("btnWifiUpdates")?.addEventListener("click", () => {
+  if (!desk().wifiConnected) {
+    toast("Connect to Wi‑Fi first");
+    return;
+  }
+  openOtaReleases();
+});
+
+document.getElementById("btnOtaBack")?.addEventListener("click", () => {
+  renderSettings();
+  showScreen("settings");
+});
+
+document.getElementById("btnOtaRefresh")?.addEventListener("click", () => {
+  toast("Fetching releases…");
+  openOtaReleases();
 });
 
 document.getElementById("brightnessSlider")?.addEventListener("input", (e) => {

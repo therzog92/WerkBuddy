@@ -3,6 +3,8 @@
 #include "ui/theme.h"
 
 #include <cmath>
+#include <cstdio>
+#include <filesystem>
 
 namespace wp {
 namespace ui {
@@ -107,50 +109,69 @@ void draw_werk(lv_obj_t * g) {
 }
 
 void draw_games(lv_obj_t * g) {
-  const uint32_t tiles[4] = {0x5b8cff, 0xe8899c, 0xc45a5a, 0xe8c46a};
-  for (int i = 0; i < 4; ++i) {
-    lv_obj_t * t = lv_obj_create(g);
+  const lv_color_t c = lv_color_hex(0xffffff);
+  const lv_color_t ink = lv_color_hex(0x3d4a66);
+  /* Gamepad body — controls are children so they stay inside */
+  lv_obj_t * body = lv_obj_create(g);
+  lv_obj_remove_style_all(body);
+  lv_obj_set_size(body, 48, 26);
+  lv_obj_set_style_radius(body, 11, 0);
+  lv_obj_set_style_bg_color(body, c, 0);
+  lv_obj_set_style_bg_opa(body, LV_OPA_COVER, 0);
+  lv_obj_set_style_clip_corner(body, true, 0);
+  lv_obj_align(body, LV_ALIGN_CENTER, 0, 1);
+  lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+
+  auto pad_btn = [&](lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h, bool round) {
+    lv_obj_t * t = lv_obj_create(body);
     lv_obj_remove_style_all(t);
-    lv_obj_set_size(t, 20, 20);
-    lv_obj_set_style_radius(t, 6, 0);
-    lv_obj_set_style_bg_color(t, lv_color_hex(tiles[i]), 0);
+    lv_obj_set_size(t, w, h);
+    lv_obj_set_pos(t, x, y);
+    lv_obj_set_style_radius(t, round ? LV_RADIUS_CIRCLE : 2, 0);
+    lv_obj_set_style_bg_color(t, ink, 0);
     lv_obj_set_style_bg_opa(t, LV_OPA_COVER, 0);
-    lv_obj_set_pos(t, 14 + (i % 2) * 24, 14 + (i / 2) * 24);
+    return t;
+  };
+  /* D-pad */
+  pad_btn(8, 11, 12, 4, false);
+  pad_btn(12, 7, 4, 12, false);
+  /* Face buttons */
+  pad_btn(30, 7, 6, 6, true);
+  pad_btn(37, 12, 6, 6, true);
+}
+
+const char * paintbrush_png_path() {
+  namespace fs = std::filesystem;
+  static char path[260] = {};
+  const fs::path candidates[] = {
+      fs::current_path() / "assets" / "icons" / "paintbrush.png",
+      fs::current_path() / ".." / "assets" / "icons" / "paintbrush.png",
+      fs::path("C:/Users/Tommy/Projects/WerkPager/firmware/assets/icons/paintbrush.png"),
+  };
+  for (const fs::path & p : candidates) {
+    if (!fs::exists(p)) continue;
+    std::snprintf(path, sizeof(path), "S:%s", fs::weakly_canonical(p).string().c_str());
+    for (char * c = path; *c; ++c) {
+      if (*c == '\\') *c = '/';
+    }
+    return path;
   }
+  return "S:assets/icons/paintbrush.png";
 }
 
 void draw_doodle(lv_obj_t * g) {
-  const lv_color_t c = lv_color_hex(0xffffff);
-  /* Pencil body (no transforms — keeps layout/hit targets clean) */
-  lv_obj_t * body = lv_obj_create(g);
-  lv_obj_remove_style_all(body);
-  lv_obj_set_size(body, 34, 12);
-  lv_obj_set_style_radius(body, 3, 0);
-  lv_obj_set_style_bg_color(body, c, 0);
-  lv_obj_set_style_bg_opa(body, LV_OPA_COVER, 0);
-  lv_obj_set_pos(body, 22, 28);
-
-  lv_obj_t * eraser = lv_obj_create(g);
-  lv_obj_remove_style_all(eraser);
-  lv_obj_set_size(eraser, 8, 12);
-  lv_obj_set_style_radius(eraser, 2, 0);
-  lv_obj_set_style_bg_color(eraser, c, 0);
-  lv_obj_set_style_bg_opa(eraser, LV_OPA_50, 0);
-  lv_obj_set_pos(eraser, 16, 28);
-
-  /* Tip triangle approximated with a small diamond */
-  lv_obj_t * tip = lv_obj_create(g);
-  lv_obj_remove_style_all(tip);
-  lv_obj_set_size(tip, 10, 10);
-  lv_obj_set_style_radius(tip, 2, 0);
-  lv_obj_set_style_bg_color(tip, c, 0);
-  lv_obj_set_style_bg_opa(tip, LV_OPA_COVER, 0);
-  lv_obj_set_pos(tip, 52, 29);
-
-  /* Ink trail under the tip */
-  line(g, 18, 48, 30, 54, 3, c);
-  line(g, 30, 54, 48, 50, 3, c);
-  line(g, 48, 50, 58, 56, 3, c);
+  /* User-provided diagonal brush silhouette (white on transparent). */
+  lv_obj_t * img = lv_image_create(g);
+  lv_image_set_src(img, paintbrush_png_path());
+  lv_obj_set_size(img, 48, 48);
+  lv_image_set_scale(img, 256); /* may get overridden below after header known */
+  lv_obj_center(img);
+  lv_image_header_t hdr{};
+  if (lv_image_decoder_get_info(paintbrush_png_path(), &hdr) == LV_RESULT_OK && hdr.w > 0) {
+    const uint32_t scale = (48 * 256) / (hdr.w > hdr.h ? hdr.w : hdr.h);
+    lv_image_set_scale(img, scale);
+  }
+  lv_obj_center(img);
 }
 
 void draw_settings(lv_obj_t * g) {
