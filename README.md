@@ -1,5 +1,7 @@
 # WerkPager
 
+**Repo:** [github.com/therzog92/WerkPager](https://github.com/therzog92/WerkPager)
+
 Desk **attention pager** + mini-games for coworkers (Tommy / Will / Alex), designed for **480×480** capacitive panels talking over **ESP-NOW** (no Wi‑Fi required for core use).
 
 Right now this repo is a **web simulator** + **LVGL PC sim** that are the UX + behavior spec for GUITION **ESP32-4848S040C_I** firmware (boards on order).
