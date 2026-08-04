@@ -18,7 +18,7 @@ namespace wp {
 namespace app {
 
 constexpr int kMaxPeers = 8;
-constexpr int kEmojiSlots = 8;
+constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Shown in Updates UI; bump when shipping a Release. */
 constexpr const char * kFirmwareVersion = "0.1.0-sim";
@@ -58,6 +58,17 @@ struct TttGame {
   char opp_name[proto::kMaxName] = {};
   char mark = 'X', turn = 'X';
   char board[9] = {};
+};
+
+/** Super / Ultimate Tic Tac Toe */
+struct StttGame {
+  bool active = false, waiting = false, over = false, result_dismissed = false;
+  char opp_id[proto::kMaxId] = {};
+  char opp_name[proto::kMaxName] = {};
+  char mark = 'X', turn = 'X';
+  char boards[9][9] = {};
+  char meta[9] = {}; /* 0 open, X/O won, D draw */
+  int8_t next_board = -1; /* -1 free choice */
 };
 
 struct C4Game {
@@ -129,8 +140,9 @@ struct Desk {
   IncomingCall incoming;
   OutgoingCall outgoing;
 
-  Invite ttt_invite, c4_invite, bs_invite, ck_invite, mem_invite;
+  Invite ttt_invite, sttt_invite, c4_invite, bs_invite, ck_invite, mem_invite;
   TttGame ttt;
+  StttGame sttt;
   C4Game c4;
   BsGame bs;
   CkGame ck;

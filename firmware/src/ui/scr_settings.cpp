@@ -1,10 +1,11 @@
-#include "ui/scr_settings.h"
+﻿#include "ui/scr_settings.h"
 
 #include "app/app.h"
 #include "protocol/messages.h"
 #include "ui/brightness.h"
 #include "ui/chrome.h"
 #include "ui/emoji_badge.h"
+#include "ui/emoji_palette.h"
 #include "ui/nav.h"
 #include "ui/scr_pager.h"
 #include "ui/theme.h"
@@ -27,15 +28,6 @@ lv_obj_t * g_caps_btn = nullptr;
 int g_osk_canned_index = -1;
 char g_wifi_ssid_draft[33] = "";
 
-const char * kPalette[] = {
-    "💅", "👑", "📢", "👀", "✨", "☕", "🆘", "🎉", "🔥", "💯", "😎", "🤝",
-    "💬", "📌", "⚡", "🌈", "🍕", "🍩", "🎮", "🎯", "🚀", "🧠", "💖", "😜",
-    "😂", "😭", "🥳", "😤", "😴", "🤡", "💀", "👻", "💃", "🕺", "🙌", "👏",
-    "👍", "👎", "💪", "🤞", "🌟", "⏰", "📞", "💤", "🚨", "✅", "❓", "❗",
-    "🎁", "🎧", "📸", "🌸", "🦄", "🐶", "🐱", "🍺",
-};
-constexpr int kPaletteCount = (int)(sizeof(kPalette) / sizeof(kPalette[0]));
-
 void add_section(lv_obj_t * body, const char * title) {
   lv_obj_t * t = lv_label_create(body);
   lv_label_set_text(t, title);
@@ -44,17 +36,32 @@ void add_section(lv_obj_t * body, const char * title) {
   lv_obj_set_width(t, lv_pct(100));
 }
 
+void chip_set_selected(lv_obj_t * b, bool selected) {
+  if (!b) return;
+  lv_obj_set_style_bg_color(b, selected ? theme::gold() : lv_color_hex(0x4a4558), 0);
+  lv_obj_t * l = lv_obj_get_child(b, 0);
+  if (l) lv_obj_set_style_text_color(l, selected ? lv_color_hex(0x1a1224) : theme::ink(), 0);
+}
+
+void chip_row_select(lv_obj_t * row, int selected_idx) {
+  if (!row) return;
+  const uint32_t n = lv_obj_get_child_count(row);
+  for (uint32_t i = 0; i < n; ++i) {
+    chip_set_selected(lv_obj_get_child(row, i), (int)i == selected_idx);
+  }
+}
+
 lv_obj_t * chip(lv_obj_t * row, const char * label, bool selected, lv_event_cb_t cb, void * ud) {
   lv_obj_t * b = lv_button_create(row);
   lv_obj_set_height(b, 34);
-  lv_obj_set_style_radius(b, 14, 0);
-  lv_obj_set_style_bg_color(b, selected ? theme::gold() : theme::panel(), 0);
+  lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_shadow_width(b, 0, 0);
-  lv_obj_set_style_pad_hor(b, 12, 0);
+  lv_obj_set_style_border_width(b, 0, 0);
+  lv_obj_set_style_pad_hor(b, 14, 0);
   lv_obj_t * l = lv_label_create(b);
   lv_label_set_text(l, label);
-  lv_obj_set_style_text_color(l, selected ? lv_color_hex(0x1a1224) : theme::ink(), 0);
   lv_obj_center(l);
+  chip_set_selected(b, selected);
   if (cb) lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, ud);
   return b;
 }
@@ -159,6 +166,7 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
 
   g_osk_letter_n = 0;
   g_caps_btn = nullptr;
+  add_osk_row(body, "1234567890", 0, false);
   add_osk_row(body, "!?&#@/+-='", 0, false);
   add_osk_row(body, "qwertyuiop", 0, true);
   add_osk_row(body, "asdfghjkl", 16, true);
@@ -867,9 +875,12 @@ lv_obj_t * settings_screen() {
   for (int i = 0; i < 4; ++i) {
     chip(to, specs[i].label, d.timeout_id == (uint8_t)i,
          [](lv_event_t * e) {
-           app::desk().timeout_id = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+           const auto id = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+           app::desk().timeout_id = id;
            app::save();
-           go_settings();
+           /* stay put — go_settings() would jump scroll to top */
+           chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))),
+                           (int)id);
          },
          (void *)(intptr_t)i);
   }
@@ -882,17 +893,17 @@ lv_obj_t * settings_screen() {
   lv_obj_set_flex_flow(idle, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_column(idle, 6, 0);
   chip(idle, "Black", d.idle_mode == 0,
-       [](lv_event_t * /*e*/) {
+       [](lv_event_t * e) {
          app::desk().idle_mode = 0;
          app::save();
-         go_settings();
+         chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))), 0);
        },
        nullptr);
   chip(idle, "Clock", d.idle_mode == 1,
-       [](lv_event_t * /*e*/) {
+       [](lv_event_t * e) {
          app::desk().idle_mode = 1;
          app::save();
-         go_settings();
+         chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))), 1);
        },
        nullptr);
 
@@ -1259,53 +1270,165 @@ lv_obj_t * ota_releases_screen() {
   return scr;
 }
 
-lv_obj_t * emoji_picker_screen(int slot) {
-  if (slot < 0 || slot >= app::kEmojiSlots) slot = 0;
-  lv_obj_t * scr = make_screen();
-  make_topbar(scr, "SETTINGS", app::desk().name);
-  lv_obj_t * body = make_body(scr, true);
-  make_tagline(body, "Pick an emoji");
+int g_emoji_picker_slot = 0; /* settings 0..n-1, or kEmojiPickerCompose */
+int g_emoji_picker_cat = 0;
+lv_obj_t * g_emoji_grid = nullptr;
+lv_obj_t * g_emoji_cat_btns[kEmojiCategoryCount] = {};
 
-  lv_obj_t * grid = lv_obj_create(body);
-  lv_obj_remove_style_all(grid);
-  lv_obj_set_width(grid, lv_pct(100));
-  lv_obj_set_flex_grow(grid, 1);
-  lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
-  lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-  lv_obj_set_style_pad_row(grid, 6, 0);
-  lv_obj_set_style_pad_column(grid, 6, 0);
-  lv_obj_add_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_scroll_dir(grid, LV_DIR_VER);
-
-  for (int i = 0; i < kPaletteCount; ++i) {
-    lv_obj_t * b = lv_button_create(grid);
+void emoji_picker_fill_grid() {
+  if (!g_emoji_grid) return;
+  lv_obj_clean(g_emoji_grid);
+  if (g_emoji_picker_cat < 0 || g_emoji_picker_cat >= kEmojiCategoryCount) g_emoji_picker_cat = 0;
+  const EmojiCategory & cat = kEmojiCategories[g_emoji_picker_cat];
+  for (int i = 0; i < cat.count; ++i) {
+    lv_obj_t * b = lv_button_create(g_emoji_grid);
     lv_obj_set_size(b, 58, 48);
     lv_obj_set_style_bg_color(b, theme::panel(), 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_pad_all(b, 2, 0);
-    lv_obj_t * img = make_emoji_image(b, kPalette[i], 34);
+    lv_obj_t * img = make_emoji_image(b, cat.emojis[i], 34);
     lv_obj_center(img);
-    /* pack slot in high bits, palette index in low */
-    const intptr_t ud = ((intptr_t)slot << 16) | i;
+    /* pack category in high bits, index in low */
+    const intptr_t ud = ((intptr_t)g_emoji_picker_cat << 16) | i;
     lv_obj_add_event_cb(
         b,
         [](lv_event_t * e) {
           const intptr_t ud = (intptr_t)lv_event_get_user_data(e);
-          const int s = (int)(ud >> 16);
-          const int pi = (int)(ud & 0xffff);
-          if (s >= 0 && s < app::kEmojiSlots && pi >= 0 && pi < kPaletteCount) {
-            std::snprintf(app::desk().emojis[s], sizeof(app::desk().emojis[0]), "%s", kPalette[pi]);
+          const int ci = (int)(ud >> 16);
+          const int ei = (int)(ud & 0xffff);
+          if (ci < 0 || ci >= kEmojiCategoryCount) return;
+          const EmojiCategory & cat = kEmojiCategories[ci];
+          if (ei < 0 || ei >= cat.count) return;
+          const char * emo = cat.emojis[ei];
+          if (g_emoji_picker_slot == kEmojiPickerCompose) {
+            compose_set_emoji(emo);
+            go_compose_refresh();
+            return;
+          }
+          if (g_emoji_picker_slot >= 0 && g_emoji_picker_slot < app::kEmojiSlots) {
+            std::snprintf(app::desk().emojis[g_emoji_picker_slot],
+                          sizeof(app::desk().emojis[0]), "%s", emo);
             app::save();
           }
           go_settings();
         },
         LV_EVENT_CLICKED, (void *)ud);
   }
+  lv_obj_scroll_to_y(g_emoji_grid, 0, LV_ANIM_OFF);
+}
+
+void emoji_picker_style_cats() {
+  for (int i = 0; i < kEmojiCategoryCount; ++i) {
+    lv_obj_t * b = g_emoji_cat_btns[i];
+    if (!b) continue;
+    const bool on = i == g_emoji_picker_cat;
+    lv_obj_set_style_border_width(b, 0, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_outline_width(b, 0, 0);
+    /* Gold underline marker for the active category tab. */
+    lv_obj_set_style_border_side(b, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_width(b, on ? 2 : 0, 0);
+    lv_obj_set_style_border_color(b, theme::gold(), 0);
+    lv_obj_set_style_pad_bottom(b, on ? 2 : 4, 0);
+    if (lv_obj_get_child_count(b) >= 2) {
+      lv_obj_t * img = lv_obj_get_child(b, 0);
+      lv_obj_t * lbl = lv_obj_get_child(b, 1);
+      lv_obj_set_style_opa(img, on ? LV_OPA_COVER : LV_OPA_60, 0);
+      lv_obj_set_style_text_color(lbl, on ? theme::gold() : theme::muted(), 0);
+      lv_obj_set_style_text_opa(lbl, on ? LV_OPA_COVER : LV_OPA_70, 0);
+    }
+  }
+}
+
+void on_emoji_cat(lv_event_t * e) {
+  const int ci = (int)(intptr_t)lv_event_get_user_data(e);
+  if (ci < 0 || ci >= kEmojiCategoryCount) return;
+  if (ci == g_emoji_picker_cat) return;
+  g_emoji_picker_cat = ci;
+  emoji_picker_style_cats();
+  emoji_picker_fill_grid();
+}
+
+lv_obj_t * emoji_picker_screen(int slot) {
+  const bool compose_mode = slot == kEmojiPickerCompose;
+  if (!compose_mode && (slot < 0 || slot >= app::kEmojiSlots)) slot = 0;
+  g_emoji_picker_slot = compose_mode ? kEmojiPickerCompose : slot;
+  g_emoji_picker_cat = 0;
+  g_emoji_grid = nullptr;
+  for (int i = 0; i < kEmojiCategoryCount; ++i) g_emoji_cat_btns[i] = nullptr;
+
+  lv_obj_t * scr = make_screen();
+  make_topbar(scr, compose_mode ? "WERK ROOM" : "SETTINGS", app::desk().name);
+  lv_obj_t * body = make_body(scr, true);
+  make_tagline(body, compose_mode ? "Pick an emoji for this ping" : "Pick an emoji");
+
+  /* Category tab bar — muted icon + label, not emoji tiles. */
+  lv_obj_t * cats = lv_obj_create(body);
+  lv_obj_remove_style_all(cats);
+  lv_obj_set_width(cats, lv_pct(100));
+  lv_obj_set_height(cats, 54);
+  lv_obj_set_flex_flow(cats, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(cats, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(cats, 2, 0);
+  lv_obj_set_style_pad_bottom(cats, 2, 0);
+  lv_obj_set_style_border_side(cats, LV_BORDER_SIDE_BOTTOM, 0);
+  lv_obj_set_style_border_width(cats, 1, 0);
+  lv_obj_set_style_border_color(cats, theme::border(), 0);
+  lv_obj_add_flag(cats, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(cats, LV_DIR_HOR);
+  lv_obj_remove_flag(cats, LV_OBJ_FLAG_SCROLL_ELASTIC);
+
+  for (int i = 0; i < kEmojiCategoryCount; ++i) {
+    lv_obj_t * b = lv_button_create(cats);
+    lv_obj_set_size(b, 56, 50);
+    lv_obj_set_style_radius(b, 0, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_pad_all(b, 0, 0);
+    lv_obj_set_style_pad_row(b, 1, 0);
+    lv_obj_set_flex_flow(b, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(b, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t * img = make_emoji_image(b, kEmojiCategories[i].icon, 22);
+    lv_obj_set_style_opa(img, LV_OPA_60, 0);
+
+    lv_obj_t * lbl = lv_label_create(b);
+    lv_label_set_text(lbl, kEmojiCategories[i].id);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lbl, theme::muted(), 0);
+    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(lbl, 54);
+
+    lv_obj_add_event_cb(b, on_emoji_cat, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    g_emoji_cat_btns[i] = b;
+  }
+  emoji_picker_style_cats();
+
+  g_emoji_grid = lv_obj_create(body);
+  lv_obj_remove_style_all(g_emoji_grid);
+  lv_obj_set_width(g_emoji_grid, lv_pct(100));
+  lv_obj_set_flex_grow(g_emoji_grid, 1);
+  lv_obj_set_flex_flow(g_emoji_grid, LV_FLEX_FLOW_ROW_WRAP);
+  lv_obj_set_flex_align(g_emoji_grid, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START,
+                        LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_row(g_emoji_grid, 6, 0);
+  lv_obj_set_style_pad_column(g_emoji_grid, 6, 0);
+  lv_obj_set_style_pad_top(g_emoji_grid, 8, 0);
+  lv_obj_add_flag(g_emoji_grid, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(g_emoji_grid, LV_DIR_VER);
+  emoji_picker_fill_grid();
 
   lv_obj_t * dock = make_dock(scr);
-  dock_btn(dock, "Cancel", false, false, [](lv_event_t * /*e*/) { go_settings(); });
+  if (compose_mode) {
+    dock_btn(dock, "Cancel", false, false, [](lv_event_t * /*e*/) { go_compose_refresh(); });
+  } else {
+    dock_btn(dock, "Cancel", false, false, [](lv_event_t * /*e*/) { go_settings(); });
+  }
   return scr;
 }
 
 }  // namespace ui
 }  // namespace wp
+

@@ -7,6 +7,7 @@ namespace ui {
 
 lv_obj_t * games_folder_screen();
 lv_obj_t * game_ttt_screen();
+lv_obj_t * game_sttt_screen();
 lv_obj_t * game_c4_screen();
 lv_obj_t * game_bs_screen();
 lv_obj_t * game_ck_screen();

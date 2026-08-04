@@ -7,13 +7,16 @@
 namespace wp {
 namespace ui {
 
-constexpr int kTopbarH = 52;
+constexpr int kTopbarH = 60;
 constexpr int kDockH = 64;
+constexpr int kDockCompactH = 48;
 
 lv_obj_t * make_screen();
 lv_obj_t * make_topbar(lv_obj_t * scr, const char * title, const char * me = "Tommy",
                        const char * sub = nullptr);
 void topbar_set(lv_obj_t * topbar, const char * title, const char * sub = nullptr);
+/** Show "you are" + mark badge under the player name (Super TTT chrome). */
+void topbar_set_mark(lv_obj_t * topbar, char mark);
 
 /** Content between topbar and dock. */
 lv_obj_t * make_body(lv_obj_t * scr, bool with_dock = true);

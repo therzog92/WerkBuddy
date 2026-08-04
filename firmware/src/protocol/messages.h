@@ -48,6 +48,11 @@ enum class MsgType : uint8_t {
   MemDecline,
   MemFlip,
   MemForfeit,
+  StttInvite,
+  StttAccept,
+  StttDecline,
+  StttMove,
+  StttForfeit,
   DoodleStroke,
   DoodleClear,
 };
@@ -74,7 +79,7 @@ struct Msg {
   /* ack */
   char for_call_from_id[kMaxId] = {};
 
-  /* ttt */
+  /* ttt / sttt — sttt uses col=mini-board 0..8, cell=cell 0..8 */
   int8_t cell = -1;
   char mark = 0; /* 'X' | 'O' */
 

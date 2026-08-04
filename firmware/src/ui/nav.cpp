@@ -74,6 +74,7 @@ void go_incoming() { load(pager_incoming_screen(), Screen::Incoming); }
 
 void go_games_folder() { load(games_folder_screen(), Screen::GamesFolder); }
 void go_ttt() { load(game_ttt_screen(), Screen::Ttt); }
+void go_sttt() { load(game_sttt_screen(), Screen::Sttt); }
 void go_c4() { load(game_c4_screen(), Screen::C4); }
 void go_battleship() { load(game_bs_screen(), Screen::Bs); }
 void go_checkers() { load(game_ck_screen(), Screen::Ck); }
@@ -107,6 +108,7 @@ void wake_from_idle() {
     case Screen::Settings: go_settings(); break;
     case Screen::GamesFolder: go_games_folder(); break;
     case Screen::Ttt: go_ttt(); break;
+    case Screen::Sttt: go_sttt(); break;
     case Screen::C4: go_c4(); break;
     case Screen::Bs: go_battleship(); break;
     case Screen::Ck: go_checkers(); break;
@@ -130,6 +132,10 @@ void sync_ui() {
   }
   if (d.ttt_invite.active || d.ttt.active) {
     go_ttt();
+    return;
+  }
+  if (d.sttt_invite.active || d.sttt.active) {
+    go_sttt();
     return;
   }
   if (d.c4_invite.active || d.c4.active) {

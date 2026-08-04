@@ -69,7 +69,7 @@ lv_obj_t * make_topbar(lv_obj_t * scr, const char * title, const char * me, cons
   lv_obj_remove_style_all(top);
   lv_obj_set_size(top, WP_HOR_RES, kTopbarH);
   lv_obj_set_style_pad_hor(top, 14, 0);
-  lv_obj_set_style_pad_ver(top, 8, 0);
+  lv_obj_set_style_pad_ver(top, 6, 0);
   lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(top, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_bg_opa(top, LV_OPA_TRANSP, 0);
@@ -77,14 +77,18 @@ lv_obj_t * make_topbar(lv_obj_t * scr, const char * title, const char * me, cons
   lv_obj_t * left = lv_obj_create(top);
   lv_obj_remove_style_all(left);
   lv_obj_set_height(left, LV_SIZE_CONTENT);
-  lv_obj_set_width(left, LV_SIZE_CONTENT);
+  lv_obj_set_flex_grow(left, 1);
+  lv_obj_set_width(left, LV_PCT(70));
   lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(left, 0, 0);
+  lv_obj_remove_flag(left, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t * brand = lv_label_create(left);
   lv_label_set_text(brand, title);
   lv_obj_set_style_text_color(brand, theme::gold(), 0);
   lv_obj_set_style_text_font(brand, &lv_font_montserrat_20, 0);
+  lv_label_set_long_mode(brand, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(brand, lv_pct(100));
   lv_obj_set_user_data(brand, (void *)1); /* mark as title */
 
   lv_obj_t * sub_lbl = lv_label_create(left);
@@ -96,13 +100,36 @@ lv_obj_t * make_topbar(lv_obj_t * scr, const char * title, const char * me, cons
     lv_obj_add_flag(sub_lbl, LV_OBJ_FLAG_HIDDEN);
   }
   lv_obj_set_style_text_color(sub_lbl, theme::muted(), 0);
-  lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_12, 0);
+  lv_label_set_long_mode(sub_lbl, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(sub_lbl, lv_pct(100));
   lv_obj_set_user_data(sub_lbl, (void *)2);
 
-  lv_obj_t * me_lbl = lv_label_create(top);
+  lv_obj_t * right = lv_obj_create(top);
+  lv_obj_remove_style_all(right);
+  lv_obj_set_height(right, LV_SIZE_CONTENT);
+  lv_obj_set_width(right, LV_SIZE_CONTENT);
+  lv_obj_set_style_min_width(right, 96, 0);
+  lv_obj_set_flex_flow(right, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(right, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+  lv_obj_set_style_pad_row(right, 2, 0);
+  lv_obj_remove_flag(right, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_user_data(right, (void *)3); /* mark as right column */
+
+  lv_obj_t * me_lbl = lv_label_create(right);
   lv_label_set_text(me_lbl, me ? me : "Tommy");
   lv_obj_set_style_text_color(me_lbl, theme::muted(), 0);
   lv_obj_set_style_text_font(me_lbl, &lv_font_montserrat_14, 0);
+
+  lv_obj_t * me_sub = lv_obj_create(right);
+  lv_obj_remove_style_all(me_sub);
+  lv_obj_set_size(me_sub, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(me_sub, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(me_sub, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(me_sub, 4, 0);
+  lv_obj_add_flag(me_sub, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_remove_flag(me_sub, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_user_data(me_sub, (void *)4); /* mark badge slot */
 
   lv_obj_set_user_data(top, left);
   return top;
@@ -126,6 +153,50 @@ void topbar_set(lv_obj_t * topbar, const char * title, const char * sub) {
       }
     }
   }
+}
+
+void topbar_set_mark(lv_obj_t * topbar, char mark) {
+  if (!topbar) return;
+  lv_obj_t * slot = nullptr;
+  const uint32_t n = lv_obj_get_child_count(topbar);
+  for (uint32_t i = 0; i < n; ++i) {
+    lv_obj_t * c = lv_obj_get_child(topbar, i);
+    if (reinterpret_cast<intptr_t>(lv_obj_get_user_data(c)) != 3) continue;
+    const uint32_t rn = lv_obj_get_child_count(c);
+    for (uint32_t j = 0; j < rn; ++j) {
+      lv_obj_t * r = lv_obj_get_child(c, j);
+      if (reinterpret_cast<intptr_t>(lv_obj_get_user_data(r)) == 4) {
+        slot = r;
+        break;
+      }
+    }
+  }
+  if (!slot) return;
+  lv_obj_clean(slot);
+  if (!mark) {
+    lv_obj_add_flag(slot, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_remove_flag(slot, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_t * you = lv_label_create(slot);
+  lv_label_set_text(you, "you are");
+  lv_obj_set_style_text_color(you, theme::muted(), 0);
+  lv_obj_set_style_text_font(you, &lv_font_montserrat_12, 0);
+  lv_obj_t * badge = lv_obj_create(slot);
+  lv_obj_remove_style_all(badge);
+  lv_obj_set_size(badge, 22, 22);
+  lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(badge, theme::hot(), 0);
+  lv_obj_set_style_bg_grad_color(badge, theme::gold(), 0);
+  lv_obj_set_style_bg_grad_dir(badge, LV_GRAD_DIR_HOR, 0);
+  lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+  lv_obj_remove_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t * bl = lv_label_create(badge);
+  char mk[2] = {mark, 0};
+  lv_label_set_text(bl, mk);
+  lv_obj_set_style_text_color(bl, lv_color_hex(0x1a0610), 0);
+  lv_obj_set_style_text_font(bl, &lv_font_montserrat_12, 0);
+  lv_obj_center(bl);
 }
 
 lv_obj_t * make_body(lv_obj_t * scr, bool with_dock) {
@@ -163,22 +234,24 @@ lv_obj_t * make_dock(lv_obj_t * scr) {
 }
 
 void style_peer_like(lv_obj_t * btn) {
-  lv_obj_set_style_radius(btn, 14, 0);
-  lv_obj_set_style_bg_color(btn, theme::hot(), 0);
-  lv_obj_set_style_bg_grad_color(btn, theme::gold(), 0);
-  lv_obj_set_style_bg_grad_dir(btn, LV_GRAD_DIR_HOR, 0);
+  /* Flat solid pill — no gradient. */
+  lv_obj_set_style_radius(btn, 16, 0);
+  lv_obj_set_style_bg_color(btn, theme::gold(), 0);
   lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-  lv_obj_set_style_pad_ver(btn, 10, 0);
-  lv_obj_set_style_pad_hor(btn, 14, 0);
+  lv_obj_set_style_shadow_width(btn, 0, 0);
+  lv_obj_set_style_border_width(btn, 0, 0);
+  lv_obj_set_style_pad_ver(btn, 12, 0);
+  lv_obj_set_style_pad_hor(btn, 16, 0);
 }
 
 lv_obj_t * dock_btn(lv_obj_t * dock, const char * label, bool primary, bool danger,
                     lv_event_cb_t cb, void * user_data) {
   lv_obj_t * btn = lv_button_create(dock);
-  lv_obj_set_height(btn, 40);
+  lv_obj_set_height(btn, 44);
   lv_obj_set_flex_grow(btn, 1);
-  lv_obj_set_style_radius(btn, 12, 0);
+  lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_shadow_width(btn, 0, 0);
+  lv_obj_set_style_border_width(btn, 0, 0);
   lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
 
   if (danger) {
@@ -186,7 +259,8 @@ lv_obj_t * dock_btn(lv_obj_t * dock, const char * label, bool primary, bool dang
   } else if (primary) {
     lv_obj_set_style_bg_color(btn, theme::gold(), 0);
   } else {
-    lv_obj_set_style_bg_color(btn, theme::panel(), 0);
+    /* Flat mid-grey like the reference +/- controls */
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x4a4558), 0);
   }
   lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
 

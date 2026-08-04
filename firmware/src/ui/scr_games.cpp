@@ -5,6 +5,7 @@
 #include "games/c4.h"
 #include "games/checkers.h"
 #include "games/memory.h"
+#include "games/sttt.h"
 #include "games/ttt.h"
 #include "protocol/messages.h"
 #include "ui/chrome.h"
@@ -14,6 +15,7 @@
 #include "ui/nav.h"
 #include "ui/theme.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -28,6 +30,18 @@ void fill_msg_ids(proto::Msg & m, const char * to_id) {
   std::snprintf(m.from_id, sizeof(m.from_id), "%s", app::desk().id);
   std::snprintf(m.from_name, sizeof(m.from_name), "%s", app::desk().name);
   if (to_id) std::snprintf(m.to_id, sizeof(m.to_id), "%s", to_id);
+}
+
+/** Topbar subtitle under the game title — matches web `vs <strong>Name</strong>`. */
+const char * game_vs_sub(char * buf, size_t n, bool active, const char * opp_name,
+                         bool invite_active, const char * invite_from) {
+  buf[0] = '\0';
+  if (active && opp_name && opp_name[0]) {
+    lv_snprintf(buf, (uint32_t)n, "vs. %s", opp_name);
+  } else if (invite_active && invite_from && invite_from[0]) {
+    lv_snprintf(buf, (uint32_t)n, "vs. %s", invite_from);
+  }
+  return buf[0] ? buf : nullptr;
 }
 
 /** Win / lose / draw celebration card (web .ttt-result). Floating over the board. */
@@ -264,7 +278,10 @@ void fill_ttt_play(lv_obj_t * parent) {
 lv_obj_t * game_ttt_build() {
   app::Desk & d = app::desk();
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, "TIC TAC TOE", d.name);
+  char sub[40];
+  make_topbar(scr, "TIC TAC TOE", d.name,
+              game_vs_sub(sub, sizeof(sub), d.ttt.active, d.ttt.opp_name, d.ttt_invite.active,
+                          d.ttt_invite.from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
@@ -348,6 +365,391 @@ lv_obj_t * game_ttt_build() {
     }
   } else {
     peer_list(body, ttt_challenge);
+    dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_games_folder(); });
+  }
+  return scr;
+}
+
+/* ================= SUPER TIC TAC TOE ================= */
+
+void sttt_challenge(lv_event_t * e) {
+  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  app::Desk & d = app::desk();
+  if (idx < 0 || idx >= d.peer_count || d.sttt.active || d.sttt_invite.active) return;
+  const app::Peer & p = d.peers[idx];
+  d.sttt = {};
+  d.sttt.active = true;
+  d.sttt.waiting = true;
+  d.sttt.mark = 'X';
+  d.sttt.turn = 'X';
+  games::sttt::init(d.sttt.boards, d.sttt.meta, d.sttt.next_board);
+  std::snprintf(d.sttt.opp_id, sizeof(d.sttt.opp_id), "%s", p.id);
+  std::snprintf(d.sttt.opp_name, sizeof(d.sttt.opp_name), "%s", p.name);
+  proto::Msg m;
+  m.type = proto::MsgType::StttInvite;
+  fill_msg_ids(m, p.id);
+  app::send(m);
+  go_sttt();
+}
+
+void sttt_play_cell(lv_event_t * e) {
+  const int packed = (int)(intptr_t)lv_event_get_user_data(e);
+  const int board = packed / 9;
+  const int cell = packed % 9;
+  app::StttGame & g = app::desk().sttt;
+  if (!g.active || g.waiting || g.over || g.turn != g.mark) return;
+  if (!games::sttt::play(g.boards, g.meta, g.next_board, board, cell, g.mark)) return;
+  proto::Msg m;
+  m.type = proto::MsgType::StttMove;
+  fill_msg_ids(m, g.opp_id);
+  m.col = (int8_t)board;
+  m.cell = (int8_t)cell;
+  m.mark = g.mark;
+  app::send(m);
+  if (games::sttt::over(g.meta)) {
+    g.over = true;
+    g.result_dismissed = false;
+  } else {
+    g.turn = g.mark == 'X' ? 'O' : 'X';
+  }
+  go_sttt();
+}
+
+void fill_sttt_play(lv_obj_t * parent) {
+  app::StttGame & g = app::desk().sttt;
+  const bool my_turn = !g.over && !g.waiting && g.turn == g.mark;
+  const char win = games::sttt::winner(g.meta);
+  const bool forced = games::sttt::forced(g.meta, g.next_board);
+
+  /* Board fills body — status / mark live in the topbar. */
+  lv_obj_set_style_pad_ver(parent, 2, 0);
+  lv_obj_set_style_pad_row(parent, 0, 0);
+  lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  lv_obj_t * center = lv_obj_create(parent);
+  lv_obj_remove_style_all(center);
+  lv_obj_set_width(center, lv_pct(100));
+  lv_obj_set_height(center, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(center, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(center, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_remove_flag(center, LV_OBJ_FLAG_SCROLLABLE);
+
+  constexpr int kOuter = 368;
+  lv_obj_t * board = lv_obj_create(center);
+  lv_obj_remove_style_all(board);
+  lv_obj_set_size(board, kOuter, kOuter);
+  lv_obj_set_style_radius(board, 18, 0);
+  lv_obj_set_style_bg_color(board, theme::panel(), 0);
+  lv_obj_set_style_bg_opa(board, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(board, 1, 0);
+  lv_obj_set_style_border_color(board, theme::muted(), 0);
+  lv_obj_set_layout(board, LV_LAYOUT_GRID);
+  static lv_coord_t bc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t br[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+  lv_obj_set_grid_dsc_array(board, bc, br);
+  lv_obj_set_style_pad_all(board, 5, 0);
+  lv_obj_set_style_pad_row(board, 5, 0);
+  lv_obj_set_style_pad_column(board, 5, 0);
+  lv_obj_remove_flag(board, LV_OBJ_FLAG_SCROLLABLE);
+
+  const lv_color_t grid_line = theme::muted();
+  const lv_color_t cell_bg = lv_color_mix(theme::bg0(), theme::panel(), 180);
+
+  for (int b = 0; b < 9; ++b) {
+    const bool forced_here = my_turn && forced && g.next_board == b;
+    /* Shell = distinct outline for each mini-board; inner = purple cell gaps. */
+    lv_obj_t * shell = lv_obj_create(board);
+    lv_obj_remove_style_all(shell);
+    lv_obj_set_style_radius(shell, 10, 0);
+    lv_obj_set_style_bg_color(shell, theme::panel(), 0);
+    lv_obj_set_style_bg_opa(shell, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(shell, forced_here ? 2 : 2, 0);
+    lv_obj_set_style_border_color(shell, forced_here ? theme::mint() : grid_line, 0);
+    lv_obj_set_style_border_opa(shell, forced_here ? LV_OPA_COVER : LV_OPA_80, 0);
+    lv_obj_set_grid_cell(shell, LV_GRID_ALIGN_STRETCH, b % 3, 1, LV_GRID_ALIGN_STRETCH, b / 3, 1);
+    lv_obj_set_style_pad_all(shell, 2, 0);
+    lv_obj_remove_flag(shell, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t * mini = lv_obj_create(shell);
+    lv_obj_remove_style_all(mini);
+    lv_obj_set_size(mini, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_radius(mini, 6, 0);
+    lv_obj_set_style_bg_color(mini, grid_line, 0);
+    lv_obj_set_style_bg_opa(mini, LV_OPA_40, 0);
+    lv_obj_set_layout(mini, LV_LAYOUT_GRID);
+    static lv_coord_t mc[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+    static lv_coord_t mr[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
+    lv_obj_set_grid_dsc_array(mini, mc, mr);
+    lv_obj_set_style_pad_all(mini, 2, 0);
+    lv_obj_set_style_pad_row(mini, 2, 0);
+    lv_obj_set_style_pad_column(mini, 2, 0);
+    lv_obj_remove_flag(mini, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (int c = 0; c < 9; ++c) {
+      lv_obj_t * cell = lv_obj_create(mini);
+      lv_obj_remove_style_all(cell);
+      lv_obj_set_style_radius(cell, 4, 0);
+      lv_obj_set_style_bg_color(cell, cell_bg, 0);
+      lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+      lv_obj_set_grid_cell(cell, LV_GRID_ALIGN_STRETCH, c % 3, 1, LV_GRID_ALIGN_STRETCH, c / 3, 1);
+      lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+      if (g.boards[b][c]) {
+        lv_obj_t * l = lv_label_create(cell);
+        char t[2] = {g.boards[b][c], 0};
+        lv_label_set_text(l, t);
+        lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(l, g.boards[b][c] == 'X' ? theme::hot() : theme::mint(), 0);
+        lv_obj_center(l);
+      } else if (my_turn && games::sttt::legal(g.boards, g.meta, g.next_board, b, c)) {
+        lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(cell, sttt_play_cell, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)(b * 9 + c));
+      }
+    }
+
+    if (g.meta[b] == 'X' || g.meta[b] == 'O') {
+      lv_obj_t * ov = lv_obj_create(mini);
+      lv_obj_remove_style_all(ov);
+      lv_obj_set_size(ov, lv_pct(100), lv_pct(100));
+      lv_obj_set_style_radius(ov, 6, 0);
+      lv_obj_set_style_bg_color(ov, g.meta[b] == 'X' ? theme::hot() : theme::mint(), 0);
+      lv_obj_set_style_bg_opa(ov, 70, 0);
+      lv_obj_add_flag(ov, LV_OBJ_FLAG_FLOATING);
+      lv_obj_remove_flag(ov, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_t * big = lv_label_create(ov);
+      char t[2] = {g.meta[b], 0};
+      lv_label_set_text(big, t);
+      lv_obj_set_style_text_font(big, font_display(40), 0);
+      lv_obj_set_style_text_color(big, g.meta[b] == 'X' ? theme::hot() : theme::mint(), 0);
+      lv_obj_center(big);
+      lv_obj_move_foreground(ov);
+    } else if (g.meta[b] == 'D') {
+      lv_obj_set_style_border_opa(shell, LV_OPA_40, 0);
+    }
+  }
+
+  if (g.over && !g.result_dismissed) {
+    const int outcome = !win ? -1 : (win == g.mark ? 1 : 0);
+    attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
+      app::desk().sttt.result_dismissed = true;
+      go_sttt();
+    });
+  }
+}
+
+lv_obj_t * make_sttt_play_topbar(lv_obj_t * scr, const char * me, const char * opp, char mark,
+                                 const char * status) {
+  lv_obj_t * top = lv_obj_create(scr);
+  lv_obj_remove_style_all(top);
+  lv_obj_set_size(top, WP_HOR_RES, kTopbarH);
+  lv_obj_set_pos(top, 0, 0);
+  lv_obj_set_style_bg_opa(top, LV_OPA_TRANSP, 0);
+  lv_obj_remove_flag(top, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(top, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+
+  /* Left: title + vs/status. Fixed max width so it cannot cover the right column. */
+  lv_obj_t * left = lv_obj_create(top);
+  lv_obj_remove_style_all(left);
+  lv_obj_set_pos(left, 14, 6);
+  lv_obj_set_size(left, 280, kTopbarH - 8);
+  lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+  lv_obj_set_style_pad_row(left, 1, 0);
+  lv_obj_remove_flag(left, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t * brand = lv_label_create(left);
+  lv_label_set_text(brand, "SUPER TIC TAC TOE");
+  lv_obj_set_style_text_color(brand, theme::gold(), 0);
+  lv_obj_set_style_text_font(brand, &lv_font_montserrat_20, 0);
+
+  lv_obj_t * sub_row = lv_obj_create(left);
+  lv_obj_remove_style_all(sub_row);
+  lv_obj_set_size(sub_row, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(sub_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(sub_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(sub_row, 8, 0);
+  lv_obj_remove_flag(sub_row, LV_OBJ_FLAG_SCROLLABLE);
+
+  char vs[40];
+  lv_snprintf(vs, sizeof(vs), "vs. %s", opp ? opp : "?");
+  lv_obj_t * vs_lbl = lv_label_create(sub_row);
+  lv_label_set_text(vs_lbl, vs);
+  lv_obj_set_style_text_color(vs_lbl, theme::muted(), 0);
+  lv_obj_set_style_text_font(vs_lbl, &lv_font_montserrat_12, 0);
+
+  if (status && status[0]) {
+    lv_obj_t * st = lv_label_create(sub_row);
+    lv_label_set_text(st, status);
+    lv_obj_set_style_text_color(st, theme::mint(), 0);
+    lv_obj_set_style_text_font(st, &lv_font_montserrat_12, 0);
+  }
+
+  /* Right chrome: pin labels directly on the topbar (no nested clip boxes). */
+  lv_obj_t * me_lbl = lv_label_create(top);
+  lv_label_set_text(me_lbl, me && me[0] ? me : "Tommy");
+  lv_obj_set_style_text_color(me_lbl, theme::muted(), 0);
+  lv_obj_set_style_text_font(me_lbl, &lv_font_montserrat_14, 0);
+  lv_obj_align(me_lbl, LV_ALIGN_TOP_RIGHT, -14, 4);
+
+  lv_obj_t * mark_row = lv_obj_create(top);
+  lv_obj_remove_style_all(mark_row);
+  lv_obj_set_size(mark_row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(mark_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(mark_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(mark_row, 5, 0);
+  lv_obj_remove_flag(mark_row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(mark_row, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+
+  lv_obj_t * you = lv_label_create(mark_row);
+  lv_label_set_text(you, "you are");
+  lv_obj_set_style_text_color(you, theme::muted(), 0);
+  lv_obj_set_style_text_font(you, &lv_font_montserrat_12, 0);
+
+  lv_obj_t * badge = lv_obj_create(mark_row);
+  lv_obj_remove_style_all(badge);
+  lv_obj_set_size(badge, 22, 22);
+  lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(badge, theme::hot(), 0);
+  lv_obj_set_style_bg_grad_color(badge, theme::gold(), 0);
+  lv_obj_set_style_bg_grad_dir(badge, LV_GRAD_DIR_HOR, 0);
+  lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+  lv_obj_remove_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t * bl = lv_label_create(badge);
+  char mk[2] = {mark ? mark : '?', 0};
+  lv_label_set_text(bl, mk);
+  lv_obj_set_style_text_color(bl, lv_color_hex(0x1a0610), 0);
+  lv_obj_set_style_text_font(bl, &lv_font_montserrat_12, 0);
+  lv_obj_center(bl);
+
+  lv_obj_align_to(mark_row, me_lbl, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 2);
+  lv_obj_move_foreground(me_lbl);
+  lv_obj_move_foreground(mark_row);
+
+  return top;
+}
+
+lv_obj_t * game_sttt_build() {
+  app::Desk & d = app::desk();
+  lv_obj_t * scr = make_screen();
+
+  const bool playing = d.sttt.active && !d.sttt.waiting && !d.sttt_invite.active;
+  lv_obj_t * top = nullptr;
+  if (playing) {
+    const bool my_turn = !d.sttt.over && d.sttt.turn == d.sttt.mark;
+    const bool forced = games::sttt::forced(d.sttt.meta, d.sttt.next_board);
+    const char * status;
+    if (d.sttt.over && !d.sttt.result_dismissed) status = "Game over";
+    else if (d.sttt.over) status = "Play again?";
+    else if (my_turn && forced) status = "Your turn: lit board";
+    else if (my_turn) status = "Your turn: any board";
+    else {
+      static char wait[40];
+      lv_snprintf(wait, sizeof(wait), "Waiting on %s", d.sttt.opp_name);
+      status = wait;
+    }
+    top = make_sttt_play_topbar(scr, d.name, d.sttt.opp_name, d.sttt.mark, status);
+  } else {
+    char sub[40];
+    top = make_topbar(scr, "SUPER TIC TAC TOE", d.name,
+                      game_vs_sub(sub, sizeof(sub), d.sttt.active, d.sttt.opp_name,
+                                  d.sttt_invite.active, d.sttt_invite.from_name));
+  }
+  (void)top;
+
+  lv_obj_t * body = make_body(scr, true);
+  lv_obj_t * dock = make_dock(scr);
+
+  if (d.sttt_invite.active) {
+    make_wait_block(body, "GAME INVITE", d.sttt_invite.from_name, "wants to play Super Tic Tac Toe");
+    dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      proto::Msg m;
+      m.type = proto::MsgType::StttDecline;
+      fill_msg_ids(m, desk.sttt_invite.from_id);
+      app::send(m);
+      desk.sttt_invite.active = false;
+      go_games_folder();
+    });
+    dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      const auto inv = desk.sttt_invite;
+      desk.sttt_invite.active = false;
+      desk.sttt = {};
+      desk.sttt.active = true;
+      desk.sttt.mark = 'O';
+      desk.sttt.turn = 'X';
+      games::sttt::init(desk.sttt.boards, desk.sttt.meta, desk.sttt.next_board);
+      std::snprintf(desk.sttt.opp_id, sizeof(desk.sttt.opp_id), "%s", inv.from_id);
+      std::snprintf(desk.sttt.opp_name, sizeof(desk.sttt.opp_name), "%s", inv.from_name);
+      proto::Msg m;
+      m.type = proto::MsgType::StttAccept;
+      fill_msg_ids(m, inv.from_id);
+      app::send(m);
+      go_sttt();
+    });
+  } else if (d.sttt.active && d.sttt.waiting) {
+    make_wait_block(body, "CHALLENGE SENT", d.sttt.opp_name, "Waiting for them to accept...");
+    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      proto::Msg m;
+      m.type = proto::MsgType::StttForfeit;
+      fill_msg_ids(m, desk.sttt.opp_id);
+      app::send(m);
+      desk.sttt.active = false;
+      go_sttt();
+    });
+  } else if (d.sttt.active) {
+    /* Compact dock so the board can use more vertical space. */
+    lv_obj_set_height(dock, kDockCompactH);
+    lv_obj_set_style_pad_ver(dock, 6, 0);
+    lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
+
+    fill_sttt_play(body);
+    if (d.sttt.over) {
+      dock_play_again_home(
+          dock,
+          [](lv_event_t * /*e*/) {
+            app::Desk & desk = app::desk();
+            app::Peer p;
+            std::snprintf(p.id, sizeof(p.id), "%s", desk.sttt.opp_id);
+            std::snprintf(p.name, sizeof(p.name), "%s", desk.sttt.opp_name);
+            desk.sttt = {};
+            desk.sttt.active = true;
+            desk.sttt.waiting = true;
+            desk.sttt.mark = 'X';
+            desk.sttt.turn = 'X';
+            games::sttt::init(desk.sttt.boards, desk.sttt.meta, desk.sttt.next_board);
+            std::snprintf(desk.sttt.opp_id, sizeof(desk.sttt.opp_id), "%s", p.id);
+            std::snprintf(desk.sttt.opp_name, sizeof(desk.sttt.opp_name), "%s", p.name);
+            proto::Msg m;
+            m.type = proto::MsgType::StttInvite;
+            fill_msg_ids(m, p.id);
+            app::send(m);
+            go_sttt();
+          },
+          [](lv_event_t * /*e*/) {
+            app::desk().sttt.active = false;
+            go_games_folder();
+          });
+      /* Shrink play-again dock buttons too. */
+      const uint32_t n = lv_obj_get_child_count(dock);
+      for (uint32_t i = 0; i < n; ++i) lv_obj_set_height(lv_obj_get_child(dock, i), 36);
+    } else {
+      lv_obj_t * btn = dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
+        show_forfeit_confirm([](lv_event_t * /*ev*/) {
+          app::Desk & desk = app::desk();
+          proto::Msg m;
+          m.type = proto::MsgType::StttForfeit;
+          fill_msg_ids(m, desk.sttt.opp_id);
+          app::send(m);
+          desk.sttt.active = false;
+          go_games_folder();
+        });
+      });
+      lv_obj_set_height(btn, 36);
+    }
+  } else {
+    peer_list(body, sttt_challenge);
     dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_games_folder(); });
   }
   return scr;
@@ -446,6 +848,69 @@ void c4_drop(lv_event_t * e) {
   go_c4();
 }
 
+/* Cached ARGB frame with circular cutouts so discs can sit behind it. */
+constexpr int kC4Cell = 44, kC4Gap = 4, kC4Pad = 10;
+constexpr int kC4BoardW = 7 * kC4Cell + 6 * kC4Gap + 2 * kC4Pad;
+constexpr int kC4BoardH = 6 * kC4Cell + 5 * kC4Gap + 2 * kC4Pad;
+constexpr int kC4FrameVer = 2; /* bump when paint algorithm changes */
+uint8_t * g_c4_frame_buf = nullptr;
+int g_c4_frame_painted_ver = 0;
+
+void c4_punch_hole_aa(lv_draw_buf_t * db, float cx, float cy, float rad) {
+  uint8_t * data = static_cast<uint8_t *>(db->data);
+  const uint32_t stride = db->header.stride;
+  constexpr float kAa = 1.25f;
+  const int x0 = (int)std::floor(cx - rad - kAa);
+  const int x1 = (int)std::ceil(cx + rad + kAa);
+  const int y0 = (int)std::floor(cy - rad - kAa);
+  const int y1 = (int)std::ceil(cy + rad + kAa);
+  for (int y = y0; y <= y1; ++y) {
+    if (y < 0 || y >= kC4BoardH) continue;
+    for (int x = x0; x <= x1; ++x) {
+      if (x < 0 || x >= kC4BoardW) continue;
+      const float dx = (float)x + 0.5f - cx;
+      const float dy = (float)y + 0.5f - cy;
+      const float d = std::sqrt(dx * dx + dy * dy);
+      float punch;
+      if (d <= rad - kAa) punch = 1.f;
+      else if (d >= rad + kAa) punch = 0.f;
+      else punch = 1.f - (d - (rad - kAa)) / (2.f * kAa);
+      if (punch <= 0.f) continue;
+      auto * px = reinterpret_cast<lv_color32_t *>(data + (uint32_t)y * stride + (uint32_t)x * 4u);
+      px->alpha = (uint8_t)((float)px->alpha * (1.f - punch) + 0.5f);
+    }
+  }
+}
+
+void c4_paint_frame(lv_obj_t * canvas) {
+  lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
+  lv_layer_t layer;
+  lv_canvas_init_layer(canvas, &layer);
+  lv_draw_rect_dsc_t rd;
+  lv_draw_rect_dsc_init(&rd);
+  rd.bg_opa = LV_OPA_COVER;
+  rd.radius = 16;
+  rd.bg_grad = *c4_rainbow();
+  rd.border_width = 3;
+  rd.border_color = lv_color_hex(0x8d7fa0);
+  rd.border_opa = LV_OPA_COVER;
+  const lv_area_t full = {0, 0, kC4BoardW - 1, kC4BoardH - 1};
+  lv_draw_rect(&layer, &rd, &full);
+  lv_canvas_finish_layer(canvas, &layer);
+
+  lv_draw_buf_t * db = lv_canvas_get_draw_buf(canvas);
+  if (!db || !db->data) return;
+  const float rad = (float)kC4Cell * 0.5f - 0.5f;
+  for (int row = 0; row < 6; ++row) {
+    for (int col = 0; col < 7; ++col) {
+      const float cx = (float)kC4Pad + (float)col * (float)(kC4Cell + kC4Gap) + (float)kC4Cell * 0.5f;
+      const float cy = (float)kC4Pad + (float)row * (float)(kC4Cell + kC4Gap) + (float)kC4Cell * 0.5f;
+      c4_punch_hole_aa(db, cx, cy, rad);
+    }
+  }
+  lv_obj_invalidate(canvas);
+}
+
 void fill_c4_play(lv_obj_t * parent) {
   app::C4Game & g = app::desk().c4;
   const bool my_turn = !g.over && !g.waiting && g.turn == g.my_color;
@@ -459,67 +924,86 @@ void fill_c4_play(lv_obj_t * parent) {
     make_status(parent, buf);
   }
 
-  constexpr int kCell = 44, kGap = 4, kPad = 10;
-  constexpr int kBoardW = 7 * kCell + 6 * kGap + 2 * kPad;
-  constexpr int kBoardH = 6 * kCell + 5 * kGap + 2 * kPad;
-  lv_obj_t * board = lv_obj_create(parent);
-  lv_obj_remove_style_all(board);
-  lv_obj_set_size(board, kBoardW, kBoardH);
-  lv_obj_set_style_radius(board, 16, 0);
-  lv_obj_set_style_bg_opa(board, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_grad(board, c4_rainbow(), 0);
-  lv_obj_set_style_border_width(board, 3, 0);
-  lv_obj_set_style_border_color(board, lv_color_hex(0x8d7fa0), 0);
-  lv_obj_set_style_pad_all(board, kPad, 0);
-  /* Allow drop animation to travel from above the board (web .c4-dropping). */
-  lv_obj_set_style_clip_corner(board, false, 0);
-  lv_obj_add_flag(board, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-  lv_obj_set_layout(board, LV_LAYOUT_GRID);
-  static lv_coord_t cols[8], rows[7];
-  for (int i = 0; i < 7; ++i) cols[i] = kCell;
-  cols[7] = LV_GRID_TEMPLATE_LAST;
-  for (int i = 0; i < 6; ++i) rows[i] = kCell;
-  rows[6] = LV_GRID_TEMPLATE_LAST;
-  lv_obj_set_grid_dsc_array(board, cols, rows);
-  lv_obj_set_style_pad_row(board, kGap, 0);
-  lv_obj_set_style_pad_column(board, kGap, 0);
-  lv_obj_remove_flag(board, LV_OBJ_FLAG_SCROLLABLE);
+  /* Discs behind a solid rainbow frame with punched circular holes. */
+  lv_obj_t * wrap = lv_obj_create(parent);
+  lv_obj_remove_style_all(wrap);
+  lv_obj_set_size(wrap, kC4BoardW, kC4BoardH);
+  lv_obj_set_style_radius(wrap, 16, 0);
+  lv_obj_set_style_bg_color(wrap, lv_color_hex(0x1a1228), 0);
+  lv_obj_set_style_bg_opa(wrap, LV_OPA_COVER, 0);
+  lv_obj_set_style_clip_corner(wrap, false, 0);
+  lv_obj_add_flag(wrap, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+  lv_obj_remove_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t * pieces = lv_obj_create(wrap);
+  lv_obj_remove_style_all(pieces);
+  lv_obj_set_pos(pieces, 0, 0);
+  lv_obj_set_size(pieces, kC4BoardW, kC4BoardH);
+  lv_obj_set_style_bg_opa(pieces, LV_OPA_TRANSP, 0);
+  lv_obj_add_flag(pieces, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+  lv_obj_remove_flag(pieces, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(pieces, LV_OBJ_FLAG_SCROLLABLE);
 
   for (int r = 0; r < 6; ++r) {
     for (int c = 0; c < 7; ++c) {
-      lv_obj_t * hole = lv_obj_create(board);
-      lv_obj_remove_style_all(hole);
-      lv_obj_set_style_radius(hole, LV_RADIUS_CIRCLE, 0);
-      lv_obj_set_style_bg_color(hole, lv_color_hex(0x1a1228), 0);
-      lv_obj_set_style_bg_opa(hole, LV_OPA_COVER, 0);
-      lv_obj_set_grid_cell(hole, LV_GRID_ALIGN_CENTER, c, 1, LV_GRID_ALIGN_CENTER, r, 1);
-      lv_obj_set_size(hole, kCell, kCell);
-      lv_obj_remove_flag(hole, LV_OBJ_FLAG_SCROLLABLE);
-      if (g.board[r][c] >= 0) {
-        lv_obj_set_style_bg_grad(hole, disc_grad(g.board[r][c]), 0);
-        /* Drop animation for the most recent disc (web .c4-dropping). */
-        if (g.last_r == r && g.last_c == c) {
-          const int drop_px = (r + 1) * (kCell + kGap) + kPad;
-          lv_obj_set_style_translate_y(hole, -drop_px, 0);
-          lv_anim_t a;
-          lv_anim_init(&a);
-          lv_anim_set_var(&a, hole);
-          lv_anim_set_values(&a, -drop_px, 0);
-          lv_anim_set_duration(&a, 480 + (uint32_t)r * 55);
-          lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-          lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
-            lv_obj_set_style_translate_y(static_cast<lv_obj_t *>(obj), v, 0);
-          });
-          lv_anim_set_completed_cb(&a, [](lv_anim_t * /*a*/) {
-            app::desk().c4.last_r = -1;
-            app::desk().c4.last_c = -1;
-          });
-          lv_anim_start(&a);
-        }
-      } else if (my_turn) {
-        lv_obj_add_flag(hole, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(hole, c4_drop, LV_EVENT_CLICKED, (void *)(intptr_t)c);
+      if (g.board[r][c] < 0) continue;
+      const int x = kC4Pad + c * (kC4Cell + kC4Gap);
+      const int y = kC4Pad + r * (kC4Cell + kC4Gap);
+      lv_obj_t * disc = lv_obj_create(pieces);
+      lv_obj_remove_style_all(disc);
+      lv_obj_set_pos(disc, x, y);
+      lv_obj_set_size(disc, kC4Cell, kC4Cell);
+      lv_obj_set_style_radius(disc, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_bg_opa(disc, LV_OPA_COVER, 0);
+      lv_obj_set_style_bg_grad(disc, disc_grad(g.board[r][c]), 0);
+      lv_obj_remove_flag(disc, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_remove_flag(disc, LV_OBJ_FLAG_SCROLLABLE);
+      if (g.last_r == r && g.last_c == c) {
+        const int drop_px = y + kC4Cell;
+        lv_obj_set_style_translate_y(disc, -drop_px, 0);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, disc);
+        lv_anim_set_values(&a, -drop_px, 0);
+        lv_anim_set_duration(&a, 480 + (uint32_t)r * 55);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
+          lv_obj_set_style_translate_y(static_cast<lv_obj_t *>(obj), v, 0);
+        });
+        lv_anim_set_completed_cb(&a, [](lv_anim_t * /*a*/) {
+          app::desk().c4.last_r = -1;
+          app::desk().c4.last_c = -1;
+        });
+        lv_anim_start(&a);
       }
+    }
+  }
+
+  if (!g_c4_frame_buf) {
+    g_c4_frame_buf = static_cast<uint8_t *>(lv_malloc(kC4BoardW * kC4BoardH * 4));
+  }
+  lv_obj_t * frame = lv_canvas_create(wrap);
+  lv_obj_set_pos(frame, 0, 0);
+  lv_obj_set_size(frame, kC4BoardW, kC4BoardH);
+  lv_canvas_set_buffer(frame, g_c4_frame_buf, kC4BoardW, kC4BoardH, LV_COLOR_FORMAT_ARGB8888);
+  lv_obj_remove_flag(frame, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(frame, LV_OBJ_FLAG_SCROLLABLE);
+  if (g_c4_frame_buf && g_c4_frame_painted_ver != kC4FrameVer) {
+    c4_paint_frame(frame);
+    g_c4_frame_painted_ver = kC4FrameVer;
+  }
+
+  if (my_turn) {
+    for (int c = 0; c < 7; ++c) {
+      if (g.board[0][c] >= 0) continue;
+      lv_obj_t * hit = lv_obj_create(wrap);
+      lv_obj_remove_style_all(hit);
+      lv_obj_set_pos(hit, kC4Pad + c * (kC4Cell + kC4Gap), 0);
+      lv_obj_set_size(hit, kC4Cell, kC4BoardH);
+      lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
+      lv_obj_add_flag(hit, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_remove_flag(hit, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_add_event_cb(hit, c4_drop, LV_EVENT_CLICKED, (void *)(intptr_t)c);
     }
   }
 
@@ -535,7 +1019,10 @@ void fill_c4_play(lv_obj_t * parent) {
 lv_obj_t * game_c4_build() {
   app::Desk & d = app::desk();
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, "CONNECT FOUR", d.name);
+  char sub[40];
+  make_topbar(scr, "CONNECT FOUR", d.name,
+              game_vs_sub(sub, sizeof(sub), d.c4.active, d.c4.opp_name, d.c4_invite.active,
+                          d.c4_invite.from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
@@ -920,7 +1407,10 @@ void fill_bs_grid(lv_obj_t * parent, bool offense) {
 lv_obj_t * game_bs_build() {
   app::Desk & d = app::desk();
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, "BATTLESHIP", d.name);
+  char sub[40];
+  make_topbar(scr, "BATTLESHIP", d.name,
+              game_vs_sub(sub, sizeof(sub), d.bs.active, d.bs.opp_name, d.bs_invite.active,
+                          d.bs_invite.from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
@@ -1297,7 +1787,10 @@ void fill_ck_play(lv_obj_t * parent) {
 lv_obj_t * game_ck_build() {
   app::Desk & d = app::desk();
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, "CHECKERS", d.name);
+  char sub[40];
+  make_topbar(scr, "CHECKERS", d.name,
+              game_vs_sub(sub, sizeof(sub), d.ck.active, d.ck.opp_name, d.ck_invite.active,
+                          d.ck_invite.from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
@@ -1575,7 +2068,10 @@ void fill_mem_play(lv_obj_t * parent) {
 lv_obj_t * game_mem_build() {
   app::Desk & d = app::desk();
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, "MEMORY", d.name);
+  char sub[40];
+  make_topbar(scr, "MEMORY", d.name,
+              game_vs_sub(sub, sizeof(sub), d.mem.active, d.mem.opp_name, d.mem_invite.active,
+                          d.mem_invite.from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
@@ -1680,7 +2176,7 @@ lv_obj_t * games_folder_screen() {
   lv_obj_set_flex_grow(grid, 1);
   lv_obj_set_layout(grid, LV_LAYOUT_GRID);
   static lv_coord_t cols[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t rows[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t rows[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
   lv_obj_set_grid_dsc_array(grid, cols, rows);
   lv_obj_set_style_pad_row(grid, 16, 0);
   lv_obj_remove_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
@@ -1692,12 +2188,13 @@ lv_obj_t * games_folder_screen() {
   };
   const Item items[] = {
       {AppIcon::Ttt, "Tic Tac Toe", [](lv_event_t * /*e*/) { go_ttt(); }},
+      {AppIcon::Sttt, "Super TTT", [](lv_event_t * /*e*/) { go_sttt(); }},
       {AppIcon::C4, "Connect Four", [](lv_event_t * /*e*/) { go_c4(); }},
       {AppIcon::Battleship, "Battleship", [](lv_event_t * /*e*/) { go_battleship(); }},
       {AppIcon::Checkers, "Checkers", [](lv_event_t * /*e*/) { go_checkers(); }},
       {AppIcon::Memory, "Memory", [](lv_event_t * /*e*/) { go_memory(); }},
   };
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 6; ++i) {
     lv_obj_t * icon = make_app_icon(grid, items[i].icon, items[i].label, items[i].cb);
     lv_obj_set_grid_cell(icon, LV_GRID_ALIGN_CENTER, i % 3, 1, LV_GRID_ALIGN_START, i / 3, 1);
   }
@@ -1708,6 +2205,7 @@ lv_obj_t * games_folder_screen() {
 }
 
 lv_obj_t * game_ttt_screen() { return game_ttt_build(); }
+lv_obj_t * game_sttt_screen() { return game_sttt_build(); }
 lv_obj_t * game_c4_screen() { return game_c4_build(); }
 lv_obj_t * game_bs_screen() { return game_bs_build(); }
 lv_obj_t * game_ck_screen() { return game_ck_build(); }

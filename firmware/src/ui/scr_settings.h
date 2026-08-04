@@ -12,6 +12,8 @@ lv_obj_t * keyboard_screen_compose();
 lv_obj_t * wifi_scan_screen();
 lv_obj_t * keyboard_screen_wifi_pass();
 lv_obj_t * ota_releases_screen();
+/** Settings: slot 0..kEmojiSlots-1. Compose pick-from-all: pass kEmojiPickerCompose. */
+constexpr int kEmojiPickerCompose = -1;
 lv_obj_t * emoji_picker_screen(int slot);
 
 }  // namespace ui

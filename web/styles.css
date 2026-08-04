@@ -1511,6 +1511,13 @@ body {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 40%, transparent);
 }
 
+.compose-emoji-row button.compose-emoji-more {
+  font-size: 1.55rem;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--muted);
+}
+
 .compose-canned {
   display: flex;
   flex-direction: column;
@@ -1701,6 +1708,55 @@ body {
   text-align: left;
   font: 600 0.88rem var(--font-body);
   cursor: pointer;
+}
+
+.emoji-cats {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  padding: 0 0 6px;
+  margin: 0 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.emoji-cats .emoji-cat {
+  appearance: none;
+  flex: 1 0 auto;
+  min-width: 52px;
+  height: auto;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  border-radius: 0;
+  padding: 4px 4px 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  font: 600 0.58rem var(--font-body);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  opacity: 0.72;
+}
+
+.emoji-cats .emoji-cat .emoji-cat-icon {
+  font-size: 1.05rem;
+  line-height: 1;
+  filter: grayscale(0.35);
+}
+
+.emoji-cats .emoji-cat[aria-pressed="true"] {
+  border-bottom-color: var(--gold);
+  color: var(--gold);
+  opacity: 1;
+  box-shadow: none;
+}
+
+.emoji-cats .emoji-cat[aria-pressed="true"] .emoji-cat-icon {
+  filter: none;
 }
 
 .emoji-palette {

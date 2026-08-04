@@ -15,6 +15,7 @@ enum class Screen {
   Incoming,
   GamesFolder,
   Ttt,
+  Sttt,
   C4,
   Bs,
   Ck,
@@ -39,6 +40,7 @@ void go_incoming();
 
 void go_games_folder();
 void go_ttt();
+void go_sttt();
 void go_c4();
 void go_battleship();
 void go_checkers();
@@ -52,7 +54,7 @@ void go_keyboard_compose();
 void go_wifi_scan();
 void go_keyboard_wifi_pass();
 void go_ota_releases();
-void go_emoji_picker(int slot);
+void go_emoji_picker(int slot); /* settings slot, or kEmojiPickerCompose for Werk Room */
 
 /** Re-open compose with the current draft (emoji/message) intact. */
 void go_compose_refresh();

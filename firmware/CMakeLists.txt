@@ -26,6 +26,7 @@ add_executable(werkpager_sim
   src/ui/icons.cpp
   src/ui/fonts.cpp
   src/ui/emoji_badge.cpp
+  src/ui/emoji_palette.cpp
   src/ui/brightness.cpp
   src/ui/nav.cpp
   src/ui/scr_hub.cpp

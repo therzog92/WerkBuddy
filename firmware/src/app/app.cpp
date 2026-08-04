@@ -1,6 +1,7 @@
 #include "app/app.h"
 
 #include "app/storage.h"
+#include "games/sttt.h"
 #include "games/ttt.h"
 #include "net/link.h"
 #include "ui/chrome.h"
@@ -19,7 +20,7 @@ namespace {
 
 Desk g_desk;
 
-const char * kDefaultEmojis[kEmojiSlots] = {"💅", "👑", "📢", "👀", "✨", "☕", "🆘", "🎉"};
+const char * kDefaultEmojis[kEmojiSlots] = {"💅", "👑", "📢", "👀", "✨", "☕", "🆘"};
 const char * kDefaultCanned[kCannedCount] = {"Got a sec?", "Come here", "Lunch?", "Urgent"};
 
 void copy_str(char * dst, size_t cap, const char * src) {
@@ -122,8 +123,9 @@ void save() { storage::save(g_desk); }
 bool busy() {
   const Desk & d = g_desk;
   return d.incoming.active || d.outgoing.active || d.ttt_invite.active || d.ttt.active ||
-         d.c4_invite.active || d.c4.active || d.bs_invite.active || d.bs.active ||
-         d.ck_invite.active || d.ck.active || d.mem_invite.active || d.mem.active;
+         d.sttt_invite.active || d.sttt.active || d.c4_invite.active || d.c4.active ||
+         d.bs_invite.active || d.bs.active || d.ck_invite.active || d.ck.active ||
+         d.mem_invite.active || d.mem.active;
 }
 
 bool peer_saved(const char * id) {
@@ -274,6 +276,61 @@ void handle_msg(const proto::Msg & m) {
       }
       if (d.ttt.active && same(d.ttt.opp_id, m.from_id)) {
         d.ttt.active = false;
+        changed = true;
+      }
+      if (changed) {
+        ui::toast_fmt("%s left the game", m.from_name);
+        ui::sync_ui();
+      }
+      return;
+    }
+
+    /* —— Super Tic Tac Toe —— */
+    case proto::MsgType::StttInvite: {
+      if (d.sttt.active || d.sttt_invite.active) return;
+      d.sttt_invite.active = true;
+      copy_str(d.sttt_invite.from_id, proto::kMaxId, m.from_id);
+      copy_str(d.sttt_invite.from_name, proto::kMaxName, m.from_name);
+      ui::go_sttt();
+      ui::toast_fmt("%s challenged you", m.from_name);
+      return;
+    }
+    case proto::MsgType::StttAccept: {
+      if (!d.sttt.active || !d.sttt.waiting || !same(d.sttt.opp_id, m.from_id)) return;
+      d.sttt.waiting = false;
+      copy_str(d.sttt.opp_name, proto::kMaxName, m.from_name);
+      ui::go_sttt();
+      ui::toast_fmt("%s accepted", m.from_name);
+      return;
+    }
+    case proto::MsgType::StttDecline: {
+      if (!d.sttt.active || !d.sttt.waiting || !same(d.sttt.opp_id, m.from_id)) return;
+      d.sttt.active = false;
+      ui::toast_fmt("%s declined", m.from_name);
+      ui::sync_ui();
+      return;
+    }
+    case proto::MsgType::StttMove: {
+      StttGame & g = d.sttt;
+      if (!g.active || !same(g.opp_id, m.from_id)) return;
+      if (!games::sttt::play(g.boards, g.meta, g.next_board, m.col, m.cell, m.mark)) return;
+      if (games::sttt::over(g.meta)) {
+        g.over = true;
+        g.result_dismissed = false;
+      } else {
+        g.turn = m.mark == 'X' ? 'O' : 'X';
+      }
+      ui::go_sttt();
+      return;
+    }
+    case proto::MsgType::StttForfeit: {
+      bool changed = false;
+      if (d.sttt_invite.active && same(d.sttt_invite.from_id, m.from_id)) {
+        d.sttt_invite.active = false;
+        changed = true;
+      }
+      if (d.sttt.active && same(d.sttt.opp_id, m.from_id)) {
+        d.sttt.active = false;
         changed = true;
       }
       if (changed) {

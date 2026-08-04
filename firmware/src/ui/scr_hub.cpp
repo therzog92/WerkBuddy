@@ -94,24 +94,24 @@ lv_obj_t * hub_screen() {
   lv_obj_remove_style_all(body);
   lv_obj_set_size(body, WP_HOR_RES, WP_VER_RES - 44);
   lv_obj_set_pos(body, 0, 44);
-  lv_obj_set_style_pad_hor(body, 18, 0);
-  lv_obj_set_style_pad_bottom(body, 16, 0);
+  lv_obj_set_style_pad_hor(body, 12, 0);
+  lv_obj_set_style_pad_bottom(body, 10, 0);
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(body, 10, 0);
+  lv_obj_set_style_pad_row(body, 6, 0);
   lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
 
   char cb[24], db[40];
   format_clock(cb, sizeof(cb), db, sizeof(db));
 
-  /* Clock block — open type on the theme bg (no card/pill chrome) */
+  /* Clock block — slightly tighter to leave room for the game row. */
   lv_obj_t * hero = lv_obj_create(body);
   lv_obj_remove_style_all(hero);
   lv_obj_set_width(hero, lv_pct(100));
-  lv_obj_set_height(hero, 118);
+  lv_obj_set_height(hero, 96);
   lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(hero, 2, 0);
+  lv_obj_set_style_pad_row(hero, 1, 0);
   lv_obj_remove_flag(hero, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -125,7 +125,7 @@ lv_obj_t * hub_screen() {
   g_clock = lv_label_create(hero);
   lv_label_set_text(g_clock, cb);
   lv_obj_set_style_text_color(g_clock, theme::ink(), 0);
-  lv_obj_set_style_text_font(g_clock, font_display(64), 0);
+  lv_obj_set_style_text_font(g_clock, font_display(56), 0);
   lv_obj_set_style_text_letter_space(g_clock, 1, 0);
 
   g_date = lv_label_create(hero);
@@ -135,39 +135,87 @@ lv_obj_t * hub_screen() {
 
   g_timer = lv_timer_create(tick, 1000, nullptr);
 
-  /* App grid */
-  lv_obj_t * grid = lv_obj_create(body);
-  lv_obj_remove_style_all(grid);
-  lv_obj_set_width(grid, lv_pct(100));
-  lv_obj_set_flex_grow(grid, 1);
-  lv_obj_set_style_pad_hor(grid, 8, 0);
-  lv_obj_set_style_pad_top(grid, 4, 0);
-  lv_obj_set_style_pad_row(grid, 10, 0);
-  lv_obj_set_style_pad_column(grid, 4, 0);
-  lv_obj_set_layout(grid, LV_LAYOUT_GRID);
-  lv_obj_remove_flag(grid, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_remove_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
-  static lv_coord_t cols[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t rows[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
-  lv_obj_set_grid_dsc_array(grid, cols, rows);
+  /* Center stage: WerkPager sits mid-low above the dock. */
+  lv_obj_t * stage = lv_obj_create(body);
+  lv_obj_remove_style_all(stage);
+  lv_obj_set_width(stage, lv_pct(100));
+  lv_obj_set_flex_grow(stage, 1);
+  lv_obj_set_flex_flow(stage, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(stage, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_bottom(stage, 12, 0);
+  lv_obj_remove_flag(stage, LV_OBJ_FLAG_SCROLLABLE);
 
-  struct Item {
-    AppIcon icon;
-    const char * label;
-    lv_event_cb_t cb;
-  };
-  const Item items[] = {
-      {AppIcon::Werk, "WerkPager", [](lv_event_t * /*e*/) { go_werk(); }},
-      {AppIcon::Games, "Games", [](lv_event_t * /*e*/) { go_games_folder(); }},
-      {AppIcon::Doodle, "Doodle", [](lv_event_t * /*e*/) { go_doodle(); }},
-      {AppIcon::Settings, "Settings", [](lv_event_t * /*e*/) { go_settings(); }},
-  };
-  for (int i = 0; i < 4; ++i) {
-    lv_obj_t * icon = make_app_icon(grid, items[i].icon, items[i].label, items[i].cb);
-    lv_obj_set_grid_cell(icon, LV_GRID_ALIGN_CENTER, i % 2, 1, LV_GRID_ALIGN_CENTER, i / 2, 1);
+  lv_obj_t * werk = make_app_icon_sized(stage, AppIcon::Werk, "WerkPager",
+                                        [](lv_event_t * /*e*/) { go_werk(); }, 96, 150, 128,
+                                        &lv_font_montserrat_14);
+  /* Slow, visible pulse on the WerkPager glyph (opacity + slight scale). */
+  if (lv_obj_get_child_count(werk) > 0) {
+    lv_obj_t * wrap = lv_obj_get_child(werk, 0);
+    if (wrap && lv_obj_get_child_count(wrap) > 0) {
+      lv_obj_t * glyph = lv_obj_get_child(wrap, 0);
+      lv_obj_set_style_transform_pivot_x(glyph, 36, 0);
+      lv_obj_set_style_transform_pivot_y(glyph, 36, 0);
+      lv_anim_t a;
+      lv_anim_init(&a);
+      lv_anim_set_var(&a, glyph);
+      lv_anim_set_values(&a, 0, 1000);
+      lv_anim_set_duration(&a, 1400);
+      lv_anim_set_playback_duration(&a, 1400);
+      lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+      lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+      lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
+        auto * g = static_cast<lv_obj_t *>(obj);
+        /* v 0..1000 → opa 130..255, scale ~92%..100% of the 96px hub size (256*96/72). */
+        const lv_opa_t opa = (lv_opa_t)(130 + (v * 125) / 1000);
+        const int32_t scale = 314 + (v * 28) / 1000;
+        lv_obj_set_style_bg_opa(g, opa, 0);
+        lv_obj_set_style_transform_scale(g, scale, 0);
+      });
+      lv_anim_start(&a);
+    }
   }
 
-  /* Footer status */
+  /* Bottom dock: equal columns so Games shares WerkPager's center axis;
+   * Doodle / Settings match in size, pinned to the outer corners. */
+  lv_obj_t * corners = lv_obj_create(body);
+  lv_obj_remove_style_all(corners);
+  lv_obj_set_width(corners, lv_pct(100));
+  lv_obj_set_height(corners, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(corners, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(corners, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+  lv_obj_remove_flag(corners, LV_OBJ_FLAG_SCROLLABLE);
+
+  auto make_slot = [](lv_obj_t * parent, lv_flex_align_t h_align) {
+    lv_obj_t * slot = lv_obj_create(parent);
+    lv_obj_remove_style_all(slot);
+    lv_obj_set_flex_grow(slot, 1);
+    lv_obj_set_height(slot, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(slot, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(slot, LV_FLEX_ALIGN_CENTER, h_align, h_align);
+    lv_obj_remove_flag(slot, LV_OBJ_FLAG_SCROLLABLE);
+    return slot;
+  };
+
+  constexpr int kCornerGlyph = 52;
+  constexpr int kCornerColW = 84;
+  constexpr int kCornerColH = 84;
+  constexpr int kGamesGlyph = 64;
+  constexpr int kGamesColW = 96;
+  constexpr int kGamesColH = 96;
+
+  lv_obj_t * left = make_slot(corners, LV_FLEX_ALIGN_START);
+  make_app_icon_sized(left, AppIcon::Doodle, "Doodle", [](lv_event_t * /*e*/) { go_doodle(); },
+                      kCornerGlyph, kCornerColW, kCornerColH, &lv_font_montserrat_12);
+
+  lv_obj_t * mid = make_slot(corners, LV_FLEX_ALIGN_CENTER);
+  make_app_icon_sized(mid, AppIcon::Games, "Games", [](lv_event_t * /*e*/) { go_games_folder(); },
+                      kGamesGlyph, kGamesColW, kGamesColH, &lv_font_montserrat_12);
+
+  lv_obj_t * right = make_slot(corners, LV_FLEX_ALIGN_END);
+  make_app_icon_sized(right, AppIcon::Settings, "Settings",
+                      [](lv_event_t * /*e*/) { go_settings(); }, kCornerGlyph, kCornerColW,
+                      kCornerColH, &lv_font_montserrat_12);
+
   lv_obj_t * status = lv_label_create(body);
   char sb[56];
   const int n = app::desk().peer_count;

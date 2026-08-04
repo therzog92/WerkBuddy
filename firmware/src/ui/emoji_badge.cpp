@@ -64,10 +64,23 @@ const char * path_for_unicode(uint32_t unicode) {
   static std::unordered_map<uint32_t, std::string> paths;
   auto it = paths.find(unicode);
   if (it != paths.end()) return it->second.empty() ? nullptr : it->second.c_str();
-  const std::string path = make_png_path(unicode_to_twemoji_id(unicode));
-  /* Missing asset → cache miss marker so the imgfont falls back to text. */
-  const bool exists = std::filesystem::exists(path.substr(2)); /* strip "S:" */
-  paths[unicode] = exists ? path : std::string();
+
+  /* Twemoji often ships as bare codepoint or codepoint-fe0f — try both. */
+  const char * ids[2] = {unicode_to_twemoji_id(unicode), nullptr};
+  char fe0f[24];
+  std::snprintf(fe0f, sizeof(fe0f), "%x-fe0f", unicode);
+  ids[1] = fe0f;
+
+  std::string found;
+  for (const char * id : ids) {
+    if (!id) continue;
+    const std::string path = make_png_path(id);
+    if (std::filesystem::exists(path.substr(2))) {
+      found = path;
+      break;
+    }
+  }
+  paths[unicode] = found;
   return paths[unicode].empty() ? nullptr : paths[unicode].c_str();
 }
 
@@ -98,6 +111,13 @@ const char * emoji_chip_label(const char * emoji_utf8) {
 
 const char * emoji_png_path(const char * emoji_utf8) {
   static char path[512];
+  const uint32_t cp = utf8_first_cp(emoji_utf8);
+  const char * resolved = path_for_unicode(cp);
+  if (resolved) {
+    /* path_for_unicode returns stable cached "S:..." string */
+    return resolved;
+  }
+  /* Fallback path even if missing — caller may still try to load. */
   const char * id = emoji_to_twemoji_id(emoji_utf8);
   const auto dir = assets_emoji_dir();
   std::snprintf(path, sizeof(path), "S:%s/%s.png", dir.string().c_str(), id);

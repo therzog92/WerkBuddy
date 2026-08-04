@@ -5,6 +5,7 @@
 #include "games/c4.h"
 #include "games/checkers.h"
 #include "games/memory.h"
+#include "games/sttt.h"
 #include "games/ttt.h"
 
 #include "lvgl/lvgl.h"
@@ -53,6 +54,12 @@ struct Bot {
   /* ttt */
   bool ttt_on = false;
   char ttt_board[9] = {};
+
+  /* super ttt */
+  bool sttt_on = false;
+  char sttt_boards[9][9] = {};
+  char sttt_meta[9] = {};
+  int8_t sttt_next = -1;
 
   /* c4 */
   bool c4_on = false;
@@ -111,6 +118,38 @@ void bot_ttt_move(Bot & b) {
     m.mark = 'O';
     deliver(m);
     if (games::ttt::winner(b.ttt_board) || games::ttt::full(b.ttt_board)) b.ttt_on = false;
+  });
+}
+
+/* ================= Super TTT bot ================= */
+
+void bot_sttt_move(Bot & b) {
+  later(900, [&b]() {
+    if (!b.sttt_on) return;
+    struct Move {
+      int board, cell;
+    };
+    Move opts[81];
+    int n = 0;
+    for (int board = 0; board < 9; ++board) {
+      for (int cell = 0; cell < 9; ++cell) {
+        if (games::sttt::legal(b.sttt_boards, b.sttt_meta, b.sttt_next, board, cell)) {
+          opts[n++] = {board, cell};
+        }
+      }
+    }
+    if (!n) {
+      b.sttt_on = false;
+      return;
+    }
+    const Move & pick = opts[std::rand() % n];
+    games::sttt::play(b.sttt_boards, b.sttt_meta, b.sttt_next, pick.board, pick.cell, 'O');
+    Msg m = base_msg(b, MsgType::StttMove);
+    m.col = (int8_t)pick.board;
+    m.cell = (int8_t)pick.cell;
+    m.mark = 'O';
+    deliver(m);
+    if (games::sttt::over(b.sttt_meta)) b.sttt_on = false;
   });
 }
 
@@ -297,6 +336,29 @@ void bot_receive(Bot & b, const Msg & m) {
     }
     case MsgType::TttForfeit: {
       b.ttt_on = false;
+      return;
+    }
+
+    case MsgType::StttInvite: {
+      later(1100, [&b]() {
+        b.sttt_on = true;
+        games::sttt::init(b.sttt_boards, b.sttt_meta, b.sttt_next);
+        deliver(base_msg(b, MsgType::StttAccept));
+      });
+      return;
+    }
+    case MsgType::StttMove: {
+      if (!b.sttt_on) return;
+      if (!games::sttt::play(b.sttt_boards, b.sttt_meta, b.sttt_next, m.col, m.cell, m.mark)) return;
+      if (games::sttt::over(b.sttt_meta)) {
+        b.sttt_on = false;
+        return;
+      }
+      bot_sttt_move(b);
+      return;
+    }
+    case MsgType::StttForfeit: {
+      b.sttt_on = false;
       return;
     }
 

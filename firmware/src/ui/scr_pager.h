@@ -17,6 +17,8 @@ lv_obj_t * pager_incoming_screen(); /* reads desk().incoming */
 void compose_mark_fresh();
 const char * compose_message();
 void compose_set_message(const char * msg);
+const char * compose_emoji();
+void compose_set_emoji(const char * emoji);
 
 }  // namespace ui
 }  // namespace wp

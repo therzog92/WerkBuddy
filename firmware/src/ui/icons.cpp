@@ -3,8 +3,6 @@
 #include "ui/theme.h"
 
 #include <cmath>
-#include <cstdio>
-#include <filesystem>
 
 namespace wp {
 namespace ui {
@@ -25,13 +23,21 @@ struct IconColors {
   uint32_t bot;
 };
 
+uint32_t u32(lv_color_t c) { return lv_color_to_u32(c); }
+
 IconColors colors_for(AppIcon icon) {
+  /* Hub chrome follows the active theme accents (matches web --hot / --gold / --mint). */
   switch (icon) {
-    case AppIcon::Werk: return {0xff4fa3, 0xf0c24b};
-    case AppIcon::Games: return {0x5a6a88, 0x3d4a66};
-    case AppIcon::Doodle: return {0xe87858, 0x9a7ad4};
-    case AppIcon::Settings: return {0x6a7280, 0x4a5568};
+    case AppIcon::Werk: return {u32(theme::hot()), u32(theme::gold())};
+    case AppIcon::Games:
+      return {u32(lv_color_mix(theme::hot(), theme::mint(), 90)), u32(theme::mint())};
+    case AppIcon::Doodle:
+      return {u32(lv_color_mix(theme::hot(), theme::gold(), 160)), u32(theme::gold())};
+    case AppIcon::Settings:
+      return {u32(lv_color_mix(theme::muted(), theme::panel(), 100)), u32(theme::border())};
     case AppIcon::Ttt: return {0x5b8cff, 0x7c5cff};
+    case AppIcon::Sttt:
+      return {u32(theme::hot()), u32(lv_color_mix(theme::hot(), theme::mint(), 128))};
     case AppIcon::C4: return {0x1d4ed8, 0x38bdf8};
     case AppIcon::Battleship: return {0x0f766e, 0x115e59};
     case AppIcon::Checkers: return {0x8b3a3a, 0x2a2438};
@@ -140,38 +146,30 @@ void draw_games(lv_obj_t * g) {
   pad_btn(37, 12, 6, 6, true);
 }
 
-const char * paintbrush_png_path() {
-  namespace fs = std::filesystem;
-  static char path[260] = {};
-  const fs::path candidates[] = {
-      fs::current_path() / "assets" / "icons" / "paintbrush.png",
-      fs::current_path() / ".." / "assets" / "icons" / "paintbrush.png",
-      fs::path("C:/Users/Tommy/Projects/WerkPager/firmware/assets/icons/paintbrush.png"),
-  };
-  for (const fs::path & p : candidates) {
-    if (!fs::exists(p)) continue;
-    std::snprintf(path, sizeof(path), "S:%s", fs::weakly_canonical(p).string().c_str());
-    for (char * c = path; *c; ++c) {
-      if (*c == '\\') *c = '/';
-    }
-    return path;
-  }
-  return "S:assets/icons/paintbrush.png";
-}
-
 void draw_doodle(lv_obj_t * g) {
-  /* User-provided diagonal brush silhouette (white on transparent). */
-  lv_obj_t * img = lv_image_create(g);
-  lv_image_set_src(img, paintbrush_png_path());
-  lv_obj_set_size(img, 48, 48);
-  lv_image_set_scale(img, 256); /* may get overridden below after header known */
-  lv_obj_center(img);
-  lv_image_header_t hdr{};
-  if (lv_image_decoder_get_info(paintbrush_png_path(), &hdr) == LV_RESULT_OK && hdr.w > 0) {
-    const uint32_t scale = (48 * 256) / (hdr.w > hdr.h ? hdr.w : hdr.h);
-    lv_image_set_scale(img, scale);
-  }
-  lv_obj_center(img);
+  const lv_color_t c = lv_color_hex(0xffffff);
+  /*
+   * Diagonal paintbrush (tip bottom-left → handle top-right), drawn with
+   * primitives so it survives hub rebuilds (file-based lv_image was dropping
+   * when the previous screen deleted async and flushed the decoder cache).
+   */
+  auto blob = [&](lv_coord_t x, lv_coord_t y, lv_coord_t w, lv_coord_t h) {
+    lv_obj_t * o = lv_obj_create(g);
+    lv_obj_remove_style_all(o);
+    lv_obj_set_size(o, w, h);
+    lv_obj_set_pos(o, x, y);
+    lv_obj_set_style_radius(o, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(o, c, 0);
+    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+  };
+  /* Brush head */
+  blob(10, 40, 22, 18);
+  blob(8, 48, 12, 10);
+  /* Ferrule (short mid segment, slight gap from tip) */
+  line(g, 28, 40, 38, 30, 9, c);
+  /* Handle tapering to a point */
+  line(g, 40, 28, 54, 16, 7, c);
+  line(g, 52, 17, 60, 11, 4, c);
 }
 
 void draw_settings(lv_obj_t * g) {
@@ -234,6 +232,27 @@ void draw_ttt(lv_obj_t * g) {
   };
   mark("X", 0, 0);
   mark("O", 2, 2);
+}
+
+void draw_sttt(lv_obj_t * g) {
+  const lv_color_t c = lv_color_hex(0xffffff);
+  constexpr lv_coord_t kIn = 12;
+  constexpr lv_coord_t kMini = 14;
+  constexpr lv_coord_t kGap = 3;
+  constexpr lv_coord_t kSpan = 3 * kMini + 2 * kGap;
+  rect_bar(g, kIn + kMini, kIn, kGap, kSpan, c);
+  rect_bar(g, kIn + 2 * kMini + kGap, kIn, kGap, kSpan, c);
+  rect_bar(g, kIn, kIn + kMini, kSpan, kGap, c);
+  rect_bar(g, kIn, kIn + 2 * kMini + kGap, kSpan, kGap, c);
+  for (int i = 0; i < 9; ++i) {
+    const int bx = i % 3, by = i / 3;
+    const lv_coord_t ox = kIn + bx * (kMini + kGap) + 2;
+    const lv_coord_t oy = kIn + by * (kMini + kGap) + 2;
+    rect_bar(g, ox + 3, oy, 1, 9, c);
+    rect_bar(g, ox + 7, oy, 1, 9, c);
+    rect_bar(g, ox, oy + 3, 9, 1, c);
+    rect_bar(g, ox, oy + 7, 9, 1, c);
+  }
 }
 
 void draw_c4(lv_obj_t * g) {
@@ -347,6 +366,7 @@ void draw_icon(lv_obj_t * g, AppIcon icon) {
     case AppIcon::Doodle: draw_doodle(g); break;
     case AppIcon::Settings: draw_settings(g); break;
     case AppIcon::Ttt: draw_ttt(g); break;
+    case AppIcon::Sttt: draw_sttt(g); break;
     case AppIcon::C4: draw_c4(g); break;
     case AppIcon::Battleship: draw_bs(g); break;
     case AppIcon::Checkers: draw_ck(g); break;
@@ -361,15 +381,12 @@ lv_obj_t * make_app_glyph(lv_obj_t * parent, AppIcon icon) {
   lv_obj_t * glyph = lv_obj_create(parent);
   lv_obj_remove_style_all(glyph);
   lv_obj_set_size(glyph, 72, 72);
-  lv_obj_set_style_radius(glyph, 20, 0);
+  /* Flat circle — no gradient / shadow (sleek control-panel look). */
+  lv_obj_set_style_radius(glyph, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_color(glyph, lv_color_hex(col.top), 0);
-  lv_obj_set_style_bg_grad_color(glyph, lv_color_hex(col.bot), 0);
-  lv_obj_set_style_bg_grad_dir(glyph, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_bg_opa(glyph, LV_OPA_COVER, 0);
-  lv_obj_set_style_shadow_width(glyph, 18, 0);
-  lv_obj_set_style_shadow_color(glyph, lv_color_hex(col.bot), 0);
-  lv_obj_set_style_shadow_opa(glyph, LV_OPA_50, 0);
-  lv_obj_set_style_shadow_offset_y(glyph, 6, 0);
+  lv_obj_set_style_shadow_width(glyph, 0, 0);
+  lv_obj_set_style_border_width(glyph, 0, 0);
   lv_obj_remove_flag(glyph, LV_OBJ_FLAG_SCROLLABLE);
   draw_icon(glyph, icon);
   make_click_through(glyph);
@@ -378,24 +395,52 @@ lv_obj_t * make_app_glyph(lv_obj_t * parent, AppIcon icon) {
 
 lv_obj_t * make_app_icon(lv_obj_t * parent, AppIcon icon, const char * label, lv_event_cb_t cb,
                          void * user_data) {
+  return make_app_icon_sized(parent, icon, label, cb, 72, 130, 104, &lv_font_montserrat_14,
+                             user_data);
+}
+
+lv_obj_t * make_app_icon_sized(lv_obj_t * parent, AppIcon icon, const char * label,
+                               lv_event_cb_t cb, int glyph_vis, int col_w, int col_h,
+                               const lv_font_t * label_font, void * user_data) {
+  if (glyph_vis < 24) glyph_vis = 24;
+  if (col_w < glyph_vis) col_w = glyph_vis;
+  if (col_h < glyph_vis + 16) col_h = glyph_vis + 20;
+
   lv_obj_t * col = lv_obj_create(parent);
   lv_obj_remove_style_all(col);
-  lv_obj_set_size(col, 130, 104);
+  lv_obj_set_size(col, col_w, col_h);
   lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
   lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(col, 8, 0);
+  lv_obj_set_style_pad_row(col, glyph_vis >= 72 ? 8 : 4, 0);
   lv_obj_add_flag(col, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
   if (cb) lv_obj_add_event_cb(col, cb, LV_EVENT_CLICKED, user_data);
 
-  make_app_glyph(col, icon);
+  lv_obj_t * wrap = lv_obj_create(col);
+  lv_obj_remove_style_all(wrap);
+  lv_obj_set_size(wrap, glyph_vis, glyph_vis);
+  lv_obj_set_style_bg_opa(wrap, LV_OPA_TRANSP, 0);
+  lv_obj_add_flag(wrap, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+  lv_obj_remove_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(wrap, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t * glyph = make_app_glyph(wrap, icon);
+  const int32_t scale = (glyph_vis * 256) / 72;
+  lv_obj_set_style_transform_pivot_x(glyph, 36, 0);
+  lv_obj_set_style_transform_pivot_y(glyph, 36, 0);
+  lv_obj_set_style_transform_scale(glyph, scale, 0);
+  lv_obj_center(glyph);
+  lv_obj_remove_flag(glyph, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t * lbl = lv_label_create(col);
   lv_label_set_text(lbl, label);
   lv_obj_set_style_text_color(lbl, theme::ink(), 0);
-  lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(lbl, label_font ? label_font : &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_opa(lbl, LV_OPA_90, 0);
+  lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_long_mode(lbl, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(lbl, col_w);
   lv_obj_remove_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
   return col;
 }

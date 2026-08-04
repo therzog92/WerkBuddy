@@ -1,4 +1,4 @@
-/**
+﻿/**
  * WerkPager web simulator — three virtual desks sharing an in-memory "radio".
  * Open via a local static server (ES modules need http:// not file://).
  */
@@ -20,8 +20,9 @@ import {
 } from "../protocol/messages.js";
 import { installBoardGames } from "./board-games.js";
 import { installMoreGames } from "./more-games.js";
+import { EMOJI_CATEGORIES } from "./emoji-palette.js";
 
-const DEFAULT_EMOJIS = ["💅", "👑", "📢", "👀", "✨", "☕", "🆘", "🎉"];
+const DEFAULT_EMOJIS = ["💅", "👑", "📢", "👀", "✨", "☕", "🆘"];
 const DEFAULT_CANNED = [
   "Got a sec?",
   "Come here",
@@ -30,16 +31,7 @@ const DEFAULT_CANNED = [
 ];
 const MARK_GLYPH = { X: "✖", O: "○" };
 
-const EMOJI_PALETTE = [
-  "💅", "👑", "📢", "👀", "✨", "☕", "🆘", "🎉",
-  "🔥", "💖", "🫡", "😈", "🫠", "🚀", "🎯", "😎",
-  "🤡", "💀", "🌈", "⚡", "🏆", "🥹", "👋", "🪩",
-  "😂", "🥰", "😍", "😜", "🤩", "😤", "😴", "🤔",
-  "🙌", "👏", "💪", "🤝", "👀", "💬", "🔔", "⭐",
-  "🍕", "🍩", "🍺", "🍾", "🎮", "🎲", "🧩", "🎵",
-  "🐱", "🐶", "🦄", "🐉", "👽", "🤖", "👻", "🎃",
-  "💯", "💢", "💥", "💫", "🌙", "☀️", "❄️", "🌊",
-];
+let emojiPickerCat = 0;
 
 const THEMES = [
   { id: "eleganza", label: "Eleganza" },
@@ -159,8 +151,8 @@ function hydrateDesk(d) {
     if (typeof saved.clockOffsetMs === "number") d.clockOffsetMs = saved.clockOffsetMs;
     if (typeof saved.wifiSsid === "string") d.wifiSsid = saved.wifiSsid.slice(0, 32);
     if (typeof saved.wifiConnected === "boolean") d.wifiConnected = saved.wifiConnected;
-    if (Array.isArray(saved.emojis) && saved.emojis.length === DEFAULT_EMOJIS.length) {
-      d.emojis = saved.emojis;
+    if (Array.isArray(saved.emojis) && saved.emojis.length >= DEFAULT_EMOJIS.length) {
+      d.emojis = saved.emojis.slice(0, DEFAULT_EMOJIS.length);
     }
     if (Array.isArray(saved.canned) && saved.canned.length === DEFAULT_CANNED.length) {
       d.canned = saved.canned;
@@ -572,6 +564,18 @@ function renderCompose() {
     emojiRow.appendChild(btn);
   }
 
+  const pickBtn = document.createElement("button");
+  pickBtn.type = "button";
+  pickBtn.className = "compose-emoji-more";
+  pickBtn.setAttribute("aria-label", "More emojis");
+  pickBtn.setAttribute(
+    "aria-pressed",
+    composeEmoji && !d.emojis.includes(composeEmoji) ? "true" : "false"
+  );
+  pickBtn.textContent = "☺";
+  pickBtn.addEventListener("click", () => openEmojiPicker(-1));
+  emojiRow.appendChild(pickBtn);
+
   const canned = document.getElementById("composeCanned");
   canned.innerHTML = "";
 
@@ -754,21 +758,60 @@ function openCannedKeyboard(index) {
 
 function openEmojiPicker(index) {
   emojiEditIndex = index;
+  emojiPickerCat = 0;
+  const tabs = document.getElementById("emojiCats");
   const palette = document.getElementById("emojiPalette");
-  palette.innerHTML = "";
-  for (const emoji of EMOJI_PALETTE) {
+  const fill = () => {
+    palette.innerHTML = "";
+    const cat = EMOJI_CATEGORIES[emojiPickerCat];
+    if (!cat) return;
+    for (const emoji of cat.emojis) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = emoji;
+      btn.addEventListener("click", () => {
+        if (emojiEditIndex < 0) {
+          composeEmoji = emoji;
+          renderCompose();
+          showScreen("compose");
+          return;
+        }
+        desk().emojis[emojiEditIndex] = emoji;
+        persistDesk();
+        renderSettings();
+        showScreen("settings");
+        toast("Emoji updated");
+      });
+      palette.appendChild(btn);
+    }
+    palette.scrollTop = 0;
+  };
+  tabs.innerHTML = "";
+  EMOJI_CATEGORIES.forEach((cat, i) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = emoji;
+    btn.className = "emoji-cat";
+    btn.title = cat.id;
+    btn.setAttribute("aria-pressed", i === emojiPickerCat ? "true" : "false");
+    const icon = document.createElement("span");
+    icon.className = "emoji-cat-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = cat.icon;
+    const label = document.createElement("span");
+    label.className = "emoji-cat-label";
+    label.textContent = cat.id;
+    btn.append(icon, label);
     btn.addEventListener("click", () => {
-      desk().emojis[emojiEditIndex] = emoji;
-      persistDesk();
-      renderSettings();
-      showScreen("settings");
-      toast("Emoji updated");
+      emojiPickerCat = i;
+      for (const el of tabs.querySelectorAll(".emoji-cat")) {
+        el.setAttribute("aria-pressed", "false");
+      }
+      btn.setAttribute("aria-pressed", "true");
+      fill();
     });
-    palette.appendChild(btn);
-  }
+    tabs.appendChild(btn);
+  });
+  fill();
   showScreen("emoji-picker");
 }
 
@@ -790,6 +833,14 @@ function buildOsk() {
     }
     root.appendChild(row);
   };
+
+  addRow(
+    [..."1234567890"].map((n) => ({
+      label: n,
+      onClick: () => oskType(n),
+    })),
+    "osk-row-nums"
+  );
 
   if (messageMode) {
     addRow(
@@ -1381,6 +1432,11 @@ document.getElementById("btnOskDone").addEventListener("click", () => {
 });
 
 document.getElementById("btnEmojiCancel").addEventListener("click", () => {
+  if (emojiEditIndex < 0 && composePeer) {
+    renderCompose();
+    showScreen("compose");
+    return;
+  }
   renderSettings();
   showScreen("settings");
 });
@@ -1657,3 +1713,4 @@ function runBootSplash() {
 }
 
 runBootSplash();
+

@@ -5,8 +5,10 @@
 #include "ui/emoji_badge.h"
 #include "ui/fonts.h"
 #include "ui/nav.h"
+#include "ui/scr_settings.h"
 #include "ui/theme.h"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -16,14 +18,35 @@ namespace {
 
 /* —— compose state (web composeEmoji/composeMessage) —— */
 app::Peer g_compose_peer;
-int g_compose_emoji = -1; /* index into desk emojis, -1 = none */
+char g_compose_emoji[proto::kMaxEmoji] = "";
 char g_compose_message[proto::kMaxMessage] = "";
 bool g_compose_fresh = true;
 
 lv_obj_t * g_preview_img = nullptr;
 lv_obj_t * g_preview_lbl = nullptr;
 lv_obj_t * g_emoji_btns[app::kEmojiSlots] = {};
+lv_obj_t * g_emoji_picker_btn = nullptr;
 lv_obj_t * g_canned_btns[app::kCannedCount] = {};
+
+bool emoji_is_slot(const char * emoji, int * out_idx = nullptr) {
+  if (!emoji || !emoji[0]) return false;
+  const app::Desk & d = app::desk();
+  for (int i = 0; i < app::kEmojiSlots; ++i) {
+    if (std::strcmp(d.emojis[i], emoji) == 0) {
+      if (out_idx) *out_idx = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+void style_emoji_btn(lv_obj_t * b, bool sel) {
+  if (!b) return;
+  lv_obj_set_style_border_width(b, sel ? 2 : 0, 0);
+  lv_obj_set_style_border_color(b, theme::gold(), 0);
+  lv_obj_set_style_bg_color(b, sel ? lv_color_mix(theme::gold(), theme::panel(), 60) : theme::panel(),
+                            0);
+}
 
 void on_home(lv_event_t * /*e*/) { go_hub(); }
 
@@ -48,14 +71,13 @@ void on_demo_ring(lv_event_t * /*e*/) {
 
 void refresh_compose_styles() {
   const app::Desk & d = app::desk();
+  int slot = -1;
+  const bool has = g_compose_emoji[0] != '\0';
+  const bool from_slot = has && emoji_is_slot(g_compose_emoji, &slot);
   for (int i = 0; i < app::kEmojiSlots; ++i) {
-    lv_obj_t * b = g_emoji_btns[i];
-    if (!b) continue;
-    const bool sel = i == g_compose_emoji;
-    lv_obj_set_style_border_width(b, sel ? 2 : 0, 0);
-    lv_obj_set_style_border_color(b, theme::gold(), 0);
-    lv_obj_set_style_bg_color(b, sel ? lv_color_mix(theme::gold(), theme::panel(), 60) : theme::panel(), 0);
+    style_emoji_btn(g_emoji_btns[i], from_slot && i == slot);
   }
+  style_emoji_btn(g_emoji_picker_btn, has && !from_slot);
   for (int i = 0; i < app::kCannedCount; ++i) {
     lv_obj_t * b = g_canned_btns[i];
     if (!b) continue;
@@ -68,9 +90,9 @@ void refresh_compose_styles() {
     lv_obj_set_style_text_color(g_preview_lbl, g_compose_message[0] ? theme::ink() : theme::muted(), 0);
   }
   if (g_preview_img) {
-    if (g_compose_emoji >= 0) {
+    if (has) {
       lv_obj_remove_flag(g_preview_img, LV_OBJ_FLAG_HIDDEN);
-      lv_image_set_src(g_preview_img, emoji_png_path(d.emojis[g_compose_emoji]));
+      lv_image_set_src(g_preview_img, emoji_png_path(g_compose_emoji));
     } else {
       lv_obj_add_flag(g_preview_img, LV_OBJ_FLAG_HIDDEN);
     }
@@ -79,8 +101,101 @@ void refresh_compose_styles() {
 
 void on_emoji(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
-  g_compose_emoji = (g_compose_emoji == idx) ? -1 : idx; /* toggle, like web */
+  if (idx < 0 || idx >= app::kEmojiSlots) return;
+  const char * emo = app::desk().emojis[idx];
+  if (std::strcmp(g_compose_emoji, emo) == 0) g_compose_emoji[0] = '\0';
+  else std::snprintf(g_compose_emoji, sizeof(g_compose_emoji), "%s", emo);
   refresh_compose_styles();
+}
+
+void on_emoji_picker(lv_event_t * /*e*/) { go_emoji_picker(kEmojiPickerCompose); }
+
+/** Flat phone-style emoji-key glyph — soft AA circle / eyes / smile on canvas. */
+lv_obj_t * make_smiley_picker_icon(lv_obj_t * parent) {
+  constexpr int kS = 40;
+  static uint8_t s_buf[kS * kS * 4];
+  std::memset(s_buf, 0, sizeof(s_buf));
+
+  const lv_color32_t ink = lv_color_to_32(theme::ink(), LV_OPA_COVER);
+  auto put = [&](int x, int y, float a) {
+    if (a <= 0.01f || x < 0 || y < 0 || x >= kS || y >= kS) return;
+    if (a > 1.f) a = 1.f;
+    auto * px = reinterpret_cast<lv_color32_t *>(s_buf + ((size_t)y * kS + (size_t)x) * 4u);
+    const float src = a; /* full ink — reads clearly next to Twemoji */
+    const float dst = (float)px->alpha / 255.f;
+    const float out = src + dst * (1.f - src);
+    if (out <= 0.f) return;
+    px->red = ink.red;
+    px->green = ink.green;
+    px->blue = ink.blue;
+    px->alpha = (uint8_t)(out * 255.f + 0.5f);
+  };
+
+  auto cover_disc = [](float d, float r) -> float {
+    constexpr float aa = 0.85f;
+    if (d <= r - aa) return 1.f;
+    if (d >= r + aa) return 0.f;
+    return 1.f - (d - (r - aa)) / (2.f * aa);
+  };
+  auto cover_ring = [](float d, float r_out, float stroke) -> float {
+    const float r_in = r_out - stroke;
+    constexpr float aa = 0.85f;
+    float outer = 1.f;
+    if (d >= r_out + aa) outer = 0.f;
+    else if (d > r_out - aa) outer = 1.f - (d - (r_out - aa)) / (2.f * aa);
+    float inner = 1.f;
+    if (d <= r_in - aa) inner = 0.f;
+    else if (d < r_in + aa) inner = (d - (r_in - aa)) / (2.f * aa);
+    return outer * inner;
+  };
+  auto cover_arc = [](float d, float ang, float r, float stroke, float a0, float a1) -> float {
+    if (ang < a0 || ang > a1) return 0.f;
+    const float half = stroke * 0.5f;
+    constexpr float aa = 0.85f;
+    const float dist = std::fabs(d - r);
+    if (dist <= half - aa) return 1.f;
+    if (dist >= half + aa) return 0.f;
+    return 1.f - (dist - (half - aa)) / (2.f * aa);
+  };
+
+  const float cx = (kS - 1) * 0.5f;
+  const float cy = (kS - 1) * 0.5f;
+  constexpr float kFaceR = 16.2f;
+  constexpr float kStroke = 2.6f;
+
+  for (int y = 0; y < kS; ++y) {
+    for (int x = 0; x < kS; ++x) {
+      const float px = (float)x + 0.5f;
+      const float py = (float)y + 0.5f;
+      const float dx = px - cx;
+      const float dy = py - cy;
+      const float d = std::sqrt(dx * dx + dy * dy);
+      put(x, y, cover_ring(d, kFaceR, kStroke));
+
+      /* Eyes — slightly above center, evenly spaced. */
+      const float elx = cx - 5.4f;
+      const float erx = cx + 5.4f;
+      const float ey = cy - 3.4f;
+      put(x, y, cover_disc(std::sqrt((px - elx) * (px - elx) + (py - ey) * (py - ey)), 2.25f));
+      put(x, y, cover_disc(std::sqrt((px - erx) * (px - erx) + (py - ey) * (py - ey)), 2.25f));
+
+      /* Smile arc in the lower half (screen y-down). */
+      const float mx = cx;
+      const float my = cy + 1.4f;
+      const float mdx = px - mx;
+      const float mdy = py - my;
+      const float md = std::sqrt(mdx * mdx + mdy * mdy);
+      const float ang = std::atan2(mdy, mdx); /* -pi..pi, +y down */
+      put(x, y, cover_arc(md, ang, 8.0f, 2.45f, 0.42f, 2.72f));
+    }
+  }
+
+  lv_obj_t * canvas = lv_canvas_create(parent);
+  lv_obj_set_size(canvas, kS, kS);
+  lv_canvas_set_buffer(canvas, s_buf, kS, kS, LV_COLOR_FORMAT_ARGB8888);
+  lv_obj_center(canvas);
+  lv_obj_remove_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
+  return canvas;
 }
 
 void on_canned(lv_event_t * e) {
@@ -105,8 +220,8 @@ void on_send(lv_event_t * /*e*/) {
   std::snprintf(m.from_id, sizeof(m.from_id), "%s", d.id);
   std::snprintf(m.from_name, sizeof(m.from_name), "%s", d.name);
   std::snprintf(m.to_id, sizeof(m.to_id), "%s", g_compose_peer.id);
-  if (g_compose_emoji >= 0)
-    std::snprintf(m.emoji, sizeof(m.emoji), "%s", d.emojis[g_compose_emoji]);
+  if (g_compose_emoji[0])
+    std::snprintf(m.emoji, sizeof(m.emoji), "%s", g_compose_emoji);
   std::snprintf(m.message, sizeof(m.message), "%s", g_compose_message);
 
   d.outgoing.active = true;
@@ -263,11 +378,20 @@ void compose_set_message(const char * msg) {
   std::snprintf(g_compose_message, sizeof(g_compose_message), "%s", msg ? msg : "");
 }
 
+const char * compose_emoji() { return g_compose_emoji; }
+
+void compose_set_emoji(const char * emoji) {
+  if (emoji && emoji[0])
+    std::snprintf(g_compose_emoji, sizeof(g_compose_emoji), "%s", emoji);
+  else
+    g_compose_emoji[0] = '\0';
+}
+
 lv_obj_t * pager_compose_screen(const app::Peer & peer) {
   g_compose_peer = peer;
   const app::Desk & d = app::desk();
   if (g_compose_fresh) {
-    g_compose_emoji = -1;
+    g_compose_emoji[0] = '\0';
     g_compose_message[0] = '\0';
     g_compose_fresh = false;
   }
@@ -302,6 +426,18 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
     lv_obj_add_event_cb(b, on_emoji, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     g_emoji_btns[i] = b;
   }
+
+  /* Last slot: open full emoji palette (flat smiley = emoji-keyboard affordance). */
+  g_emoji_picker_btn = lv_button_create(emo_row);
+  lv_obj_set_size(g_emoji_picker_btn, 52, 52);
+  lv_obj_set_style_radius(g_emoji_picker_btn, 12, 0);
+  lv_obj_set_style_bg_color(g_emoji_picker_btn, theme::panel(), 0);
+  lv_obj_set_style_shadow_width(g_emoji_picker_btn, 0, 0);
+  lv_obj_set_style_border_width(g_emoji_picker_btn, 1, 0);
+  lv_obj_set_style_border_color(g_emoji_picker_btn, theme::border(), 0);
+  lv_obj_set_style_pad_all(g_emoji_picker_btn, 0, 0);
+  make_smiley_picker_icon(g_emoji_picker_btn);
+  lv_obj_add_event_cb(g_emoji_picker_btn, on_emoji_picker, LV_EVENT_CLICKED, nullptr);
 
   /* Clear / Custom — replace the old default "Quick ping" affordance */
   lv_obj_t * msg_actions = lv_obj_create(body);

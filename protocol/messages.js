@@ -39,6 +39,11 @@ export const MessageType = Object.freeze({
   MEM_DECLINE: 'mem_decline',
   MEM_FLIP: 'mem_flip',
   MEM_FORFEIT: 'mem_forfeit',
+  STTT_INVITE: 'sttt_invite',
+  STTT_ACCEPT: 'sttt_accept',
+  STTT_DECLINE: 'sttt_decline',
+  STTT_MOVE: 'sttt_move',
+  STTT_FORFEIT: 'sttt_forfeit',
   DOODLE_STROKE: 'doodle_stroke',
   DOODLE_CLEAR: 'doodle_clear',
 });
@@ -130,6 +135,27 @@ export function makeTttMove(fromId, toId, cell, mark) {
 
 export function makeTttForfeit(fromId, fromName, toId) {
   return { type: MessageType.TTT_FORFEIT, fromId, fromName, toId, ts: Date.now() };
+}
+
+export function makeStttInvite(fromId, fromName, toId) {
+  return { type: MessageType.STTT_INVITE, fromId, fromName, toId, ts: Date.now() };
+}
+
+export function makeStttAccept(fromId, fromName, toId) {
+  return { type: MessageType.STTT_ACCEPT, fromId, fromName, toId, ts: Date.now() };
+}
+
+export function makeStttDecline(fromId, fromName, toId) {
+  return { type: MessageType.STTT_DECLINE, fromId, fromName, toId, ts: Date.now() };
+}
+
+/** @param {number} board mini-board 0..8 @param {number} cell cell 0..8 */
+export function makeStttMove(fromId, toId, board, cell, mark) {
+  return { type: MessageType.STTT_MOVE, fromId, toId, board, cell, mark, ts: Date.now() };
+}
+
+export function makeStttForfeit(fromId, fromName, toId) {
+  return { type: MessageType.STTT_FORFEIT, fromId, fromName, toId, ts: Date.now() };
 }
 
 function party(type, fromId, fromName, toId, extra = {}) {
