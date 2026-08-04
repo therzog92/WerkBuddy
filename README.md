@@ -2,7 +2,7 @@
 
 **Repo:** [github.com/therzog92/WerkPager](https://github.com/therzog92/WerkPager)
 
-Desk **attention pager** + mini-games for coworkers (Tommy / Will / Alex), designed for **480×480** capacitive panels talking over **ESP-NOW** (no Wi‑Fi required for core use).
+Desk **attention pager** + mini-games for coworkers, designed for **480×480** capacitive panels talking over **ESP-NOW** (no Wi‑Fi required for core use).
 
 Right now this repo is a **web simulator** + **LVGL PC sim** that are the UX + behavior spec for GUITION **ESP32-4848S040C_I** firmware (boards on order).
 
@@ -18,7 +18,7 @@ python -m http.server 8765
 
 Open: [http://localhost:8765/web/](http://localhost:8765/web/)
 
-Use the **Desk: Tommy / Will / Alex** buttons under the device to switch who you’re controlling and test pairing, calls, and games.
+Use the **Desk** switcher under the device to change who you’re controlling and test pairing, calls, and games.
 
 ---
 
