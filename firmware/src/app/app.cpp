@@ -654,7 +654,8 @@ void handle_msg(const proto::Msg & m) {
       return;
     }
     case proto::MsgType::DoodleClear: {
-      if (ui::current_screen() == ui::Screen::Doodle) ui::doodle_remote_clear();
+      /* Always wipe session — even if not currently on the doodle screen. */
+      ui::doodle_remote_clear();
       return;
     }
 

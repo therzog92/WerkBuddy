@@ -1,5 +1,7 @@
 #include "ui/theme.h"
 
+#include "app/background.h"
+
 namespace wp {
 namespace theme {
 namespace {
@@ -79,19 +81,50 @@ lv_color_t call_b() { return lv_color_hex(pal().call_b); }
 lv_color_t grad_top() { return lv_color_hex(pal().grad_top); }
 lv_color_t grad_bot() { return lv_color_hex(pal().grad_bot); }
 
-void apply_screen_bg(lv_obj_t * scr) {
+void apply_screen_bg(lv_obj_t * scr) { apply_screen_bg(scr, BgWash::Page); }
+
+void apply_screen_bg(lv_obj_t * scr, BgWash wash) {
+  lv_obj_set_style_pad_all(scr, 0, 0);
+  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(scr, bg0(), 0);
+
+  if (background::has() && background::lv_src()) {
+    lv_opa_t dim = background::kWashPage;
+    lv_opa_t img_opa = background::kImageOpaPage;
+    switch (wash) {
+      case BgWash::Hub:
+        dim = background::kWashHub;
+        img_opa = background::kImageOpaHub;
+        break;
+      case BgWash::Idle:
+        dim = background::kWashIdle;
+        img_opa = background::kImageOpaIdle;
+        break;
+      case BgWash::Page:
+      default:
+        dim = background::kWashPage;
+        img_opa = background::kImageOpaPage;
+        break;
+    }
+    lv_obj_set_style_bg_grad(scr, nullptr, 0);
+    /* Paint wallpaper as the screen's own bg-image (not a child) so dock/body
+     * layouts can't cover or reorder it away. Dim via image opa + recolor. */
+    lv_obj_set_style_bg_image_src(scr, background::lv_src(), 0);
+    lv_obj_set_style_bg_image_opa(scr, img_opa, 0);
+    lv_obj_set_style_bg_image_recolor(scr, bg0(), 0);
+    lv_obj_set_style_bg_image_recolor_opa(scr, dim, 0);
+    return;
+  }
+
+  lv_obj_set_style_bg_image_src(scr, nullptr, 0);
   static lv_grad_dsc_t grad;
   const lv_color_t colors[] = {grad_top(), bg1(), bg0(), grad_bot()};
   const lv_opa_t opas[] = {LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER};
   const uint8_t fracs[] = {0, 70, 150, 255};
   lv_grad_init_stops(&grad, colors, opas, fracs, 4);
   lv_grad_vertical_init(&grad);
-
-  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(scr, bg0(), 0);
   lv_obj_set_style_bg_grad(scr, &grad, 0);
-  lv_obj_set_style_pad_all(scr, 0, 0);
-  lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 void refresh_incoming_grads(lv_grad_dsc_t * hot_g, lv_grad_dsc_t * gold_g, lv_grad_dsc_t * mint_g) {

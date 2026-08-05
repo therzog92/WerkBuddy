@@ -1,6 +1,7 @@
 ﻿#include "ui/scr_settings.h"
 
 #include "app/app.h"
+#include "app/background.h"
 #include "protocol/messages.h"
 #include "ui/brightness.h"
 #include "ui/chrome.h"
@@ -13,6 +14,10 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+
+#ifdef _WIN32
+#include <cstdlib>
+#endif
 
 namespace wp {
 namespace ui {
@@ -796,6 +801,53 @@ lv_obj_t * settings_screen() {
     lv_obj_set_style_text_font(hi, &lv_font_montserrat_12, 0);
   }
 
+  add_section(body, "Background");
+  {
+    lv_obj_t * status = lv_label_create(body);
+    if (background::has()) {
+      lv_label_set_text(status, "Custom image set");
+      lv_obj_set_style_text_color(status, theme::mint(), 0);
+    } else {
+      lv_label_set_text(status, "Theme gradient (default)");
+      lv_obj_set_style_text_color(status, theme::muted(), 0);
+    }
+    lv_obj_set_style_text_font(status, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(status, lv_pct(100));
+
+    lv_obj_t * bg_row = lv_obj_create(body);
+    lv_obj_remove_style_all(bg_row);
+    lv_obj_set_width(bg_row, lv_pct(100));
+    lv_obj_set_height(bg_row, 40);
+    lv_obj_set_flex_flow(bg_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(bg_row, 6, 0);
+    lv_obj_remove_flag(bg_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    chip(bg_row, background::has() ? "Change" : "Add from phone", false,
+         [](lv_event_t * /*e*/) {
+           char url[192], local[192], qr[256];
+           if (!background::upload_session(url, sizeof(url), local, sizeof(local), qr, sizeof(qr))) {
+             toast("Start run-bg-upload.ps1 first");
+             return;
+           }
+           if (!app::desk().wifi_connected) {
+             toast("Connect to Wi-Fi first");
+             return;
+           }
+           go_bg_upload();
+         },
+         nullptr);
+    if (background::has()) {
+      chip(bg_row, "Remove", false,
+           [](lv_event_t * /*e*/) {
+             background::clear();
+             app::save();
+             toast("Background removed");
+             go_settings();
+           },
+           nullptr);
+    }
+  }
+
   add_section(body, "WiFi (optional) - clock sync & OTA updates");
   {
     lv_obj_t * status = lv_label_create(body);
@@ -1426,6 +1478,114 @@ lv_obj_t * emoji_picker_screen(int slot) {
   } else {
     dock_btn(dock, "Cancel", false, false, [](lv_event_t * /*e*/) { go_settings(); });
   }
+  return scr;
+}
+
+namespace {
+
+lv_timer_t * g_bg_poll = nullptr;
+
+void bg_upload_cleanup(lv_event_t * /*e*/) {
+  if (g_bg_poll) {
+    lv_timer_delete(g_bg_poll);
+    g_bg_poll = nullptr;
+  }
+}
+
+void bg_poll_tick(lv_timer_t * /*t*/) {
+  if (background::poll_new_upload()) {
+    toast("Background saved");
+    go_hub();
+  }
+}
+
+void open_upload_url(const char * url) {
+  if (!url || !url[0]) return;
+#ifdef _WIN32
+  char cmd[320];
+  std::snprintf(cmd, sizeof(cmd), "cmd /c start \"\" \"%s\"", url);
+  std::system(cmd);
+#else
+  (void)url;
+#endif
+}
+
+}  // namespace
+
+lv_obj_t * bg_upload_screen() {
+  char url[192] = {};
+  char local[192] = {};
+  char qr[256] = {};
+  const bool ok =
+      background::upload_session(url, sizeof(url), local, sizeof(local), qr, sizeof(qr));
+
+  /* Seed stamp watcher so an existing file doesn't toast immediately. */
+  (void)background::poll_new_upload();
+
+  lv_obj_t * scr = make_screen();
+  lv_obj_add_event_cb(scr, bg_upload_cleanup, LV_EVENT_DELETE, nullptr);
+  make_topbar(scr, "BACKGROUND", app::desk().name);
+  lv_obj_t * body = make_body(scr, true);
+  make_tagline(body, "Add from phone");
+
+  lv_obj_t * desk = lv_label_create(body);
+  char desk_lbl[48];
+  lv_snprintf(desk_lbl, sizeof(desk_lbl), "%s's desk only", app::desk().name);
+  lv_label_set_text(desk, desk_lbl);
+  lv_obj_set_style_text_color(desk, theme::mint(), 0);
+  lv_obj_set_style_text_font(desk, &lv_font_montserrat_14, 0);
+  lv_obj_set_width(desk, lv_pct(100));
+
+  if (!ok) {
+    lv_obj_t * err = lv_label_create(body);
+    lv_label_set_text(err, "Upload server not running.\nRun firmware/scripts/run-bg-upload.ps1");
+    lv_obj_set_style_text_color(err, theme::danger(), 0);
+    lv_obj_set_style_text_font(err, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(err, lv_pct(100));
+  } else {
+    if (qr[0]) {
+      lv_obj_t * qr_img = lv_image_create(body);
+      lv_image_set_src(qr_img, qr);
+      lv_obj_set_size(qr_img, 180, 180);
+      lv_obj_set_style_pad_all(qr_img, 0, 0);
+    }
+
+    lv_obj_t * hint = lv_label_create(body);
+    lv_label_set_text(hint, "Scan with phone (same Wi-Fi) or open on this PC:");
+    lv_obj_set_style_text_color(hint, theme::muted(), 0);
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(hint, lv_pct(100));
+
+    lv_obj_t * url_lbl = lv_label_create(body);
+    lv_label_set_text(url_lbl, url);
+    lv_obj_set_style_text_color(url_lbl, theme::gold(), 0);
+    lv_obj_set_style_text_font(url_lbl, &lv_font_montserrat_12, 0);
+    lv_label_set_long_mode(url_lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(url_lbl, lv_pct(100));
+
+    lv_obj_t * row = lv_obj_create(body);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, 40);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(row, 6, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* Capture local URL in static for the click — screen is one-shot. */
+    static char s_local[192];
+    std::snprintf(s_local, sizeof(s_local), "%s", local[0] ? local : url);
+    chip(row, "Open on PC", false,
+         [](lv_event_t * /*e*/) {
+           open_upload_url(s_local);
+           toast("Opened upload page");
+         },
+         nullptr);
+
+    g_bg_poll = lv_timer_create(bg_poll_tick, 800, nullptr);
+  }
+
+  lv_obj_t * dock = make_dock(scr);
+  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_settings(); });
   return scr;
 }
 

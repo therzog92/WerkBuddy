@@ -9,6 +9,7 @@ firmware/third_party/lvgl/
 
 # Local desk settings (machine-specific)
 **/werkpager_settings.ini
+firmware/sim-data/
 
 # OS / editor
 .DS_Store
@@ -22,3 +23,5 @@ Thumbs.db
 .env
 .env.*
 **/wifi_secrets.h
+
+firmware/assets/bg/

@@ -340,8 +340,7 @@ lv_obj_t * doodle_screen() {
           std::snprintf(desk.doodle_peer_id, sizeof(desk.doodle_peer_id), "%s", desk.peers[idx].id);
           std::snprintf(desk.doodle_peer_name, sizeof(desk.doodle_peer_name), "%s",
                         desk.peers[idx].name);
-          g_history.clear();
-          g_buf_dirty = true;
+          /* Keep shared canvas across peer re-entry; only Clear wipes ink. */
           go_doodle();
         },
         (void *)(intptr_t)i);
@@ -396,20 +395,16 @@ lv_obj_t * doodle_screen() {
     topbar_set(top, "DOODLE", sub);
     dock_btn(dock, "Clear", false, false, on_clear);
     dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) {
+      /* Peer pick only — keep ink until someone Clears. */
       app::desk().doodle_peer_id[0] = 0;
-      g_history.clear();
-      g_buf_dirty = true;
+      app::desk().doodle_peer_name[0] = 0;
       go_doodle();
     });
     dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) {
-      app::desk().doodle_peer_id[0] = 0;
-      g_history.clear();
-      g_buf_dirty = true;
+      /* Leave doodle; peer + canvas persist so you can resume. */
       go_hub();
     });
   } else {
-    g_history.clear();
-    g_buf_dirty = true;
     dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) { go_hub(); });
   }
   return scr;
@@ -422,7 +417,10 @@ void doodle_apply_remote_stroke(const proto::Msg & msg) {
 
 void doodle_remote_clear() {
   g_history.clear();
-  clear_canvas();
+  g_n_pts = 0;
+  g_drawing = false;
+  if (g_canvas) clear_canvas();
+  else g_buf_dirty = true;
 }
 
 void doodle_debug_show_draw() {

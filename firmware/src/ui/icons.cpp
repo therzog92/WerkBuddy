@@ -33,6 +33,8 @@ IconColors colors_for(AppIcon icon) {
       return {u32(lv_color_mix(theme::hot(), theme::mint(), 90)), u32(theme::mint())};
     case AppIcon::Doodle:
       return {u32(lv_color_mix(theme::hot(), theme::gold(), 160)), u32(theme::gold())};
+    case AppIcon::Timer:
+      return {u32(lv_color_mix(theme::mint(), theme::gold(), 100)), u32(theme::mint())};
     case AppIcon::Settings:
       return {u32(lv_color_mix(theme::muted(), theme::panel(), 100)), u32(theme::border())};
     case AppIcon::Ttt: return {0x5b8cff, 0x7c5cff};
@@ -170,6 +172,24 @@ void draw_doodle(lv_obj_t * g) {
   /* Handle tapering to a point */
   line(g, 40, 28, 54, 16, 7, c);
   line(g, 52, 17, 60, 11, 4, c);
+}
+
+void draw_timer(lv_obj_t * g) {
+  const lv_color_t c = lv_color_hex(0xffffff);
+  /* Clock face */
+  lv_obj_t * ring = lv_obj_create(g);
+  lv_obj_remove_style_all(ring);
+  lv_obj_set_size(ring, 40, 40);
+  lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(ring, 4, 0);
+  lv_obj_set_style_border_color(ring, c, 0);
+  lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
+  lv_obj_set_pos(ring, 16, 18);
+  /* Crown */
+  rect_bar(g, 32, 10, 8, 6, c);
+  /* Hands */
+  line(g, 36, 38, 36, 26, 3, c);
+  line(g, 36, 38, 48, 38, 3, c);
 }
 
 void draw_settings(lv_obj_t * g) {
@@ -364,6 +384,7 @@ void draw_icon(lv_obj_t * g, AppIcon icon) {
     case AppIcon::Werk: draw_werk(g); break;
     case AppIcon::Games: draw_games(g); break;
     case AppIcon::Doodle: draw_doodle(g); break;
+    case AppIcon::Timer: draw_timer(g); break;
     case AppIcon::Settings: draw_settings(g); break;
     case AppIcon::Ttt: draw_ttt(g); break;
     case AppIcon::Sttt: draw_sttt(g); break;

@@ -3,6 +3,7 @@
 #include "lvgl/lvgl.h"
 
 #include "app/app.h"
+#include "app/desk_timer.h"
 #include "sim/screenshot.h"
 #include "ui/brightness.h"
 #include "ui/nav.h"
@@ -49,6 +50,7 @@ int main() {
   if (kb) lv_indev_set_display(kb, disp);
 
   wp::app::init();
+  wp::desk_timer::init();
   wp::theme::set(static_cast<wp::theme::Id>(wp::app::desk().theme));
   wp::ui::brightness::init();
   wp::ui::idle_init();
@@ -87,6 +89,7 @@ int main() {
     else if (is("doodle")) go_doodle();
     else if (is("doodle-draw")) doodle_debug_show_draw();
     else if (is("settings")) go_settings();
+    else if (is("timer")) go_timer();
     else if (is("settings-scrolled")) {
       go_settings();
       lv_obj_t * body = lv_obj_get_child(lv_screen_active(), 1);

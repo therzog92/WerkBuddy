@@ -9,6 +9,7 @@ enum class AppIcon {
   Werk,
   Games,
   Doodle,
+  Timer,
   Settings,
   Ttt,
   Sttt,

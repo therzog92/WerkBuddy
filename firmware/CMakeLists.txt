@@ -20,6 +20,8 @@ add_executable(werkpager_sim
   src/main.cpp
   src/app/app.cpp
   src/app/storage.cpp
+  src/app/background.cpp
+  src/app/desk_timer.cpp
   src/net/sim_link.cpp
   src/ui/theme.cpp
   src/ui/chrome.cpp
@@ -36,6 +38,7 @@ add_executable(werkpager_sim
   src/ui/scr_settings.cpp
   src/ui/scr_idle.cpp
   src/ui/scr_splash.cpp
+  src/ui/scr_timer.cpp
   src/sim/screenshot.cpp
 )
 

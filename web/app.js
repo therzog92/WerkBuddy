@@ -102,6 +102,7 @@ function makeDesk(id, name) {
     clockOffsetMs: 0,
     wifiSsid: "",
     wifiConnected: false,
+    bgImage: null, /* data URL or remote URL; one wallpaper slot */
     emojis: [...DEFAULT_EMOJIS],
     canned: [...DEFAULT_CANNED],
     peers: new Map(),
@@ -127,6 +128,7 @@ function persistDesk(d = desk()) {
         clockOffsetMs: d.clockOffsetMs,
         wifiSsid: d.wifiSsid,
         wifiConnected: d.wifiConnected,
+        bgImage: d.bgImage || null,
         emojis: d.emojis,
         canned: d.canned,
       })
@@ -151,6 +153,7 @@ function hydrateDesk(d) {
     if (typeof saved.clockOffsetMs === "number") d.clockOffsetMs = saved.clockOffsetMs;
     if (typeof saved.wifiSsid === "string") d.wifiSsid = saved.wifiSsid.slice(0, 32);
     if (typeof saved.wifiConnected === "boolean") d.wifiConnected = saved.wifiConnected;
+    if (typeof saved.bgImage === "string" && saved.bgImage) d.bgImage = saved.bgImage;
     if (Array.isArray(saved.emojis) && saved.emojis.length >= DEFAULT_EMOJIS.length) {
       d.emojis = saved.emojis.slice(0, DEFAULT_EMOJIS.length);
     }
@@ -162,11 +165,16 @@ function hydrateDesk(d) {
   }
 }
 
+function timerIsAlarming() {
+  return deskTimer.state === "finished" && currentScreen === "timer";
+}
+
 function applyBrightness() {
   const device = document.getElementById("device");
   const page =
     currentScreen === "incoming" ||
     currentScreen === "outgoing" ||
+    timerIsAlarming() ||
     device.classList.contains("is-ringing");
   const pct = page ? 100 : desk().brightness ?? 100;
   device.style.setProperty("--wp-brightness", String(pct / 100));
@@ -307,6 +315,54 @@ function updateBrandSub(screen = currentScreen) {
 
 function applyTheme(themeId) {
   document.getElementById("device").dataset.theme = themeId;
+  applyWallpaper();
+}
+
+function applyWallpaper() {
+  const device = document.getElementById("device");
+  const url = desk().bgImage;
+  if (url) {
+    device.style.setProperty("--wp-wallpaper", `url("${url}")`);
+    device.classList.add("has-wallpaper");
+  } else {
+    device.style.removeProperty("--wp-wallpaper");
+    device.classList.remove("has-wallpaper");
+  }
+  updateWallpaperWash(currentScreen);
+}
+
+function updateWallpaperWash(screen = currentScreen) {
+  const device = document.getElementById("device");
+  device.classList.remove("wall-hub", "wall-page", "wall-idle");
+  if (!device.classList.contains("has-wallpaper")) return;
+  if (screen === "hub") device.classList.add("wall-hub");
+  else if (screen === "idle" && desk().idleMode === "clock") device.classList.add("wall-idle");
+  else if (screen === "idle") {
+    /* black idle — hide wallpaper wash */
+    device.classList.remove("has-wallpaper");
+  } else device.classList.add("wall-page");
+}
+
+const BG_UPLOAD_ORIGIN = "http://127.0.0.1:8765";
+
+async function fetchBgSession() {
+  const resp = await fetch(`${BG_UPLOAD_ORIGIN}/session.json`, { cache: "no-store" });
+  if (!resp.ok) throw new Error("Upload server not running");
+  return resp.json();
+}
+
+function syncBgFromServer(d = desk()) {
+  const bust = Date.now();
+  const url = `${BG_UPLOAD_ORIGIN}/bg/${encodeURIComponent(d.id)}.png?t=${bust}`;
+  return fetch(url, { cache: "no-store" })
+    .then((r) => {
+      if (!r.ok) return false;
+      d.bgImage = url;
+      persistDesk(d);
+      applyWallpaper();
+      return true;
+    })
+    .catch(() => false);
 }
 
 function showScreen(name) {
@@ -315,9 +371,18 @@ function showScreen(name) {
     s.classList.toggle("active", s.dataset.screen === name);
   });
   const device = document.getElementById("device");
-  device.classList.toggle("is-ringing", name === "incoming");
+  device.classList.toggle(
+    "is-ringing",
+    name === "incoming" || (name === "timer" && deskTimer.state === "finished"),
+  );
   device.classList.toggle("is-idle", name === "idle");
   applyBrightness();
+  /* Re-apply wallpaper class if black-idle stripped it */
+  if (desk().bgImage) {
+    device.classList.add("has-wallpaper");
+    device.style.setProperty("--wp-wallpaper", `url("${desk().bgImage}")`);
+  }
+  updateWallpaperWash(name);
 
   const brand = document.getElementById("brandTitle");
   const topbar = document.getElementById("topbar");
@@ -334,6 +399,7 @@ function showScreen(name) {
     else if (name === "checkers") brand.textContent = "CHECKERS";
     else if (name === "memory") brand.textContent = "MEMORY";
     else if (name === "doodle") brand.textContent = "DOODLE";
+    else if (name === "timer") brand.textContent = "TIMER";
     else if (name === "gamesfolder") brand.textContent = "GAMES";
     else if (name === "keyboard" && oskMode === "compose") brand.textContent = "WERK ROOM";
     else if (
@@ -348,7 +414,12 @@ function showScreen(name) {
   }
   updateBrandSub(name);
 
-  if (name !== "idle" && name !== "incoming" && name !== "outgoing") {
+  if (
+    name !== "idle" &&
+    name !== "incoming" &&
+    name !== "outgoing" &&
+    !(name === "timer" && deskTimer.state === "finished")
+  ) {
     resetIdleTimer();
   }
 }
@@ -361,25 +432,239 @@ function formatTime(date) {
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-function updateIdleClock() {
-  const d = desk();
-  const date = nowForDesk(d);
-  document.getElementById("idleTime").textContent = formatTime(date);
-  document.getElementById("idleDate").textContent = date.toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
+function updateHubClock() {
+  const el = document.getElementById("hubClock");
+  if (!el) return;
+  const base = formatTime(nowForDesk());
+  if (deskTimer.state === "running" || deskTimer.state === "paused") {
+    el.textContent = `${base} · ${formatTimerMs(deskTimerRemaining())}`;
+  } else if (deskTimer.state === "finished") {
+    el.textContent = `${base} · Time's up`;
+  } else {
+    el.textContent = base;
+  }
+}
+
+/* —— Desk timer (solo) —— */
+const TIMER_PRESETS_MIN = [5, 10, 15, 25, 45];
+const deskTimer = {
+  state: "idle", /* idle | running | paused | finished */
+  durationMs: 25 * 60 * 1000,
+  remainingMs: 25 * 60 * 1000,
+  endsAt: 0,
+};
+let deskTimerInterval = null;
+
+function formatTimerMs(ms) {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+function deskTimerRemaining() {
+  if (deskTimer.state === "running") return Math.max(0, deskTimer.endsAt - Date.now());
+  if (deskTimer.state === "finished") return 0;
+  return deskTimer.remainingMs;
+}
+
+function deskTimerFire() {
+  deskTimer.state = "finished";
+  deskTimer.remainingMs = 0;
+  deskTimer.endsAt = 0;
+  if (currentScreen === "idle") wakeFromIdle();
+  showScreen("timer");
+  renderTimerScreen();
+  updateHubClock();
+}
+
+function deskTimerDismiss() {
+  deskTimer.state = "idle";
+  deskTimer.remainingMs = deskTimer.durationMs;
+  deskTimer.endsAt = 0;
+  renderTimerScreen();
+  applyBrightness();
+}
+
+function deskTimerTick() {
+  if (deskTimer.state !== "running") return;
+  const left = deskTimerRemaining();
+  if (left <= 0) {
+    deskTimerFire();
+    return;
+  }
+  deskTimer.remainingMs = left;
+  if (currentScreen === "timer") renderTimerScreen();
+  if (currentScreen === "hub") updateHubClock();
+  if (currentScreen === "idle") updateIdleClock();
+}
+
+function deskTimerEnsureTick() {
+  if (deskTimerInterval) return;
+  deskTimerInterval = setInterval(deskTimerTick, 250);
+}
+
+let timerWheelsReady = false;
+
+function fillTimerWheel(el, count, pad) {
+  if (!el || el.dataset.ready === "1") return;
+  el.innerHTML = "";
+  const padTop = document.createElement("div");
+  padTop.className = "timer-wheel-item";
+  padTop.style.visibility = "hidden";
+  el.appendChild(padTop);
+  for (let i = 0; i < count; i++) {
+    const item = document.createElement("div");
+    item.className = "timer-wheel-item";
+    item.dataset.value = String(i);
+    item.textContent = pad ? String(i).padStart(2, "0") : String(i);
+    el.appendChild(item);
+  }
+  const padBot = document.createElement("div");
+  padBot.className = "timer-wheel-item";
+  padBot.style.visibility = "hidden";
+  el.appendChild(padBot);
+  el.dataset.ready = "1";
+}
+
+function timerWheelValue(el) {
+  if (!el) return 0;
+  const mid = el.scrollTop + el.clientHeight / 2;
+  let best = 0;
+  let bestDist = Infinity;
+  el.querySelectorAll(".timer-wheel-item[data-value]").forEach((item) => {
+    const center = item.offsetTop + item.offsetHeight / 2;
+    const d = Math.abs(center - mid);
+    if (d < bestDist) {
+      bestDist = d;
+      best = Number(item.dataset.value);
+    }
+  });
+  return best;
+}
+
+function setTimerWheelValue(el, value, smooth) {
+  if (!el) return;
+  const item = el.querySelector(`.timer-wheel-item[data-value="${value}"]`);
+  if (!item) return;
+  const top = item.offsetTop - (el.clientHeight - item.offsetHeight) / 2;
+  el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
+  el.querySelectorAll(".timer-wheel-item[data-value]").forEach((n) => {
+    n.classList.toggle("is-selected", n === item);
   });
 }
 
-function updateHubClock() {
-  const el = document.getElementById("hubClock");
-  if (el) el.textContent = formatTime(nowForDesk());
+function applyTimerWheelsToDuration() {
+  const minEl = document.getElementById("timerWheelMin");
+  const secEl = document.getElementById("timerWheelSec");
+  let ms = timerWheelValue(minEl) * 60000 + timerWheelValue(secEl) * 1000;
+  if (ms < 1000) ms = 1000;
+  deskTimer.durationMs = ms;
+  deskTimer.remainingMs = ms;
+}
+
+function syncTimerWheelsFromDuration() {
+  const minEl = document.getElementById("timerWheelMin");
+  const secEl = document.getElementById("timerWheelSec");
+  fillTimerWheel(minEl, 100, false);
+  fillTimerWheel(secEl, 60, true);
+  const sec = Math.floor(deskTimer.durationMs / 1000);
+  setTimerWheelValue(minEl, Math.floor(sec / 60), false);
+  setTimerWheelValue(secEl, sec % 60, false);
+}
+
+function bindTimerWheelsOnce() {
+  if (timerWheelsReady) return;
+  timerWheelsReady = true;
+  ["timerWheelMin", "timerWheelSec"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let t = null;
+    el.addEventListener("scroll", () => {
+      if (deskTimer.state !== "idle") return;
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const v = timerWheelValue(el);
+        setTimerWheelValue(el, v, true);
+        applyTimerWheelsToDuration();
+        const status = document.getElementById("timerStatus");
+        if (status) status.textContent = `Set · ${formatTimerMs(deskTimer.durationMs)}`;
+        const presets = document.getElementById("timerPresets");
+        if (presets) renderTimerPresetsOnly();
+      }, 80);
+    });
+  });
+}
+
+function renderTimerPresetsOnly() {
+  const presets = document.getElementById("timerPresets");
+  if (!presets) return;
+  const curMin = Math.floor(deskTimer.durationMs / 60000);
+  const exact = deskTimer.durationMs % 60000 === 0;
+  const canEdit = deskTimer.state === "idle";
+  presets.innerHTML = "";
+  for (const m of TIMER_PRESETS_MIN) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = `${m}m`;
+    btn.setAttribute("aria-pressed", canEdit && exact && curMin === m ? "true" : "false");
+    btn.disabled = !canEdit;
+    btn.addEventListener("click", () => {
+      if (deskTimer.state !== "idle") return;
+      deskTimer.durationMs = m * 60 * 1000;
+      deskTimer.remainingMs = deskTimer.durationMs;
+      syncTimerWheelsFromDuration();
+      renderTimerScreen();
+    });
+    presets.appendChild(btn);
+  }
+}
+
+function renderTimerScreen() {
+  deskTimerEnsureTick();
+  bindTimerWheelsOnce();
+  const setup = document.getElementById("timerSetup");
+  const alarm = document.getElementById("timerAlarm");
+  const display = document.getElementById("timerDisplay");
+  const wheels = document.getElementById("timerWheels");
+  const status = document.getElementById("timerStatus");
+  const primary = document.getElementById("btnTimerPrimary");
+  const device = document.getElementById("device");
+  if (!primary) return;
+
+  const alarming = deskTimer.state === "finished";
+  if (setup) setup.hidden = alarming;
+  if (alarm) alarm.hidden = !alarming;
+  if (device) device.classList.toggle("is-ringing", alarming && currentScreen === "timer");
+  applyBrightness();
+
+  if (alarming) return;
+
+  const picking = deskTimer.state === "idle";
+  if (display) {
+    display.hidden = picking;
+    if (!picking) display.textContent = formatTimerMs(deskTimerRemaining());
+  }
+  if (wheels) wheels.hidden = !picking;
+  if (picking) syncTimerWheelsFromDuration();
+
+  if (status) {
+    status.textContent =
+      deskTimer.state === "running"
+        ? "Running"
+        : deskTimer.state === "paused"
+          ? "Paused"
+          : `Set · ${formatTimerMs(deskTimer.durationMs)}`;
+  }
+
+  primary.textContent =
+    deskTimer.state === "running" ? "Pause" : deskTimer.state === "paused" ? "Resume" : "Start";
+
+  renderTimerPresetsOnly();
 }
 
 function goIdle() {
   const d = desk();
   if (d.incoming || d.outgoing || d.tttInvite || d.tttGame || boardGames.busy(d) || moreGames?.busy(d)) return;
+  if (deskTimer.state === "finished") return;
   if (currentScreen === "keyboard" || currentScreen === "emoji-picker") return;
   if (currentScreen === "idle") return;
   screenBeforeIdle = currentScreen;
@@ -387,6 +672,22 @@ function goIdle() {
   idle.classList.toggle("mode-clock", d.idleMode === "clock");
   updateIdleClock();
   showScreen("idle");
+}
+
+function updateIdleClock() {
+  const date = nowForDesk();
+  document.getElementById("idleTime").textContent = formatTime(date);
+  document.getElementById("idleDate").textContent = date.toLocaleDateString([], {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+  const hint = document.querySelector(".idle-hint");
+  if (hint && (deskTimer.state === "running" || deskTimer.state === "paused")) {
+    hint.textContent = `Timer ${formatTimerMs(deskTimerRemaining())} · tap to wake`;
+  } else if (hint) {
+    hint.textContent = "tap to wake";
+  }
 }
 
 function wakeFromIdle() {
@@ -425,6 +726,9 @@ function resumeScreen(name) {
   } else if (name === "doodle") {
     moreGames.renderDoodleScreen();
     showScreen("doodle");
+  } else if (name === "timer") {
+    renderTimerScreen();
+    showScreen("timer");
   } else if (name === "gamesfolder") {
     showScreen("gamesfolder");
   } else if (name === "outgoing" || name === "incoming") {
@@ -638,6 +942,21 @@ function renderSettings() {
   }
   if (wifiScan) wifiScan.textContent = d.wifiConnected ? "Change" : "Scan Wi‑Fi";
   if (wifiDisc) wifiDisc.hidden = !d.wifiConnected;
+
+  const bgStatus = document.getElementById("bgStatus");
+  const bgPhone = document.getElementById("btnBgPhone");
+  const bgRemove = document.getElementById("btnBgRemove");
+  if (bgStatus) {
+    if (d.bgImage) {
+      bgStatus.textContent = "Custom image set";
+      bgStatus.classList.add("is-on");
+    } else {
+      bgStatus.textContent = "Theme gradient (default)";
+      bgStatus.classList.remove("is-on");
+    }
+  }
+  if (bgPhone) bgPhone.textContent = d.bgImage ? "Change" : "Add from phone";
+  if (bgRemove) bgRemove.hidden = !d.bgImage;
 
   renderOptionRow("timeoutRow", TIMEOUTS, d.timeoutId, (id) => {
     d.timeoutId = id;
@@ -1383,6 +1702,9 @@ document.querySelectorAll("[data-go]").forEach((btn) => {
     } else if (screen === "doodle") {
       moreGames.renderDoodleScreen();
       showScreen("doodle");
+    } else if (screen === "timer") {
+      renderTimerScreen();
+      showScreen("timer");
     } else if (screen === "gamesfolder" || screen === "hub") {
       showScreen(screen);
     }
@@ -1498,6 +1820,38 @@ document.querySelectorAll("[data-desk]").forEach((btn) => {
   });
 });
 
+document.getElementById("btnTimerPrimary")?.addEventListener("click", () => {
+  if (deskTimer.state === "running") {
+    deskTimer.remainingMs = deskTimerRemaining();
+    deskTimer.endsAt = 0;
+    deskTimer.state = "paused";
+  } else if (deskTimer.state === "paused") {
+    deskTimer.endsAt = Date.now() + deskTimer.remainingMs;
+    deskTimer.state = "running";
+    deskTimerEnsureTick();
+  } else if (deskTimer.state === "idle") {
+    applyTimerWheelsToDuration();
+    deskTimer.remainingMs = deskTimer.durationMs;
+    deskTimer.endsAt = Date.now() + deskTimer.remainingMs;
+    deskTimer.state = "running";
+    deskTimerEnsureTick();
+  }
+  renderTimerScreen();
+  updateHubClock();
+});
+
+document.getElementById("btnTimerReset")?.addEventListener("click", () => {
+  deskTimer.state = "idle";
+  deskTimer.endsAt = 0;
+  deskTimer.remainingMs = deskTimer.durationMs;
+  renderTimerScreen();
+  updateHubClock();
+});
+
+document.getElementById("btnTimerDismissAlarm")?.addEventListener("click", () => {
+  deskTimerDismiss();
+});
+
 document.getElementById("btnSimIncoming").addEventListener("click", () => {
   deliverIncoming(activeDeskKey, {
     fromId: "mac-sim",
@@ -1606,6 +1960,44 @@ document.getElementById("btnWifiDisconnect")?.addEventListener("click", () => {
   desk().wifiSsid = "";
   persistDesk();
   toast("Wi‑Fi disconnected");
+  renderSettings();
+});
+
+document.getElementById("btnBgPhone")?.addEventListener("click", async () => {
+  const d = desk();
+  if (!d.wifiConnected) {
+    toast("Connect to Wi‑Fi first");
+    return;
+  }
+  try {
+    const session = await fetchBgSession();
+    const info = session.desks?.[d.id];
+    if (!info?.local_url) throw new Error("No link for this desk");
+    window.open(info.local_url, "_blank", "noopener");
+    toast(`Opened upload for ${d.name}'s desk`);
+    let tries = 0;
+    const poll = setInterval(async () => {
+      tries += 1;
+      const ok = await syncBgFromServer(d);
+      if (ok) {
+        clearInterval(poll);
+        toast("Background saved");
+        renderSettings();
+      } else if (tries > 90) {
+        clearInterval(poll);
+      }
+    }, 1000);
+  } catch {
+    toast("Start run-bg-upload.ps1 first");
+  }
+});
+
+document.getElementById("btnBgRemove")?.addEventListener("click", () => {
+  const d = desk();
+  d.bgImage = null;
+  persistDesk(d);
+  applyWallpaper();
+  toast("Background removed");
   renderSettings();
 });
 

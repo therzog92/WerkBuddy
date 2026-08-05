@@ -1,6 +1,8 @@
 #include "ui/scr_idle.h"
 
 #include "app/app.h"
+#include "app/background.h"
+#include "app/desk_timer.h"
 #include "ui/chrome.h"
 #include "ui/fonts.h"
 #include "ui/nav.h"
@@ -14,6 +16,7 @@ namespace {
 
 lv_obj_t * g_time = nullptr;
 lv_obj_t * g_date = nullptr;
+lv_obj_t * g_timer_lbl = nullptr;
 lv_timer_t * g_timer = nullptr;
 
 void format_now(char * time_buf, size_t tn, char * date_buf, size_t dn) {
@@ -36,11 +39,24 @@ void tick(lv_timer_t * /*t*/) {
   format_now(tb, sizeof(tb), db, sizeof(db));
   lv_label_set_text(g_time, tb);
   lv_label_set_text(g_date, db);
+  if (g_timer_lbl) {
+    if (desk_timer::is_active()) {
+      char rem[16];
+      desk_timer::format_remaining(rem, sizeof(rem));
+      char line[32];
+      lv_snprintf(line, sizeof(line), "Timer %s", rem);
+      lv_label_set_text(g_timer_lbl, line);
+      lv_obj_remove_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
 }
 
 void on_deleted(lv_event_t * /*e*/) {
   g_time = nullptr;
   g_date = nullptr;
+  g_timer_lbl = nullptr;
   if (g_timer) {
     lv_timer_delete(g_timer);
     g_timer = nullptr;
@@ -48,7 +64,17 @@ void on_deleted(lv_event_t * /*e*/) {
 }
 
 void apply_idle_bg(lv_obj_t * scr, bool deep) {
-  /* Theme-aware wash — not flat black. Deep mode stays darker for "Black" idle. */
+  lv_obj_set_style_pad_all(scr, 0, 0);
+  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(scr, theme::bg0(), 0);
+
+  /* Clock lock: show wallpaper dimmed. Black idle: solid / gradient only. */
+  if (!deep && background::has() && background::lv_src()) {
+    theme::apply_screen_bg(scr, theme::BgWash::Idle);
+    return;
+  }
+
+  lv_obj_set_style_bg_image_src(scr, nullptr, 0);
   static lv_grad_dsc_t grad;
   const lv_color_t colors[] = {
       deep ? theme::bg0() : theme::grad_top(),
@@ -60,8 +86,6 @@ void apply_idle_bg(lv_obj_t * scr, bool deep) {
   const uint8_t fracs[] = {0, 70, 160, 255};
   lv_grad_init_stops(&grad, colors, opas, fracs, 4);
   lv_grad_vertical_init(&grad);
-  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(scr, theme::bg0(), 0);
   lv_obj_set_style_bg_grad(scr, &grad, 0);
 }
 
@@ -121,6 +145,12 @@ lv_obj_t * idle_screen() {
     lv_obj_set_style_text_color(g_date, theme::muted(), 0);
     lv_obj_set_style_text_font(g_date, &lv_font_montserrat_16, 0);
 
+    g_timer_lbl = lv_label_create(col);
+    lv_label_set_text(g_timer_lbl, "");
+    lv_obj_set_style_text_color(g_timer_lbl, theme::mint(), 0);
+    lv_obj_set_style_text_font(g_timer_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+
     lv_obj_t * hint = lv_label_create(col);
     lv_label_set_text(hint, "tap to wake");
     lv_obj_set_style_text_color(hint, theme::muted(), 0);
@@ -129,6 +159,7 @@ lv_obj_t * idle_screen() {
     lv_obj_set_style_margin_top(hint, 20, 0);
 
     g_timer = lv_timer_create(tick, 1000, nullptr);
+    tick(nullptr);
   }
 
   return scr;

@@ -58,9 +58,9 @@ void toast_fmt(const char * fmt, const char * arg) {
   toast(buf);
 }
 
-lv_obj_t * make_screen() {
+lv_obj_t * make_screen(theme::BgWash wash) {
   lv_obj_t * scr = lv_obj_create(nullptr);
-  theme::apply_screen_bg(scr);
+  theme::apply_screen_bg(scr, wash);
   return scr;
 }
 
@@ -69,7 +69,8 @@ lv_obj_t * make_topbar(lv_obj_t * scr, const char * title, const char * me, cons
   lv_obj_remove_style_all(top);
   lv_obj_set_size(top, WP_HOR_RES, kTopbarH);
   lv_obj_set_style_pad_hor(top, 14, 0);
-  lv_obj_set_style_pad_ver(top, 6, 0);
+  lv_obj_set_style_pad_top(top, 10, 0);
+  lv_obj_set_style_pad_bottom(top, 6, 0);
   lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(top, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_bg_opa(top, LV_OPA_TRANSP, 0);

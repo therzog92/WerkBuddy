@@ -1,17 +1,18 @@
 #pragma once
 
 #include "lvgl/lvgl.h"
+#include "ui/theme.h"
 
 #include <functional>
 
 namespace wp {
 namespace ui {
 
-constexpr int kTopbarH = 60;
+constexpr int kTopbarH = 64;
 constexpr int kDockH = 64;
 constexpr int kDockCompactH = 48;
 
-lv_obj_t * make_screen();
+lv_obj_t * make_screen(theme::BgWash wash = theme::BgWash::Page);
 lv_obj_t * make_topbar(lv_obj_t * scr, const char * title, const char * me = "Tommy",
                        const char * sub = nullptr);
 void topbar_set(lv_obj_t * topbar, const char * title, const char * sub = nullptr);

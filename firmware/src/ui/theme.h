@@ -35,6 +35,15 @@ lv_color_t grad_bot();
 
 void apply_screen_bg(lv_obj_t * scr);
 
+/** Wallpaper dim level when a custom background is set. */
+enum class BgWash : uint8_t {
+  Hub = 0,  /* photo readable behind home chrome */
+  Page,     /* settings / games / etc — considerably dimmed for text */
+  Idle,     /* clock lock screen — photo present, dimmed */
+};
+
+void apply_screen_bg(lv_obj_t * scr, BgWash wash);
+
 /** Rebuild gradient stops for incoming burst (call after set()). */
 void refresh_incoming_grads(lv_grad_dsc_t * hot_g, lv_grad_dsc_t * gold_g, lv_grad_dsc_t * mint_g);
 

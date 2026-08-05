@@ -1,6 +1,7 @@
 #include "ui/scr_hub.h"
 
 #include "app/app.h"
+#include "app/desk_timer.h"
 #include "ui/chrome.h"
 #include "ui/fonts.h"
 #include "ui/icons.h"
@@ -16,6 +17,7 @@ namespace {
 lv_obj_t * g_clock = nullptr;
 lv_obj_t * g_date = nullptr;
 lv_obj_t * g_desk = nullptr;
+lv_obj_t * g_timer_lbl = nullptr;
 lv_timer_t * g_timer = nullptr;
 
 void format_clock(char * buf, size_t n, char * date_buf, size_t dn) {
@@ -38,12 +40,29 @@ void tick(lv_timer_t * /*t*/) {
   format_clock(cb, sizeof(cb), db, sizeof(db));
   lv_label_set_text(g_clock, cb);
   if (g_date) lv_label_set_text(g_date, db);
+  if (g_timer_lbl) {
+    if (desk_timer::is_active() || desk_timer::is_finished()) {
+      if (desk_timer::is_finished()) {
+        lv_label_set_text(g_timer_lbl, "Time's up - tap");
+      } else {
+        char tb[24];
+        desk_timer::format_remaining(tb, sizeof(tb));
+        char line[40];
+        lv_snprintf(line, sizeof(line), "Timer %s", tb);
+        lv_label_set_text(g_timer_lbl, line);
+      }
+      lv_obj_remove_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
 }
 
 void on_deleted(lv_event_t * /*e*/) {
   g_clock = nullptr;
   g_date = nullptr;
   g_desk = nullptr;
+  g_timer_lbl = nullptr;
   if (g_timer) {
     lv_timer_delete(g_timer);
     g_timer = nullptr;
@@ -53,10 +72,9 @@ void on_deleted(lv_event_t * /*e*/) {
 }  // namespace
 
 lv_obj_t * hub_screen() {
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = make_screen(theme::BgWash::Hub);
   lv_obj_add_event_cb(scr, on_deleted, LV_EVENT_DELETE, nullptr);
 
-  /* Slim brand bar — product name only; desk identity lives with the clock. */
   lv_obj_t * top = lv_obj_create(scr);
   lv_obj_remove_style_all(top);
   lv_obj_set_size(top, WP_HOR_RES, 44);
@@ -95,25 +113,28 @@ lv_obj_t * hub_screen() {
   lv_obj_set_size(body, WP_HOR_RES, WP_VER_RES - 44);
   lv_obj_set_pos(body, 0, 44);
   lv_obj_set_style_pad_hor(body, 12, 0);
+  lv_obj_set_style_pad_top(body, 6, 0);
   lv_obj_set_style_pad_bottom(body, 10, 0);
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(body, 6, 0);
+  lv_obj_set_style_pad_row(body, 4, 0);
   lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
 
   char cb[24], db[40];
   format_clock(cb, sizeof(cb), db, sizeof(db));
 
-  /* Clock block — slightly tighter to leave room for the game row. */
+  /* Clock block — size to content so desk name + timer line never clip. */
   lv_obj_t * hero = lv_obj_create(body);
   lv_obj_remove_style_all(hero);
   lv_obj_set_width(hero, lv_pct(100));
-  lv_obj_set_height(hero, 96);
+  lv_obj_set_height(hero, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(hero, 1, 0);
-  lv_obj_remove_flag(hero, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_pad_row(hero, 3, 0);
+  lv_obj_set_style_pad_ver(hero, 4, 0);
+  lv_obj_add_flag(hero, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(hero, [](lv_event_t * /*e*/) { go_timer(); }, LV_EVENT_CLICKED, nullptr);
 
   g_desk = lv_label_create(hero);
   char desk[48];
@@ -125,7 +146,7 @@ lv_obj_t * hub_screen() {
   g_clock = lv_label_create(hero);
   lv_label_set_text(g_clock, cb);
   lv_obj_set_style_text_color(g_clock, theme::ink(), 0);
-  lv_obj_set_style_text_font(g_clock, font_display(56), 0);
+  lv_obj_set_style_text_font(g_clock, font_display(52), 0);
   lv_obj_set_style_text_letter_space(g_clock, 1, 0);
 
   g_date = lv_label_create(hero);
@@ -133,28 +154,42 @@ lv_obj_t * hub_screen() {
   lv_obj_set_style_text_color(g_date, theme::gold(), 0);
   lv_obj_set_style_text_font(g_date, &lv_font_montserrat_14, 0);
 
-  g_timer = lv_timer_create(tick, 1000, nullptr);
+  g_timer_lbl = lv_label_create(hero);
+  lv_label_set_text(g_timer_lbl, "");
+  lv_obj_set_style_text_color(g_timer_lbl, theme::mint(), 0);
+  lv_obj_set_style_text_font(g_timer_lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_pad_top(g_timer_lbl, 2, 0);
+  lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
 
-  /* Center stage: WerkPager sits mid-low above the dock. */
+  g_timer = lv_timer_create(tick, 1000, nullptr);
+  tick(nullptr);
+
   lv_obj_t * stage = lv_obj_create(body);
   lv_obj_remove_style_all(stage);
   lv_obj_set_width(stage, lv_pct(100));
   lv_obj_set_flex_grow(stage, 1);
   lv_obj_set_flex_flow(stage, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(stage, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_bottom(stage, 12, 0);
+  lv_obj_set_style_pad_bottom(stage, 8, 0);
   lv_obj_remove_flag(stage, LV_OBJ_FLAG_SCROLLABLE);
 
+  /*
+   * Same cheap pulse as the old grid icon (style scale + opa only).
+   * Grow into the 88px wrap rather than past it — avoids crop and keeps the
+   * dirty region small (scaling past the wrap was what made overflow fixes laggy).
+   */
   lv_obj_t * werk = make_app_icon_sized(stage, AppIcon::Werk, "WerkPager",
-                                        [](lv_event_t * /*e*/) { go_werk(); }, 96, 150, 128,
+                                        [](lv_event_t * /*e*/) { go_werk(); }, 88, 140, 118,
                                         &lv_font_montserrat_14);
-  /* Slow, visible pulse on the WerkPager glyph (opacity + slight scale). */
   if (lv_obj_get_child_count(werk) > 0) {
     lv_obj_t * wrap = lv_obj_get_child(werk, 0);
     if (wrap && lv_obj_get_child_count(wrap) > 0) {
       lv_obj_t * glyph = lv_obj_get_child(wrap, 0);
       lv_obj_set_style_transform_pivot_x(glyph, 36, 0);
       lv_obj_set_style_transform_pivot_y(glyph, 36, 0);
+      constexpr int32_t kLo = (80 * 256) / 72;
+      constexpr int32_t kHi = (88 * 256) / 72;
+      lv_obj_set_style_transform_scale(glyph, kLo, 0);
       lv_anim_t a;
       lv_anim_init(&a);
       lv_anim_set_var(&a, glyph);
@@ -165,56 +200,36 @@ lv_obj_t * hub_screen() {
       lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
       lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
         auto * g = static_cast<lv_obj_t *>(obj);
-        /* v 0..1000 → opa 130..255, scale ~92%..100% of the 96px hub size (256*96/72). */
-        const lv_opa_t opa = (lv_opa_t)(130 + (v * 125) / 1000);
-        const int32_t scale = 314 + (v * 28) / 1000;
+        constexpr int32_t kLo = (80 * 256) / 72;
+        constexpr int32_t kHi = (88 * 256) / 72;
+        const lv_opa_t opa = (lv_opa_t)(150 + (v * 105) / 1000);
         lv_obj_set_style_bg_opa(g, opa, 0);
-        lv_obj_set_style_transform_scale(g, scale, 0);
+        lv_obj_set_style_transform_scale(g, kLo + ((kHi - kLo) * v) / 1000, 0);
       });
       lv_anim_start(&a);
     }
   }
 
-  /* Bottom dock: equal columns so Games shares WerkPager's center axis;
-   * Doodle / Settings match in size, pinned to the outer corners. */
   lv_obj_t * corners = lv_obj_create(body);
   lv_obj_remove_style_all(corners);
   lv_obj_set_width(corners, lv_pct(100));
   lv_obj_set_height(corners, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(corners, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(corners, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(corners, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
   lv_obj_remove_flag(corners, LV_OBJ_FLAG_SCROLLABLE);
 
-  auto make_slot = [](lv_obj_t * parent, lv_flex_align_t h_align) {
-    lv_obj_t * slot = lv_obj_create(parent);
-    lv_obj_remove_style_all(slot);
-    lv_obj_set_flex_grow(slot, 1);
-    lv_obj_set_height(slot, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(slot, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(slot, LV_FLEX_ALIGN_CENTER, h_align, h_align);
-    lv_obj_remove_flag(slot, LV_OBJ_FLAG_SCROLLABLE);
-    return slot;
-  };
-
-  constexpr int kCornerGlyph = 52;
-  constexpr int kCornerColW = 84;
-  constexpr int kCornerColH = 84;
-  constexpr int kGamesGlyph = 64;
-  constexpr int kGamesColW = 96;
-  constexpr int kGamesColH = 96;
-
-  lv_obj_t * left = make_slot(corners, LV_FLEX_ALIGN_START);
-  make_app_icon_sized(left, AppIcon::Doodle, "Doodle", [](lv_event_t * /*e*/) { go_doodle(); },
-                      kCornerGlyph, kCornerColW, kCornerColH, &lv_font_montserrat_12);
-
-  lv_obj_t * mid = make_slot(corners, LV_FLEX_ALIGN_CENTER);
-  make_app_icon_sized(mid, AppIcon::Games, "Games", [](lv_event_t * /*e*/) { go_games_folder(); },
-                      kGamesGlyph, kGamesColW, kGamesColH, &lv_font_montserrat_12);
-
-  lv_obj_t * right = make_slot(corners, LV_FLEX_ALIGN_END);
-  make_app_icon_sized(right, AppIcon::Settings, "Settings",
-                      [](lv_event_t * /*e*/) { go_settings(); }, kCornerGlyph, kCornerColW,
-                      kCornerColH, &lv_font_montserrat_12);
+  constexpr int kGlyph = 48;
+  constexpr int kColW = 72;
+  constexpr int kColH = 76;
+  make_app_icon_sized(corners, AppIcon::Doodle, "Doodle", [](lv_event_t * /*e*/) { go_doodle(); },
+                      kGlyph, kColW, kColH, &lv_font_montserrat_12);
+  make_app_icon_sized(corners, AppIcon::Games, "Games", [](lv_event_t * /*e*/) { go_games_folder(); },
+                      kGlyph, kColW, kColH, &lv_font_montserrat_12);
+  make_app_icon_sized(corners, AppIcon::Timer, "Timer", [](lv_event_t * /*e*/) { go_timer(); },
+                      kGlyph, kColW, kColH, &lv_font_montserrat_12);
+  make_app_icon_sized(corners, AppIcon::Settings, "Settings",
+                      [](lv_event_t * /*e*/) { go_settings(); }, kGlyph, kColW, kColH,
+                      &lv_font_montserrat_12);
 
   lv_obj_t * status = lv_label_create(body);
   char sb[56];

@@ -26,6 +26,8 @@ enum class Screen {
   EmojiPicker,
   WifiScan,
   OtaReleases,
+  BgUpload,
+  Timer,
   Idle,
 };
 
@@ -55,6 +57,8 @@ void go_wifi_scan();
 void go_keyboard_wifi_pass();
 void go_ota_releases();
 void go_emoji_picker(int slot); /* settings slot, or kEmojiPickerCompose for Werk Room */
+void go_bg_upload();
+void go_timer();
 
 /** Re-open compose with the current draft (emoji/message) intact. */
 void go_compose_refresh();

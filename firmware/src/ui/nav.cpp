@@ -1,6 +1,7 @@
 #include "ui/nav.h"
 
 #include "app/app.h"
+#include "app/desk_timer.h"
 #include "ui/brightness.h"
 #include "ui/scr_doodle.h"
 #include "ui/scr_games.h"
@@ -9,6 +10,7 @@
 #include "ui/scr_pager.h"
 #include "ui/scr_settings.h"
 #include "ui/scr_splash.h"
+#include "ui/scr_timer.h"
 
 #include "lvgl/lvgl.h"
 
@@ -31,7 +33,8 @@ void load(lv_obj_t * scr, Screen which) {
   lv_screen_load(scr);
   if (old && old != scr) lv_obj_delete_async(old);
   /* Incoming/outgoing pages always full bright so you can't miss a ring. */
-  brightness::set_page_boost(which == Screen::Incoming || which == Screen::Outgoing);
+  brightness::set_page_boost(which == Screen::Incoming || which == Screen::Outgoing ||
+                             (which == Screen::Timer && desk_timer::is_finished()));
 }
 
 void idle_tick(lv_timer_t * /*t*/) {
@@ -40,7 +43,8 @@ void idle_tick(lv_timer_t * /*t*/) {
   if (g_screen == Screen::Idle || g_screen == Screen::Incoming || g_screen == Screen::Outgoing ||
       g_screen == Screen::Keyboard || g_screen == Screen::EmojiPicker ||
       g_screen == Screen::WifiScan || g_screen == Screen::OtaReleases ||
-      g_screen == Screen::Splash) {
+      g_screen == Screen::BgUpload || g_screen == Screen::Splash ||
+      (g_screen == Screen::Timer && desk_timer::is_finished())) {
     return;
   }
   if (app::busy()) return;
@@ -89,6 +93,8 @@ void go_wifi_scan() { load(wifi_scan_screen(), Screen::WifiScan); }
 void go_keyboard_wifi_pass() { load(keyboard_screen_wifi_pass(), Screen::Keyboard); }
 void go_ota_releases() { load(ota_releases_screen(), Screen::OtaReleases); }
 void go_emoji_picker(int slot) { load(emoji_picker_screen(slot), Screen::EmojiPicker); }
+void go_bg_upload() { load(bg_upload_screen(), Screen::BgUpload); }
+void go_timer() { load(timer_screen(), Screen::Timer); }
 
 void go_idle() {
   if (g_screen == Screen::Idle) return;
@@ -114,6 +120,7 @@ void wake_from_idle() {
     case Screen::Ck: go_checkers(); break;
     case Screen::Mem: go_memory(); break;
     case Screen::Doodle: go_doodle(); break;
+    case Screen::Timer: go_timer(); break;
     case Screen::Outgoing:
     case Screen::Incoming: sync_ui(); break;
     default: go_hub(); break;

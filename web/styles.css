@@ -146,6 +146,38 @@ body {
   color: var(--ink);
 }
 
+.device.has-wallpaper {
+  --wp-wall-dim: rgba(12, 10, 15, 0.38);
+  background-color: var(--bg0);
+  background-image:
+    linear-gradient(var(--wp-wall-dim), color-mix(in srgb, var(--wp-wall-dim) 90%, #000)),
+    var(--wp-wallpaper);
+  background-size: cover, cover;
+  background-position: center, center;
+}
+
+/* Home: photo more visible */
+.device.has-wallpaper.wall-hub {
+  --wp-wall-dim: rgba(12, 10, 15, 0.36);
+}
+
+/* Settings / games / etc: considerably dimmed for readability */
+.device.has-wallpaper.wall-page {
+  --wp-wall-dim: rgba(12, 10, 15, 0.88);
+}
+
+/* Clock lock: photo present, moderately dimmed */
+.device.has-wallpaper.wall-idle {
+  --wp-wall-dim: rgba(12, 10, 15, 0.58);
+}
+
+.device.has-wallpaper.is-idle.wall-idle .screen-idle.mode-clock .idle-clock {
+  background:
+    radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--hot) 18%, transparent), transparent 50%),
+    radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 45%),
+    transparent;
+}
+
 .device {
   --wp-brightness: 1;
 }
@@ -2014,8 +2046,110 @@ body {
   height: 44px;
   display: block;
 }
+.app-glyph-timer {
+  background: linear-gradient(145deg, #5dffc2, #f0c24b);
+  color: #1a1224;
+}
 .app-glyph-settings {
   background: linear-gradient(145deg, #6a7280, #4a5568);
+}
+
+.timer-display {
+  font-family: var(--font-display);
+  font-size: 4.5rem;
+  letter-spacing: 0.06em;
+  text-align: center;
+  margin: 12px 0 8px;
+  color: var(--ink);
+  line-height: 1;
+}
+.timer-display[hidden] {
+  display: none !important;
+}
+.timer-wheels {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+.timer-wheel-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.timer-wheel-unit {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.timer-wheel-colon {
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  color: var(--gold);
+  padding-top: 18px;
+}
+.timer-wheel {
+  width: 88px;
+  height: 132px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  border-radius: 14px;
+  background: var(--panel);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.timer-wheel::-webkit-scrollbar {
+  display: none;
+}
+.timer-wheel-item {
+  height: 44px;
+  display: grid;
+  place-items: center;
+  scroll-snap-align: center;
+  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.timer-wheel-item.is-selected {
+  color: #1a1224;
+  background: var(--gold);
+}
+.timer-primary {
+  display: block;
+  width: min(220px, 100%);
+  margin: 12px auto 0;
+  padding: 14px 20px;
+  font-size: 1.05rem;
+}
+
+.timer-setup {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+.timer-setup[hidden] {
+  display: none !important;
+}
+
+.timer-alarm {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  background: var(--call-a);
+  animation: incoming-bg 0.55s ease-in-out infinite alternate;
+}
+.timer-alarm[hidden] {
+  display: none !important;
+}
+
+.screen[data-screen="timer"] {
+  position: relative;
 }
 
 .games-folder-apps {

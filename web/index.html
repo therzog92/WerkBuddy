@@ -67,6 +67,15 @@
             </span>
             <span class="app-label">Doodle</span>
           </button>
+          <button type="button" class="app-icon" data-go="timer">
+            <span class="app-glyph app-glyph-timer" aria-hidden="true">
+              <svg viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="26" r="14" stroke="currentColor" stroke-width="3"/>
+                <path d="M20 8h8M24 12v4M24 26v-8M24 26h8" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+              </svg>
+            </span>
+            <span class="app-label">Timer</span>
+          </button>
           <button type="button" class="app-icon" data-go="settings">
             <span class="app-glyph app-glyph-settings" aria-hidden="true">
               <svg viewBox="0 0 48 48" fill="none">
@@ -76,6 +85,48 @@
             </span>
             <span class="app-label">Settings</span>
           </button>
+        </div>
+      </section>
+
+      <!-- TIMER -->
+      <section class="screen" data-screen="timer">
+        <div class="timer-setup" id="timerSetup">
+          <p class="tagline" id="timerStatus">Desk timer</p>
+          <div class="timer-display" id="timerDisplay" hidden>25:00</div>
+          <div class="timer-wheels" id="timerWheels">
+            <div class="timer-wheel-col">
+              <span class="timer-wheel-unit">min</span>
+              <div class="timer-wheel" id="timerWheelMin" tabindex="0"></div>
+            </div>
+            <span class="timer-wheel-colon">:</span>
+            <div class="timer-wheel-col">
+              <span class="timer-wheel-unit">sec</span>
+              <div class="timer-wheel" id="timerWheelSec" tabindex="0"></div>
+            </div>
+          </div>
+          <div class="option-row" id="timerPresets"></div>
+          <button type="button" class="btn primary timer-primary" id="btnTimerPrimary">Start</button>
+          <div class="dock">
+            <button type="button" id="btnTimerReset">Reset</button>
+            <button type="button" data-go="hub">Home</button>
+          </div>
+        </div>
+        <div class="timer-alarm" id="timerAlarm" hidden>
+          <div class="incoming-fx" aria-hidden="true">
+            <div class="incoming-burst"></div>
+            <div class="incoming-ring r1"></div>
+            <div class="incoming-ring r2"></div>
+            <div class="incoming-ring r3"></div>
+          </div>
+          <div class="incoming">
+            <p class="eyebrow">TIMER</p>
+            <div class="emoji">⏰</div>
+            <h1>Time's up</h1>
+            <p class="incoming-sub">Your desk timer finished</p>
+          </div>
+          <div class="dock incoming-dock">
+            <button type="button" class="btn primary" id="btnTimerDismissAlarm">Dismiss</button>
+          </div>
         </div>
       </section>
 
@@ -413,6 +464,15 @@
               <span id="brightnessValue">100%</span>
             </div>
             <p class="field-hint">Incoming pages always use full brightness.</p>
+          </div>
+          <div class="field">
+            <label>Background</label>
+            <p class="wifi-status" id="bgStatus">Theme gradient (default)</p>
+            <div class="option-row">
+              <button type="button" id="btnBgPhone">Add from phone</button>
+              <button type="button" id="btnBgRemove" hidden>Remove</button>
+            </div>
+            <p class="field-hint">Opens a crop page for this desk only (unique link).</p>
           </div>
           <div class="field">
             <label>WiFi (optional) - clock sync &amp; OTA updates</label>

@@ -15,6 +15,7 @@ lv_obj_t * ota_releases_screen();
 /** Settings: slot 0..kEmojiSlots-1. Compose pick-from-all: pass kEmojiPickerCompose. */
 constexpr int kEmojiPickerCompose = -1;
 lv_obj_t * emoji_picker_screen(int slot);
+lv_obj_t * bg_upload_screen();
 
 }  // namespace ui
 }  // namespace wp

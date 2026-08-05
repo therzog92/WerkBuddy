@@ -1155,7 +1155,7 @@ export function installMoreGames(api) {
     if (msg.type === MessageType.DOODLE_CLEAR) {
       const key = deskKeyById(msg.toId);
       if (!key || key === fromDeskKey) return true;
-      if (key === activeKey() && currentScreenIsDoodle()) clearCanvasLocal();
+      if (key === activeKey()) clearCanvasLocal();
       return true;
     }
 

@@ -68,8 +68,10 @@
 #define LV_STDARG_INCLUDE       <stdarg.h>
 
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
-    /** Size of memory available for `lv_malloc()` in bytes (>= 2kB) */
-    #define LV_MEM_SIZE (2 * 1024 * 1024U)          /**< [bytes] */
+    /** Size of memory available for `lv_malloc()` in bytes (>= 2kB).
+     *  PC sim needs headroom for a full-screen wallpaper PNG decode (~480² RGBA)
+     *  plus framebuffers / emoji — 2 MiB was too tight and silently dropped the bg. */
+    #define LV_MEM_SIZE (8 * 1024 * 1024U)          /**< [bytes] */
 
     /** Size of the memory expand for `lv_malloc()` in bytes */
     #define LV_MEM_POOL_EXPAND_SIZE 0
