@@ -4,7 +4,9 @@
 #include "games/battleship.h"
 #include "games/c4.h"
 #include "games/checkers.h"
+#include "games/dots.h"
 #include "games/memory.h"
+#include "games/reversi.h"
 #include "games/sttt.h"
 #include "games/ttt.h"
 
@@ -80,6 +82,16 @@ struct Bot {
   bool mem_on = false;
   uint8_t mem_deck[games::mem::kCards] = {};
   bool mem_matched[games::mem::kCards] = {};
+
+  /* reversi — bot is acceptor → white */
+  bool rv_on = false;
+  int8_t rv_board[games::rv::kN][games::rv::kN] = {};
+  int8_t rv_color = games::rv::kWhite;
+
+  /* dots & boxes — bot is acceptor → P2 */
+  bool db_on = false;
+  games::db::State db_state;
+  int8_t db_side = games::db::kP2;
 
   bool doodle_replied = false;
 };
@@ -497,6 +509,135 @@ void bot_receive(Bot & b, const Msg & m) {
     }
     case MsgType::MemForfeit: {
       b.mem_on = false;
+      return;
+    }
+
+    case MsgType::RvInvite: {
+      later(1100, [&b]() {
+        b.rv_on = true;
+        games::rv::init(b.rv_board);
+        b.rv_color = games::rv::kWhite;
+        deliver(base_msg(b, MsgType::RvAccept));
+      });
+      return;
+    }
+    case MsgType::RvMove: {
+      if (!b.rv_on) return;
+      const int8_t player = games::rv::kBlack;
+      if (m.x < 0 && m.y < 0) {
+        /* player passed */
+      } else if (!games::rv::apply(b.rv_board, m.x, m.y, player)) {
+        return;
+      }
+      if (games::rv::check_over(b.rv_board) != 0) {
+        b.rv_on = false;
+        return;
+      }
+      later(700, [&b]() {
+        if (!b.rv_on) return;
+        if (!games::rv::any_move(b.rv_board, b.rv_color)) {
+          Msg pass = base_msg(b, MsgType::RvMove);
+          pass.x = -1;
+          pass.y = -1;
+          deliver(pass);
+          if (games::rv::check_over(b.rv_board) != 0) b.rv_on = false;
+          return;
+        }
+        /* pick a legal move (prefer higher flips) */
+        int best_r = -1, best_c = -1, best_n = -1;
+        for (int r = 0; r < games::rv::kN; ++r) {
+          for (int c = 0; c < games::rv::kN; ++c) {
+            const int n = games::rv::would_flip(b.rv_board, r, c, b.rv_color);
+            if (n > best_n) {
+              best_n = n;
+              best_r = r;
+              best_c = c;
+            }
+          }
+        }
+        if (best_n <= 0) return;
+        games::rv::apply(b.rv_board, best_r, best_c, b.rv_color);
+        Msg out = base_msg(b, MsgType::RvMove);
+        out.x = (int8_t)best_r;
+        out.y = (int8_t)best_c;
+        deliver(out);
+        if (games::rv::check_over(b.rv_board) != 0) b.rv_on = false;
+      });
+      return;
+    }
+    case MsgType::RvForfeit: {
+      b.rv_on = false;
+      return;
+    }
+
+    case MsgType::DbInvite: {
+      later(1100, [&b]() {
+        b.db_on = true;
+        games::db::init(b.db_state);
+        b.db_side = games::db::kP2;
+        deliver(base_msg(b, MsgType::DbAccept));
+      });
+      return;
+    }
+    case MsgType::DbLine: {
+      if (!b.db_on) return;
+      const int claimed = games::db::claim(b.db_state, m.y, m.x, m.col, games::db::kP1);
+      if (claimed < 0) return;
+      if (games::db::over(b.db_state)) {
+        b.db_on = false;
+        return;
+      }
+      if (claimed > 0) return; /* player goes again */
+      later(600, [&b]() {
+        if (!b.db_on) return;
+        /* Keep claiming extra turns until a non-scoring edge or game over. */
+        for (;;) {
+          bool played = false;
+          int last_claimed = 0;
+          for (int r = 0; r < games::db::kDots && !played; ++r) {
+            for (int c = 0; c < games::db::kBox; ++c) {
+              if (games::db::h_taken(b.db_state, r, c)) continue;
+              const int cl = games::db::claim(b.db_state, 0, r, c, b.db_side);
+              if (cl < 0) continue;
+              Msg out = base_msg(b, MsgType::DbLine);
+              out.y = 0;
+              out.x = (int8_t)r;
+              out.col = (int8_t)c;
+              deliver(out);
+              last_claimed = cl;
+              played = true;
+              break;
+            }
+          }
+          if (!played) {
+            for (int r = 0; r < games::db::kBox && !played; ++r) {
+              for (int c = 0; c < games::db::kDots; ++c) {
+                if (games::db::v_taken(b.db_state, r, c)) continue;
+                const int cl = games::db::claim(b.db_state, 1, r, c, b.db_side);
+                if (cl < 0) continue;
+                Msg out = base_msg(b, MsgType::DbLine);
+                out.y = 1;
+                out.x = (int8_t)r;
+                out.col = (int8_t)c;
+                deliver(out);
+                last_claimed = cl;
+                played = true;
+                break;
+              }
+            }
+          }
+          if (!played) return;
+          if (games::db::over(b.db_state)) {
+            b.db_on = false;
+            return;
+          }
+          if (last_claimed == 0) return;
+        }
+      });
+      return;
+    }
+    case MsgType::DbForfeit: {
+      b.db_on = false;
       return;
     }
 

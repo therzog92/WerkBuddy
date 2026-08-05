@@ -5,16 +5,27 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <string>
 
 namespace wp {
 namespace storage {
 namespace {
 
 const char * kFile = "werkpager_settings.ini";
+constexpr int kTimeoutScheme = 2; /* 1m/3m/5m/10m/Off */
 
 void put(FILE * f, const char * key, const char * val) { std::fprintf(f, "%s=%s\n", key, val); }
 void put_int(FILE * f, const char * key, long long val) { std::fprintf(f, "%s=%lld\n", key, val); }
+
+/** Old scheme: 0=30s 1=1m 2=5m 3=off → new indices. */
+uint8_t remap_legacy_timeout(uint8_t old_id) {
+  switch (old_id) {
+    case 0: return 0; /* 30s → 1m */
+    case 1: return 0; /* 1m → 1m */
+    case 2: return 2; /* 5m → 5m */
+    case 3: return 4; /* off → off */
+    default: return 2; /* default 5m */
+  }
+}
 
 }  // namespace
 
@@ -24,6 +35,10 @@ bool load(app::Desk & d) {
 
   char line[192];
   int peer_i = 0;
+  bool saw_setup = false;
+  int timeout_scheme = 0;
+  uint8_t raw_timeout = d.timeout_id;
+
   while (std::fgets(line, sizeof(line), f)) {
     char * eq = std::strchr(line, '=');
     if (!eq) continue;
@@ -35,16 +50,29 @@ bool load(app::Desk & d) {
     if (!std::strcmp(key, "name")) {
       std::snprintf(d.name, sizeof(d.name), "%s", val);
     } else if (!std::strcmp(key, "theme")) {
-      d.theme = (uint8_t)std::atoi(val);
+      int t = std::atoi(val);
+      if (t < 0) t = 0;
+      if (t > 7) t = 7;
+      d.theme = (uint8_t)t;
+    } else if (!std::strcmp(key, "bg_preset")) {
+      int p = std::atoi(val);
+      if (p < 0) p = 0;
+      if (p > 5) p = 5;
+      d.bg_preset = (uint8_t)p;
     } else if (!std::strcmp(key, "timeout")) {
-      d.timeout_id = (uint8_t)std::atoi(val);
+      raw_timeout = (uint8_t)std::atoi(val);
+    } else if (!std::strcmp(key, "timeout_v")) {
+      timeout_scheme = std::atoi(val);
     } else if (!std::strcmp(key, "idle_mode")) {
-      d.idle_mode = (uint8_t)std::atoi(val);
+      d.idle_mode = (uint8_t)std::atoi(val) ? 1 : 0;
     } else if (!std::strcmp(key, "brightness")) {
       int b = std::atoi(val);
       if (b < 10) b = 10;
       if (b > 100) b = 100;
       d.brightness = (uint8_t)b;
+    } else if (!std::strcmp(key, "setup_done")) {
+      d.setup_done = std::atoi(val) != 0;
+      saw_setup = true;
     } else if (!std::strcmp(key, "clock_offset_ms")) {
       d.clock_offset_ms = std::atoll(val);
     } else if (!std::strcmp(key, "wifi_ssid")) {
@@ -58,7 +86,6 @@ bool load(app::Desk & d) {
       const int i = std::atoi(key + 6);
       if (i >= 0 && i < app::kCannedCount) std::snprintf(d.canned[i], sizeof(d.canned[i]), "%s", val);
     } else if (!std::strcmp(key, "peer") && peer_i < app::kMaxPeers) {
-      /* "peer=<id>|<name>" */
       char * bar = std::strchr(val, '|');
       if (bar) {
         *bar = '\0';
@@ -69,6 +96,15 @@ bool load(app::Desk & d) {
     }
   }
   d.peer_count = peer_i > 0 ? peer_i : d.peer_count;
+  if (!saw_setup) d.setup_done = true; /* existing installs */
+
+  if (timeout_scheme >= kTimeoutScheme) {
+    d.timeout_id = raw_timeout;
+  } else {
+    d.timeout_id = remap_legacy_timeout(raw_timeout);
+  }
+  if (d.timeout_id >= app::kTimeoutCount) d.timeout_id = 2;
+
   std::fclose(f);
   return true;
 }
@@ -78,9 +114,12 @@ void save(const app::Desk & d) {
   if (!f) return;
   put(f, "name", d.name);
   put_int(f, "theme", d.theme);
+  put_int(f, "bg_preset", d.bg_preset);
   put_int(f, "timeout", d.timeout_id);
+  put_int(f, "timeout_v", kTimeoutScheme);
   put_int(f, "idle_mode", d.idle_mode);
   put_int(f, "brightness", d.brightness);
+  put_int(f, "setup_done", d.setup_done ? 1 : 0);
   put_int(f, "clock_offset_ms", d.clock_offset_ms);
   put(f, "wifi_ssid", d.wifi_ssid);
   put_int(f, "wifi_connected", d.wifi_connected ? 1 : 0);

@@ -1,24 +1,20 @@
-# WerkPager
+# WerkBuddy
 
-**Repo:** [github.com/therzog92/WerkPager](https://github.com/therzog92/WerkPager)
+Desk **attention pager** + mini-games for nearby desks, built for **480×480** capacitive panels talking over **ESP-NOW** (no Wi‑Fi required for core use).
 
-Desk **attention pager** + mini-games for coworkers, designed for **480×480** capacitive panels talking over **ESP-NOW** (no Wi‑Fi required for core use).
+Product brand: **WerkBuddy**. The pager app on Home stays **WerkPager**.
 
-Right now this repo is a **web simulator** + **LVGL PC sim** that are the UX + behavior spec for GUITION **ESP32-4848S040C_I** firmware (boards on order).
+Active development is the **LVGL PC simulator** under `firmware/` — the same UI stack we will flash to Guition **ESP32-4848S040** desks.
 
 ---
 
-## Quick start (simulator)
+## Quick start (LVGL sim)
 
-From the project root:
-
-```bash
-python -m http.server 8765
+```powershell
+powershell -File firmware/scripts/run-sim.ps1
 ```
 
-Open: [http://localhost:8765/web/](http://localhost:8765/web/)
-
-Use the **Desk** switcher under the device to change who you’re controlling and test pairing, calls, and games.
+Requires MSYS2 MinGW + SDL2 (`C:\msys64\mingw64`). **F12** (or `-Shot`) saves `firmware/sim-out/preview.png`.
 
 ---
 
@@ -26,89 +22,81 @@ Use the **Desk** switcher under the device to change who you’re controlling an
 
 | Area | Features |
 |------|----------|
-| **Home** | WerkPager, Games folder, Doodle, Settings |
-| **WerkPager** | Peer list, emoji + canned compose, call / Shantay / Sashay |
-| **Games** | Tic Tac Toe, Connect Four, Battleship, Checkers, Memory |
-| **Doodle** | Peer draw, colors, eraser, S/M/L strokes, ESP-NOW-style chunk sync |
-| **Settings** | Name, themes, timeout, idle mode, **date & time**, emojis, canned, scan |
-| **Idle** | Black or clock (uses manually set date/time) |
+| **Home** | WerkPager, Games, Utilities, Doodle, Settings |
+| **WerkPager** | Peer list, emoji + canned compose, call / Shantay / Sashay, page history |
+| **Games** | Tic Tac Toe, Super TTT, Connect Four, Battleship, Checkers, Memory, Reversi, Dots & Boxes, Scoreboard |
+| **Utilities** | Timer, Checklist, Calculator |
+| **Doodle** | Peer draw, colors, eraser, S/M/L strokes, chunked stroke sync |
+| **Settings** | Name, themes, brightness, background, timeout, idle, date & time, emojis, canned, peers, factory reset |
+| **Setup** | First-run / post-reset: name + theme |
+| **Idle** | Black or clock |
 
-Notable UX choices already baked in:
+Notable UX already baked in:
 
-- Touch-first (no hover-only flows; Battleship place = tap → directions → confirm)
-- Forfeit always asks for confirmation
+- Touch-first (no hover-only flows)
+- Forfeit always confirms
 - Checkers: each player sees their pieces at the bottom
-- Memory: shared seed + RPDR art in `web/assets/memory/`
-- Connect Four: soft rainbow board frame
-- Games lobby **Back** returns to Games folder; mid-game exit is **Forfeit** only
+- Memory: shared seed + art under `firmware/assets/memory/`
+- Mid-game exit is **Forfeit** only (no multi-game resume in v1)
 
 ---
 
 ## Repo layout
 
 ```
-WerkPager/
-  web/                  # Simulator UI (spec)
-    app.js              # Hub, pager, TTT, settings, idle, OSK
-    board-games.js      # Connect Four, Battleship
-    more-games.js       # Checkers, Memory, Doodle
-    index.html
-    styles.css
-    assets/memory/      # Matching-game images
-  protocol/
-    messages.js         # MessageType catalog + helpers (JSON in sim)
-  firmware/             # LVGL app (PC sim now → ESP32 later)
-    CMakeLists.txt
-    lv_conf.h
-    src/ui/             # Screens (hub first)
-    scripts/run-sim.ps1 # Build + launch SDL window
-    third_party/lvgl/   # Cloned on first build (gitignored)
-  docs/
-    ESP32_PORT_PLAN.md           # Architecture + phases
-    HARDWARE_BRINGUP_MANUAL.md   # Session-by-session unbox → glass (start here on arrival)
-  .cursor/rules/
-    esp32-port.mdc      # Cursor rule pointing agents at the port plan
+protocol/           MessageType catalog (keep names in sync with C++)
+firmware/           LVGL app (PC SDL sim now → ESP32 later)
+  src/ui/           Screens
+  scripts/run-sim.ps1
+docs/
+  ESP32_PORT_PLAN.md            Architecture + phases
+  HARDWARE_BRINGUP_MANUAL.md    Session-by-session unbox → glass → ping
+AGENTS.md                       Instructions for Cursor agents (boards, LiPo, sessions)
+.cursor/rules/esp32-port.mdc
 ```
 
 ---
 
-## Optional Wi‑Fi (later on device)
+## Hardware
 
-Paging/games stay **ESP-NOW** (no router). Settings can optionally use Wi‑Fi for:
-
-- **Sync time** (SNTP) after power loss  
-- **OTA** from **GitHub Releases** (upload a `.bin` on a release; desks fetch `releases/latest`)
-
-See `docs/ESP32_PORT_PLAN.md` §8b.
-
----
-
-## Hardware (on order)
-
-- **GUITION ESP32-4848S040C_I** — ESP32-S3, 4″ 480×480 capacitive (ST7701 + GT911 typical)  
-- Link: **ESP-NOW** between desks  
-- Settings date/time written locally (no NTP assumed for v1)
+- **Guition ESP32-4848S040** (ESP32-S3, 4″ 480×480 capacitive; ST7701 + GT911 typical)
+- **ESP-NOW** desk-to-desk (router optional)
+- Rear connectors (confirm silkscreen on your unit):
+  - **BAT** MX1.25 2P — LiPo cell only (`BAT+` / `BAT−`, ~3.0–4.2 V) — **not** 5 V
+  - **UART** MX1.25 4P — `3V3` / `TXD` / `RXD` / `GND`
+  - **Speak** MX1.25 2P — speaker
+- Optional **LiPo** on BAT keeps the desk powered without USB; wall-clock across full power-off still needs Sync time (Wi‑Fi) or a future external RTC
 
 ---
 
 ## When the boards arrive
 
 1. Open this repo in Cursor.
-2. Tell the agent:
+2. Say:
 
-   > Boards are here — GUITION ESP32-4848S040C_I. Read `docs/HARDWARE_BRINGUP_MANUAL.md` and walk me through **Session 0 only**.
+   > Boards are here — Guition ESP32-4848S040. Read `AGENTS.md` and `docs/HARDWARE_BRINGUP_MANUAL.md`. Walk me through **Session 0 only**.
 
-3. Do **one session at a time** (unbox → vendor demo → our LVGL hello → ESP-NOW ping → shell → pager → games).  
-4. Night-one expectation: LCD + touch + tappable WERKPAGER + two-board ping — **not** the entire game suite.
+3. Do **one session at a time** (unbox → vendor demo → LVGL hello → ESP-NOW ping → shell → pager → games).
+4. Night-one goal: LCD + touch + tappable WERKBUDDY + two-desk ping — **not** the full game suite.
 
-Architecture details: `docs/ESP32_PORT_PLAN.md`.  
-**Visual note:** sims are the design + behavior bible; device UI is LVGL (not CSS). Pixel-perfect CSS effects are optional.
+Details: `docs/HARDWARE_BRINGUP_MANUAL.md` and `docs/ESP32_PORT_PLAN.md`.
+
+---
+
+## Optional Wi‑Fi (device)
+
+Paging/games stay **ESP-NOW**. Settings may later use Wi‑Fi for:
+
+- **Sync time** (SNTP) after power loss  
+- **OTA** from GitHub Release `.bin` assets  
+
+See `docs/ESP32_PORT_PLAN.md` §8b.
 
 ---
 
 ## Protocol
 
-All message kinds live in `protocol/messages.js`. The sim sends JSON over an in-memory “radio.” Firmware should keep **type parity** and prefer **compact binary** on the wire (~250B ESP-NOW budget; doodle already chunks strokes).
+Message kinds: `protocol/messages.js` ↔ `firmware/src/protocol/messages.h`. Prefer **compact binary** on the wire (~250 B ESP-NOW budget; doodle already chunks).
 
 ---
 
@@ -116,22 +104,6 @@ All message kinds live in `protocol/messages.js`. The sim sends JSON over an in-
 
 | Track | State |
 |-------|--------|
-| Web simulator | Feature-complete for v1 product surface |
-| LVGL PC sim | **Phase −1 done enough** — full desk UI on SDL (hub, pager, games, doodle, settings, idle) |
-| Firmware on ESP32 | Not started — wait for boards; follow **bring-up manual** then port plan |
-
-### LVGL desktop simulator
-
-Real LVGL C++ UI in a **480×480** window — same UI stack we will retarget to the desks.
-
-```powershell
-powershell -File firmware/scripts/run-sim.ps1
-```
-
-- Full app: WerkPager, Games, Doodle, Settings, Idle  
-- **F12** saves `firmware/sim-out/preview.png`  
-- Agent workflow: edit LVGL → rebuild → you review the window  
-
-Requires MSYS2 MinGW + SDL2 (`C:\msys64\mingw64`).
-
-Last sim milestone: matching art, compact Checkers/Memory chrome, forfeit confirms, ESP32 port plan + Cursor rule + LVGL Phase −1 hub.
+| LVGL PC sim | Active UX + behavior surface |
+| Firmware on ESP32 | Not started — wait for boards; follow bring-up manual |
+| LiPo on BAT | Supported by hardware; safe power path documented in bring-up |

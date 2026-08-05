@@ -1,5 +1,9 @@
 #include "app/app.h"
 
+#include "app/background.h"
+#include "app/checklist.h"
+#include "app/page_log.h"
+#include "app/score_log.h"
 #include "app/storage.h"
 #include "games/sttt.h"
 #include "games/ttt.h"
@@ -21,10 +25,20 @@ namespace {
 Desk g_desk;
 
 const char * kDefaultEmojis[kEmojiSlots] = {"💅", "👑", "📢", "👀", "✨", "☕", "🆘"};
-const char * kDefaultCanned[kCannedCount] = {"Got a sec?", "Come here", "Lunch?", "Urgent"};
+const char * kDefaultCanned[kCannedCount] = {"You busy?", "Come here!", "Downstairs?",
+                                             "OMG WTF AHHHH!!!"};
 
 void copy_str(char * dst, size_t cap, const char * src) {
   std::snprintf(dst, cap, "%s", src ? src : "");
+}
+
+void apply_runtime_defaults(Desk & d) {
+  for (int i = 0; i < kEmojiSlots; ++i) copy_str(d.emojis[i], proto::kMaxEmoji, kDefaultEmojis[i]);
+  for (int i = 0; i < kCannedCount; ++i)
+    copy_str(d.canned[i], proto::kMaxMessage, kDefaultCanned[i]);
+  copy_str(d.peers[0].id, proto::kMaxId, "mac-will");
+  copy_str(d.peers[0].name, proto::kMaxName, "Will");
+  d.peer_count = 1;
 }
 
 bool same(const char * a, const char * b) { return std::strcmp(a, b) == 0; }
@@ -105,27 +119,46 @@ void schedule(uint32_t delay_ms, void (*fn)(void *), void * user_data) {
 }
 
 void init() {
-  for (int i = 0; i < kEmojiSlots; ++i) copy_str(g_desk.emojis[i], proto::kMaxEmoji, kDefaultEmojis[i]);
-  for (int i = 0; i < kCannedCount; ++i)
-    copy_str(g_desk.canned[i], proto::kMaxMessage, kDefaultCanned[i]);
-
-  /* Default roster mirrors web: Will starts saved. */
-  copy_str(g_desk.peers[0].id, proto::kMaxId, "mac-will");
-  copy_str(g_desk.peers[0].name, proto::kMaxName, "Will");
-  g_desk.peer_count = 1;
+  apply_runtime_defaults(g_desk);
 
   storage::load(g_desk);
+  if (g_desk.timeout_id >= kTimeoutCount) g_desk.timeout_id = 2;
   net::link_init();
 }
 
 void save() { storage::save(g_desk); }
+
+void factory_reset() {
+  char id[proto::kMaxId];
+  copy_str(id, sizeof(id), g_desk.id);
+
+  page_log::clear();
+  score_log::clear();
+  checklist::clear_all();
+  background::clear();
+
+  g_desk = Desk{};
+  copy_str(g_desk.id, sizeof(g_desk.id), id);
+  g_desk.name[0] = '\0';
+  g_desk.setup_done = false;
+  apply_runtime_defaults(g_desk);
+  storage::save(g_desk);
+}
+
+const TimeoutSpec * timeout_specs() {
+  static const TimeoutSpec specs[kTimeoutCount] = {
+      {"1m", 60000}, {"3m", 180000}, {"5m", 300000}, {"10m", 600000}, {"Off", 0},
+  };
+  return specs;
+}
 
 bool busy() {
   const Desk & d = g_desk;
   return d.incoming.active || d.outgoing.active || d.ttt_invite.active || d.ttt.active ||
          d.sttt_invite.active || d.sttt.active || d.c4_invite.active || d.c4.active ||
          d.bs_invite.active || d.bs.active || d.ck_invite.active || d.ck.active ||
-         d.mem_invite.active || d.mem.active;
+         d.mem_invite.active || d.mem.active || d.rv_invite.active || d.rv.active ||
+         d.db_invite.active || d.db.active || d.doodle_peer_id[0] != '\0';
 }
 
 bool peer_saved(const char * id) {
@@ -173,13 +206,6 @@ void adjust_clock_days(int days) {
   save();
 }
 
-const TimeoutSpec * timeout_specs() {
-  static const TimeoutSpec specs[4] = {
-      {"30s", 30000}, {"1m", 60000}, {"5m", 300000}, {"Off", 0},
-  };
-  return specs;
-}
-
 void send(const proto::Msg & msg) { net::link_send(msg); }
 
 /* ============ incoming radio (mirrors web bus handler) ============ */
@@ -207,6 +233,7 @@ void handle_msg(const proto::Msg & m) {
       copy_str(d.incoming.from_name, proto::kMaxName, m.from_name);
       copy_str(d.incoming.emoji, proto::kMaxEmoji, m.emoji);
       copy_str(d.incoming.message, proto::kMaxMessage, m.message);
+      page_log::add(page_log::Dir::In, m.from_name, m.emoji, m.message);
       ui::sync_ui();
       return;
     }
@@ -231,7 +258,7 @@ void handle_msg(const proto::Msg & m) {
 
     /* —— Tic Tac Toe —— */
     case proto::MsgType::TttInvite: {
-      if (d.ttt.active || d.ttt_invite.active) return; /* busy */
+      if (busy()) return;
       d.ttt_invite.active = true;
       copy_str(d.ttt_invite.from_id, proto::kMaxId, m.from_id);
       copy_str(d.ttt_invite.from_name, proto::kMaxName, m.from_name);
@@ -275,6 +302,9 @@ void handle_msg(const proto::Msg & m) {
         changed = true;
       }
       if (d.ttt.active && same(d.ttt.opp_id, m.from_id)) {
+        if (!d.ttt.waiting) {
+          score_log::note("Tic Tac Toe", m.from_name, score_log::Outcome::ForfeitOpp);
+        }
         d.ttt.active = false;
         changed = true;
       }
@@ -287,7 +317,7 @@ void handle_msg(const proto::Msg & m) {
 
     /* —— Super Tic Tac Toe —— */
     case proto::MsgType::StttInvite: {
-      if (d.sttt.active || d.sttt_invite.active) return;
+      if (busy()) return;
       d.sttt_invite.active = true;
       copy_str(d.sttt_invite.from_id, proto::kMaxId, m.from_id);
       copy_str(d.sttt_invite.from_name, proto::kMaxName, m.from_name);
@@ -330,6 +360,9 @@ void handle_msg(const proto::Msg & m) {
         changed = true;
       }
       if (d.sttt.active && same(d.sttt.opp_id, m.from_id)) {
+        if (!d.sttt.waiting) {
+          score_log::note("Super TTT", m.from_name, score_log::Outcome::ForfeitOpp);
+        }
         d.sttt.active = false;
         changed = true;
       }
@@ -342,7 +375,7 @@ void handle_msg(const proto::Msg & m) {
 
     /* —— Connect Four —— */
     case proto::MsgType::C4Invite: {
-      if (d.c4.active || d.c4_invite.active) return;
+      if (busy()) return;
       d.c4_invite.active = true;
       copy_str(d.c4_invite.from_id, proto::kMaxId, m.from_id);
       copy_str(d.c4_invite.from_name, proto::kMaxName, m.from_name);
@@ -394,6 +427,9 @@ void handle_msg(const proto::Msg & m) {
         changed = true;
       }
       if (d.c4.active && same(d.c4.opp_id, m.from_id)) {
+        if (!d.c4.waiting) {
+          score_log::note("Connect Four", m.from_name, score_log::Outcome::ForfeitOpp);
+        }
         d.c4.active = false;
         changed = true;
       }
@@ -406,7 +442,7 @@ void handle_msg(const proto::Msg & m) {
 
     /* —— Battleship —— */
     case proto::MsgType::BsInvite: {
-      if (d.bs.active || d.bs_invite.active) return;
+      if (busy()) return;
       d.bs_invite.active = true;
       copy_str(d.bs_invite.from_id, proto::kMaxId, m.from_id);
       copy_str(d.bs_invite.from_name, proto::kMaxName, m.from_name);
@@ -500,6 +536,9 @@ void handle_msg(const proto::Msg & m) {
         changed = true;
       }
       if (d.bs.active && same(d.bs.opp_id, m.from_id)) {
+        if (!d.bs.waiting) {
+          score_log::note("Battleship", m.from_name, score_log::Outcome::ForfeitOpp);
+        }
         d.bs.active = false;
         changed = true;
       }
@@ -512,7 +551,7 @@ void handle_msg(const proto::Msg & m) {
 
     /* —— Checkers —— */
     case proto::MsgType::CkInvite: {
-      if (d.ck.active || d.ck_invite.active) return;
+      if (busy()) return;
       d.ck_invite.active = true;
       copy_str(d.ck_invite.from_id, proto::kMaxId, m.from_id);
       copy_str(d.ck_invite.from_name, proto::kMaxName, m.from_name);
@@ -573,6 +612,9 @@ void handle_msg(const proto::Msg & m) {
         changed = true;
       }
       if (d.ck.active && same(d.ck.opp_id, m.from_id)) {
+        if (!d.ck.waiting) {
+          score_log::note("Checkers", m.from_name, score_log::Outcome::ForfeitOpp);
+        }
         d.ck.active = false;
         changed = true;
       }
@@ -585,7 +627,7 @@ void handle_msg(const proto::Msg & m) {
 
     /* —— Memory —— */
     case proto::MsgType::MemInvite: {
-      if (d.mem.active || d.mem_invite.active) return;
+      if (busy()) return;
       d.mem_invite.active = true;
       copy_str(d.mem_invite.from_id, proto::kMaxId, m.from_id);
       copy_str(d.mem_invite.from_name, proto::kMaxName, m.from_name);
@@ -630,11 +672,145 @@ void handle_msg(const proto::Msg & m) {
         changed = true;
       }
       if (d.mem.active && same(d.mem.opp_id, m.from_id)) {
+        if (!d.mem.waiting) {
+          score_log::note("Memory", m.from_name, score_log::Outcome::ForfeitOpp);
+        }
         d.mem.active = false;
         changed = true;
       }
       if (changed) {
         ui::toast_fmt("%s left Memory", m.from_name);
+        ui::sync_ui();
+      }
+      return;
+    }
+
+    /* —— Reversi —— */
+    case proto::MsgType::RvInvite: {
+      if (busy()) return;
+      d.rv_invite.active = true;
+      copy_str(d.rv_invite.from_id, proto::kMaxId, m.from_id);
+      copy_str(d.rv_invite.from_name, proto::kMaxName, m.from_name);
+      ui::go_reversi();
+      ui::toast_fmt("%s challenged you - Reversi", m.from_name);
+      return;
+    }
+    case proto::MsgType::RvAccept: {
+      RvGame & g = d.rv;
+      if (!g.active || !g.waiting || !same(g.opp_id, m.from_id)) return;
+      g.waiting = false;
+      copy_str(g.opp_name, proto::kMaxName, m.from_name);
+      ui::go_reversi();
+      return;
+    }
+    case proto::MsgType::RvDecline: {
+      if (d.rv.active && d.rv.waiting && same(d.rv.opp_id, m.from_id)) {
+        d.rv.active = false;
+        ui::toast_fmt("%s declined", m.from_name);
+        ui::sync_ui();
+      }
+      return;
+    }
+    case proto::MsgType::RvMove: {
+      RvGame & g = d.rv;
+      if (!g.active || !same(g.opp_id, m.from_id)) return;
+      const int8_t color = (g.my_color == games::rv::kBlack) ? games::rv::kWhite : games::rv::kBlack;
+      if (m.x < 0 && m.y < 0) {
+        /* Pass — board unchanged */
+      } else if (!games::rv::apply(g.board, m.x, m.y, color)) {
+        return;
+      }
+      const int8_t w = games::rv::check_over(g.board);
+      if (w != 0) {
+        g.over = true;
+        g.result_dismissed = false;
+      } else if (games::rv::any_move(g.board, g.my_color)) {
+        g.turn = g.my_color;
+      } else {
+        /* I must pass; opponent plays again after we send pass from UI */
+        g.turn = g.my_color; /* UI auto-passes when no legal move */
+      }
+      ui::go_reversi();
+      return;
+    }
+    case proto::MsgType::RvForfeit: {
+      bool changed = false;
+      if (d.rv_invite.active && same(d.rv_invite.from_id, m.from_id)) {
+        d.rv_invite.active = false;
+        changed = true;
+      }
+      if (d.rv.active && same(d.rv.opp_id, m.from_id)) {
+        if (d.rv.active && !d.rv.waiting) {
+          score_log::note("Reversi", m.from_name, score_log::Outcome::ForfeitOpp);
+        }
+        d.rv.active = false;
+        changed = true;
+      }
+      if (changed) {
+        ui::toast_fmt("%s left Reversi", m.from_name);
+        ui::sync_ui();
+      }
+      return;
+    }
+
+    /* —— Dots & Boxes —— */
+    case proto::MsgType::DbInvite: {
+      if (busy()) return;
+      d.db_invite.active = true;
+      copy_str(d.db_invite.from_id, proto::kMaxId, m.from_id);
+      copy_str(d.db_invite.from_name, proto::kMaxName, m.from_name);
+      ui::go_dots();
+      ui::toast_fmt("%s challenged you - Dots & Boxes", m.from_name);
+      return;
+    }
+    case proto::MsgType::DbAccept: {
+      DbGame & g = d.db;
+      if (!g.active || !g.waiting || !same(g.opp_id, m.from_id)) return;
+      g.waiting = false;
+      copy_str(g.opp_name, proto::kMaxName, m.from_name);
+      ui::go_dots();
+      return;
+    }
+    case proto::MsgType::DbDecline: {
+      if (d.db.active && d.db.waiting && same(d.db.opp_id, m.from_id)) {
+        d.db.active = false;
+        ui::toast_fmt("%s declined", m.from_name);
+        ui::sync_ui();
+      }
+      return;
+    }
+    case proto::MsgType::DbLine: {
+      DbGame & g = d.db;
+      if (!g.active || !same(g.opp_id, m.from_id)) return;
+      const int8_t side = (g.my_side == games::db::kP1) ? games::db::kP2 : games::db::kP1;
+      const int claimed = games::db::claim(g.state, m.y /*is_vert*/, m.x /*r*/, m.col /*c*/, side);
+      if (claimed < 0) return;
+      if (games::db::over(g.state)) {
+        g.over = true;
+        g.result_dismissed = false;
+      } else if (claimed == 0) {
+        g.turn = g.my_side;
+      } else {
+        g.turn = side;
+      }
+      ui::go_dots();
+      return;
+    }
+    case proto::MsgType::DbForfeit: {
+      bool changed = false;
+      if (d.db_invite.active && same(d.db_invite.from_id, m.from_id)) {
+        d.db_invite.active = false;
+        changed = true;
+      }
+      if (d.db.active && same(d.db.opp_id, m.from_id)) {
+        if (d.db.active && !d.db.waiting) {
+          score_log::note("Dots & Boxes", m.from_name, score_log::Outcome::ForfeitOpp);
+        }
+        d.db.active = false;
+        changed = true;
+      }
+      if (changed) {
+        ui::toast_fmt("%s left Dots & Boxes", m.from_name);
         ui::sync_ui();
       }
       return;

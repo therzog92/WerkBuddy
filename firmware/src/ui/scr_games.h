@@ -12,6 +12,8 @@ lv_obj_t * game_c4_screen();
 lv_obj_t * game_bs_screen();
 lv_obj_t * game_ck_screen();
 lv_obj_t * game_mem_screen();
+lv_obj_t * game_rv_screen();
+lv_obj_t * game_db_screen();
 
 /** Sim/QA helper: load a game screen and force a panel ("play" | "wait" | "invite"). */
 void games_debug_show(const char * game, const char * panel);

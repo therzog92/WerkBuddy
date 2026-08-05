@@ -1,5 +1,6 @@
 #include "ui/theme.h"
 
+#include "app/app.h"
 #include "app/background.h"
 
 namespace wp {
@@ -30,6 +31,15 @@ constexpr Palette kPalettes[] = {
     /* Matcha — green ↔ deep forest */
     {0x0a120c, 0x122018, 0x1a2a20, 0xf0fff4, 0xa8c9b0, 0xd4e157, 0x2ecc71, 0x7dffb3, 0xff5c7a,
      0x2a5540, 0x1a3828, 0x081208, 0x2ecc71, 0x105038},
+    /* Cosmic — indigo ↔ electric violet */
+    {0x080814, 0x12122a, 0x1c1a38, 0xeef0ff, 0xa0a8d8, 0xc4b5fd, 0x8b5cf6, 0x67e8f9, 0xff5c7a,
+     0x35305a, 0x1a1840, 0x0a0a18, 0x7c3aed, 0x312e81},
+    /* Coral — peach ↔ rose */
+    {0x140c0c, 0x221616, 0x2e1c1c, 0xfff5f2, 0xd4a8a0, 0xffd6a5, 0xff6b6b, 0xffb4a2, 0xff5c7a,
+     0x5a3030, 0x3a1818, 0x100808, 0xe85d4c, 0x9a3040},
+    /* Slate — cool steel ↔ charcoal */
+    {0x0c0e12, 0x161a22, 0x1e2430, 0xf0f4f8, 0x9aa8b8, 0xe2e8f0, 0x64748b, 0x94a3b8, 0xff5c7a,
+     0x3a4555, 0x1a222e, 0x080a0e, 0x475569, 0x1e293b},
 };
 
 Id g_id = Id::Eleganza;
@@ -62,6 +72,9 @@ const char * name(Id id) {
     case Id::Ice: return "Ice";
     case Id::Lemon: return "Lemon";
     case Id::Matcha: return "Matcha";
+    case Id::Cosmic: return "Cosmic";
+    case Id::Coral: return "Coral";
+    case Id::Slate: return "Slate";
     default: return "?";
   }
 }
@@ -119,7 +132,25 @@ void apply_screen_bg(lv_obj_t * scr, BgWash wash) {
 
   lv_obj_set_style_bg_image_src(scr, nullptr, 0);
   static lv_grad_dsc_t grad;
-  const lv_color_t colors[] = {grad_top(), bg1(), bg0(), grad_bot()};
+
+  const background::Preset preset = background::preset();
+  lv_color_t c0, c1, c2, c3;
+  if (preset == background::Preset::Theme) {
+    c0 = grad_top();
+    c1 = bg1();
+    c2 = bg0();
+    c3 = grad_bot();
+  } else {
+    uint32_t top = 0, bot = 0;
+    background::preset_colors(preset, &top, &bot);
+    /* Mid stops blend toward theme panel so chrome still feels related. */
+    c0 = lv_color_hex(top);
+    c1 = lv_color_mix(lv_color_hex(top), panel(), 90);
+    c2 = lv_color_mix(lv_color_hex(bot), bg0(), 80);
+    c3 = lv_color_hex(bot);
+  }
+
+  const lv_color_t colors[] = {c0, c1, c2, c3};
   const lv_opa_t opas[] = {LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER};
   const uint8_t fracs[] = {0, 70, 150, 255};
   lv_grad_init_stops(&grad, colors, opas, fracs, 4);

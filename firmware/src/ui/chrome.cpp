@@ -300,30 +300,36 @@ lv_obj_t * make_peer_btn(lv_obj_t * parent, const char * name, const char * subt
   lv_obj_t * n = lv_label_create(btn);
   lv_label_set_text(n, name);
   lv_obj_set_style_text_color(n, lv_color_hex(0x1a0a12), 0);
-  lv_obj_set_style_text_font(n, &lv_font_montserrat_16, 0);
+  const bool has_sub = subtitle && subtitle[0];
+  lv_obj_set_style_text_font(n, has_sub ? &lv_font_montserrat_16 : &lv_font_montserrat_20, 0);
   lv_obj_remove_flag(n, LV_OBJ_FLAG_CLICKABLE);
 
-  if (subtitle && subtitle[0]) {
+  if (has_sub) {
     lv_obj_t * s = lv_label_create(btn);
     lv_label_set_text(s, subtitle);
     lv_obj_set_style_text_color(s, lv_color_hex(0x3a2030), 0);
     lv_obj_set_style_text_font(s, &lv_font_montserrat_12, 0);
     lv_obj_remove_flag(s, LV_OBJ_FLAG_CLICKABLE);
+  } else {
+    lv_obj_set_style_pad_ver(btn, 16, 0);
   }
 
   if (cb) lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
   return btn;
 }
 
-void hide_forfeit_confirm() {
+void hide_confirm() {
   if (g_confirm) {
     lv_obj_delete(g_confirm);
     g_confirm = nullptr;
   }
 }
 
-void show_forfeit_confirm(lv_event_cb_t on_yes, lv_event_cb_t on_no) {
-  hide_forfeit_confirm();
+void hide_forfeit_confirm() { hide_confirm(); }
+
+void show_confirm(const char * message, const char * yes_label, bool yes_danger,
+                  lv_event_cb_t on_yes, lv_event_cb_t on_no) {
+  hide_confirm();
   lv_obj_t * layer = lv_obj_create(lv_layer_top());
   g_confirm = layer;
   lv_obj_remove_style_all(layer);
@@ -344,7 +350,7 @@ void show_forfeit_confirm(lv_event_cb_t on_yes, lv_event_cb_t on_no) {
   lv_obj_set_flex_align(card, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
   lv_obj_t * msg = lv_label_create(card);
-  lv_label_set_text(msg, "Are you sure you want to forfeit?");
+  lv_label_set_text(msg, message && message[0] ? message : "Are you sure?");
   lv_obj_set_style_text_color(msg, theme::ink(), 0);
   lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_long_mode(msg, LV_LABEL_LONG_WRAP);
@@ -358,17 +364,22 @@ void show_forfeit_confirm(lv_event_cb_t on_yes, lv_event_cb_t on_no) {
 
   auto wrap_no = [](lv_event_t * e) {
     auto * user_cb = reinterpret_cast<lv_event_cb_t>(lv_event_get_user_data(e));
-    hide_forfeit_confirm();
+    hide_confirm();
     if (user_cb) user_cb(e);
   };
   auto wrap_yes = [](lv_event_t * e) {
     auto * user_cb = reinterpret_cast<lv_event_cb_t>(lv_event_get_user_data(e));
-    hide_forfeit_confirm();
+    hide_confirm();
     if (user_cb) user_cb(e);
   };
 
   dock_btn(row, "Cancel", false, false, wrap_no, (void *)on_no);
-  dock_btn(row, "Forfeit", false, true, wrap_yes, (void *)on_yes);
+  dock_btn(row, yes_label && yes_label[0] ? yes_label : "OK", false, yes_danger, wrap_yes,
+           (void *)on_yes);
+}
+
+void show_forfeit_confirm(lv_event_cb_t on_yes, lv_event_cb_t on_no) {
+  show_confirm("Are you sure you want to forfeit?", "Forfeit", true, on_yes, on_no);
 }
 
 }  // namespace ui

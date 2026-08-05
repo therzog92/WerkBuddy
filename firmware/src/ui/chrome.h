@@ -34,7 +34,11 @@ lv_obj_t * make_peer_btn(lv_obj_t * parent, const char * name, const char * subt
 void style_peer_like(lv_obj_t * btn);
 
 void show_forfeit_confirm(lv_event_cb_t on_yes, lv_event_cb_t on_no = nullptr);
+/** Generic yes/no overlay (forfeit, clear history, etc.). */
+void show_confirm(const char * message, const char * yes_label, bool yes_danger,
+                  lv_event_cb_t on_yes, lv_event_cb_t on_no = nullptr);
 void hide_forfeit_confirm();
+void hide_confirm();
 
 /** Web-style toast: bottom pill, auto-hides after ~2.2s. */
 void toast(const char * text);

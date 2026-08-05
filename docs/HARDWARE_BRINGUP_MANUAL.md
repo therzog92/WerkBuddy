@@ -1,9 +1,9 @@
-# WerkPager — Hardware Bring-Up Manual
+# WerkBuddy — Hardware Bring-Up Manual
 
-**Audience:** Future Cursor agents + Tommy  
+**Audience:** Cursor agents + the operator bringing up desks  
 **Board:** GUITION **ESP32-4848S040C_I** (ESP32-S3, 4″ 480×480 capacitive)  
-**Companion docs:** `docs/ESP32_PORT_PLAN.md` (architecture + phases), `.cursor/rules/esp32-port.mdc`  
-**Last audited:** 2026-08-04 (pre-hardware, after LVGL PC sim feature pass)
+**Companion docs:** `AGENTS.md`, `docs/ESP32_PORT_PLAN.md`, `.cursor/rules/esp32-port.mdc`  
+**Last audited:** 2026-08-05 (pre-hardware; LiPo BAT documented; LVGL sim feature-complete for v1 surface)
 
 ---
 
@@ -12,17 +12,17 @@
 ### For agents (critical)
 
 1. Read **Part A** (readiness) and **Part B** (what already exists) once when boards arrive.
-2. Walk Tommy through **exactly one Session** from Part C at a time.
-3. After each Session succeeds, **stop**. Tell Tommy what worked and what the *next* Session is named — do **not** paste Sessions 3–8 in one reply.
+2. Walk the operator through **exactly one Session** from Part C at a time.
+3. After each Session succeeds, **stop**. Say what worked and what the *next* Session is named — do **not** paste Sessions 3–8 in one reply.
 4. Do **not** jump to games, doodle, or full app flash until Phase 0 exit criteria are met.
-5. Prefer fixing product behavior in `web/` or the PC LVGL sim first; port to glass second.
+5. Prefer fixing product behavior in the PC LVGL sim first; port to glass second.
 6. Never invent hover-only UX, cloud/Wi‑Fi for v1, or mid-game multi-resume.
 
-### For Tommy
+### For the operator
 
 When boards arrive, open this repo and say:
 
-> Boards are here — GUITION ESP32-4848S040C_I. Read `docs/HARDWARE_BRINGUP_MANUAL.md` and walk me through **Session 0 only**.
+> Boards are here — GUITION ESP32-4848S040C_I. Read `AGENTS.md` and `docs/HARDWARE_BRINGUP_MANUAL.md` and walk me through **Session 0 only**.
 
 Then do each Session when the agent says you’re ready. One chunk at a time.
 
@@ -34,7 +34,8 @@ Then do each Session when the agent says you’re ready. One chunk at a time.
 
 | Track | State | Ready for glass? |
 |-------|--------|------------------|
-| Web sim (`web/`) | Feature-complete UX/behavior bible | Yes — keep as oracle |
+| LVGL PC sim (`firmware/`) | Feature-complete UX/behavior bible | Yes — active oracle |
+| Web HTML sim | Archived at `../WerkBuddy-web-sim-archive/` | Historical only |
 | LVGL PC sim (`firmware/`, SDL) | **Phase −1 essentially complete** for v1 product surface | Yes — UI/logic to port |
 | ESP32 / PlatformIO / IDF project | **Does not exist yet** | No — Phase 0 |
 | Binary ESP-NOW codec | **Not implemented** (fat structs on sim link only) | No — Phase 0–3 |
@@ -56,7 +57,7 @@ Then do each Session when the agent says you’re ready. One chunk at a time.
 
 | Gap | Why it matters | When to fix |
 |-----|----------------|-------------|
-| No device build target | Can’t flash WerkPager yet | Phase 0 |
+| No device build target | Can’t flash WerkBuddy yet | Phase 0 |
 | SDL `main.cpp` + `LV_COLOR_DEPTH 32` | Device needs RGB565 + PSRAM FB + GT911 indev | Phase 0 |
 | No `pack()` / `unpack()` | ESP-NOW can’t carry fat `Msg` as-is | Phase 0 ping → Phase 3 games |
 | Sim bots only (`mac-will` / `mac-alex`) | Real peers = Wi‑Fi MAC hex | Phase 0–1 |
@@ -92,7 +93,7 @@ Then do each Session when the agent says you’re ready. One chunk at a time.
 | MCU | ESP32-S3 (typically **N16R8**: 16 MB flash, **8 MB PSRAM**) |
 | Panel | 4.0″ IPS **480×480**, driver **ST7701** (SPI init + RGB parallel) |
 | Touch | Capacitive **GT911** (I2C, often addr `0x5D`) |
-| Power | **5V DC** (USB or barrel — check what arrived in the box) |
+| Power | **5V** via USB (bring-up); optional **LiPo** on rear **BAT** MX1.25 2P (`BAT+`/`BAT−`, 3.0–4.2 V only) |
 | Radio | On-chip Wi‑Fi used for **ESP-NOW** (no router needed for v1) |
 
 Typical pin map (verify against vendor sheet / sticker; revisions exist):
@@ -119,7 +120,7 @@ Community references (for bring-up demos, not gospel):
 
 ```
 WerkPager/
-  web/                     # UX + behavior SPEC (keep working)
+  firmware/                # LVGL PC sim → ESP32 (UX + behavior SPEC)
   protocol/messages.js     # MessageType names (JSON in sim)
   firmware/
     CMakeLists.txt         # PC sim only today
@@ -170,14 +171,14 @@ Start-Process firmware\build\werkpager_sim.exe -WorkingDirectory firmware\build
 
 - Clear `WERKPAGER_SHOT` / `WERKPAGER_SCREEN` for interactive window  
 - F12 or `-Shot` → `firmware/sim-out/preview.png`  
-- Web: `python -m http.server 8765` → `http://localhost:8765/web/`
+- LVGL: `powershell -File firmware/scripts/run-sim.ps1`
 
 ## Phase ladder (do not skip)
 
 | Phase | Goal | Exit |
 |-------|------|------|
 | **−1** | LVGL on PC | ✅ Done enough — polish only as needed |
-| **0** | Glass + touch + ESP-NOW HELLO | Both boards show tappable WERKPAGER; ping toast |
+| **0** | Glass + touch + ESP-NOW HELLO | Both boards show tappable WERKBUDDY; ping toast |
 | **1** | Hub + Settings + idle + discover | B sees A after scan; name/theme/clock persist |
 | **2** | WerkPager calls IRL | A pings B; B Shantays; A toast |
 | **3** | Binary codec + TTT | Full TTT match two desks |
@@ -200,9 +201,10 @@ Agent rule: complete Session N, celebrate, name Session N+1, **stop**.
 
 ### You need
 
-- [ ] Each GUITION board (expect 3 later for Tommy/Will/Alex; start with **2** if only 2 arrived)
+- [ ] Each GUITION board (start with **2** if only 2 arrived; expect ~3 desks later)
 - [ ] USB cable(s) that carry **data** (not charge-only)
 - [ ] 5V power as supplied (USB-C / micro / barrel — match the board)
+- [ ] Optional: **LiPo** cells for the rear **BAT** connector (MX1.25 2P) — polarity `BAT+` / `BAT−` only; **never 5 V on BAT**
 - [ ] Windows PC with free USB ports
 - [ ] This repo open in Cursor
 
@@ -210,26 +212,34 @@ Agent rule: complete Session N, celebrate, name Session N+1, **stop**.
 
 1. Open the box. Photograph the **label** on the PCB/back: brand, model, any QR / wiki URL.
 2. Confirm model text matches **ESP32-4848S040C_I** (or 4848S040 family). If different, stop and tell the agent the exact string.
-3. Note included accessories: USB cable, power adapter, stand, SD card, pin headers.
-4. Plug **one** board into USB (power + data). Do **not** force connectors.
-5. Windows → Device Manager → look for a new **COM port** or “USB Serial” / “USB JTAG”. Write down the COM number (e.g. `COM5`).
-6. If nothing appears: try another cable, another port, install Espressif USB drivers later (Session 1).
+3. Photograph the **rear connectors** and confirm silkscreen: **BAT** (2P), **UART** (4P: 3V3/TXD/RXD/GND), **Speak** (2P).
+4. Note included accessories: USB cable, power adapter, stand, SD card, pin headers, LiPo (if ordered separately).
+5. Plug **one** board into USB (power + data). Do **not** force connectors. Leave LiPo disconnected until USB flash path works.
+6. Windows → Device Manager → look for a new **COM port** or “USB Serial” / “USB JTAG”. Write down the COM number (e.g. `COM5`).
+7. If nothing appears: try another cable, another port, install Espressif USB drivers later (Session 1).
+
+### LiPo (optional in Session 0)
+
+- Inventory the cells and connectors; do **not** hot-plug LiPo while experimenting with unknown firmware unless the agent says it’s safe.
+- First power path for bring-up remains **USB 5 V**. LiPo is for untethered desks after glass is proven.
+- Reminder: LiPo keeps the **board** alive; it is not a coin-cell RTC. Clock across full power-off still needs Sync time or a later DS3231 on I²C.
 
 ### Done when
 
-- You have photos of the board label  
-- At least one board powers on (backlight may or may not light until firmware)  
-- You know the COM port (or that drivers are missing)
+- You have photos of the board label **and** rear BAT/UART silk  
+- At least one board powers on from USB (backlight may or may not light until firmware)  
+- You know the COM port (or that drivers are missing)  
+- LiPo cells (if any) are inventoried with correct connector type noted  
 
 ### Tell the agent
 
-> Session 0 done. Model on sticker: ____. COM port: ____. Accessories: ____. Ready for Session 1.
+> Session 0 done. Model on sticker: ____. COM port: ____. Accessories: ____. LiPo on hand: Y/N. Ready for Session 1.
 
 ---
 
 ## Session 1 — Vendor demo (prove LCD + touch)
 
-**Goal:** Factory / Guition demo firmware proves the glass and touch. No WerkPager code yet.
+**Goal:** Factory / Guition demo firmware proves the glass and touch. No WerkBuddy code yet.
 
 ### You need
 
@@ -268,7 +278,7 @@ Both (or at least one) boards show a working vendor UI with working touch.
 
 ## Session 2 — Toolchain lock + “hello LVGL” on device
 
-**Goal:** Decide **PlatformIO+Arduino** vs **ESP-IDF**, create the device project skeleton, flash a **single tappable “WERKPAGER”** label (blank shell — not full app).
+**Goal:** Decide **PlatformIO+Arduino** vs **ESP-IDF**, create the device project skeleton, flash a **single tappable “WERKBUDDY”** label (blank shell — not full app).
 
 ### Decision guide
 
@@ -284,7 +294,7 @@ Both (or at least one) boards show a working vendor UI with working touch.
 1. Add device project under `firmware/` (e.g. `firmware/device/` or PlatformIO env) **without breaking** `run-sim.ps1` PC build.
 2. Wire ST7701 RGB + backlight + GT911 → LVGL display + indev.
 3. Set color depth appropriate for RGB panel (**RGB565** typical).
-4. Show centered label **WERKPAGER**; tap toggles a toast or color.
+4. Show centered label **WERKBUDDY**; tap toggles a toast or color.
 5. Update `docs/ESP32_PORT_PLAN.md` §12 with SDK + LVGL version locked.
 
 ### Tommy steps
@@ -295,7 +305,7 @@ Both (or at least one) boards show a working vendor UI with working touch.
 
 ### Done when
 
-Board A shows tappable **WERKPAGER** from *our* project (not only vendor demo).
+Board A shows tappable **WERKBUDDY** from *our* project (not only vendor demo).
 
 ### Tell the agent
 
@@ -315,7 +325,7 @@ Board A shows tappable **WERKPAGER** from *our* project (not only vendor demo).
 
 ### Agent tasks
 
-1. Minimal `HELLO` / `ACK` over ESP-NOW (can be raw bytes; binary WerkPager codec can wait).  
+1. Minimal `HELLO` / `ACK` over ESP-NOW (can be raw bytes; binary WerkBuddy codec can wait).  
 2. On receive: LVGL toast + Serial log of peer MAC + RSSI if available.  
 3. Document MAC addresses for desks (Tommy / Will / Alex labels).
 
@@ -446,7 +456,7 @@ Reply with **only** Session 0 instructions (unbox). Do not start coding.
 ## Night-one success (realistic)
 
 - [ ] Vendor demo LCD + touch  
-- [ ] Our LVGL “WERKPAGER” tap shell  
+- [ ] Our LVGL “WERKBUDDY” tap shell  
 - [ ] Two-board ESP-NOW ping  
 **Not** required night one: all games, doodle, OTA.
 
@@ -492,7 +502,7 @@ Reply with **only** Session 0 instructions (unbox). Do not start coding.
 ## Paste prompts (Tommy → agent)
 
 **Start:**  
-> Boards are here — GUITION ESP32-4848S040C_I. Read `docs/HARDWARE_BRINGUP_MANUAL.md` and walk me through Session 0 only.
+> Boards are here — GUITION ESP32-4848S040C_I. Read `AGENTS.md` and `docs/HARDWARE_BRINGUP_MANUAL.md` and walk me through Session 0 only.
 
 **Continue:**  
 > Session N done. Notes: ____. Walk me through Session N+1 only.

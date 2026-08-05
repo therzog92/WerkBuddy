@@ -1,10 +1,13 @@
 #include "ui/scr_games.h"
 
 #include "app/app.h"
+#include "app/score_log.h"
 #include "games/battleship.h"
 #include "games/c4.h"
 #include "games/checkers.h"
+#include "games/dots.h"
 #include "games/memory.h"
+#include "games/reversi.h"
 #include "games/sttt.h"
 #include "games/ttt.h"
 #include "protocol/messages.h"
@@ -44,9 +47,17 @@ const char * game_vs_sub(char * buf, size_t n, bool active, const char * opp_nam
   return buf[0] ? buf : nullptr;
 }
 
-/** Win / lose / draw celebration card (web .ttt-result). Floating over the board. */
+/** Win / lose / draw celebration card. Logs to scoreboard when game/peer given. */
 void attach_result_overlay(lv_obj_t * parent, int outcome /*1 win, 0 lose, -1 draw*/,
-                           lv_event_cb_t on_dismiss) {
+                           lv_event_cb_t on_dismiss, const char * game = nullptr,
+                           const char * peer = nullptr) {
+  if (game && game[0]) {
+    const score_log::Outcome o =
+        outcome > 0 ? score_log::Outcome::Win
+                    : (outcome < 0 ? score_log::Outcome::Tie : score_log::Outcome::Lose);
+    score_log::note(game, peer, o);
+  }
+
   lv_obj_t * ov = lv_obj_create(parent);
   lv_obj_remove_style_all(ov);
   lv_obj_set_size(ov, lv_pct(100), lv_pct(100));
@@ -145,7 +156,7 @@ void peer_list(lv_obj_t * parent, lv_event_cb_t on_peer) {
 void ttt_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || d.ttt.active || d.ttt_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count || app::busy() || d.ttt.active || d.ttt_invite.active) return;
   const app::Peer & p = d.peers[idx];
   d.ttt = {};
   d.ttt.active = true;
@@ -271,7 +282,7 @@ void fill_ttt_play(lv_obj_t * parent) {
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
       app::desk().ttt.result_dismissed = true;
       go_ttt();
-    });
+    }, "Tic Tac Toe", g.opp_name);
   }
 }
 
@@ -354,6 +365,7 @@ lv_obj_t * game_ttt_build() {
       dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
         show_forfeit_confirm([](lv_event_t * /*ev*/) {
           app::Desk & desk = app::desk();
+          score_log::note("Tic Tac Toe", desk.ttt.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::TttForfeit;
           fill_msg_ids(m, desk.ttt.opp_id);
@@ -375,7 +387,7 @@ lv_obj_t * game_ttt_build() {
 void sttt_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || d.sttt.active || d.sttt_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count || app::busy() || d.sttt.active || d.sttt_invite.active) return;
   const app::Peer & p = d.peers[idx];
   d.sttt = {};
   d.sttt.active = true;
@@ -533,7 +545,7 @@ void fill_sttt_play(lv_obj_t * parent) {
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
       app::desk().sttt.result_dismissed = true;
       go_sttt();
-    });
+    }, "Super TTT", g.opp_name);
   }
 }
 
@@ -738,6 +750,7 @@ lv_obj_t * game_sttt_build() {
       lv_obj_t * btn = dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
         show_forfeit_confirm([](lv_event_t * /*ev*/) {
           app::Desk & desk = app::desk();
+          score_log::note("Super TTT", desk.sttt.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::StttForfeit;
           fill_msg_ids(m, desk.sttt.opp_id);
@@ -806,7 +819,7 @@ lv_grad_dsc_t * c4_rainbow() {
 void c4_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || d.c4.active || d.c4_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count || app::busy() || d.c4.active || d.c4_invite.active) return;
   const app::Peer & p = d.peers[idx];
   d.c4 = {};
   d.c4.active = true;
@@ -1012,7 +1025,7 @@ void fill_c4_play(lv_obj_t * parent) {
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
       app::desk().c4.result_dismissed = true;
       go_c4();
-    });
+    }, "Connect Four", g.opp_name);
   }
 }
 
@@ -1101,6 +1114,7 @@ lv_obj_t * game_c4_build() {
       dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
         show_forfeit_confirm([](lv_event_t * /*ev*/) {
           app::Desk & desk = app::desk();
+          score_log::note("Connect Four", desk.c4.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::C4Forfeit;
           fill_msg_ids(m, desk.c4.opp_id);
@@ -1147,7 +1161,7 @@ lv_obj_t * game_c4_build() {
 void bs_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || d.bs.active || d.bs_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count || app::busy() || d.bs.active || d.bs_invite.active) return;
   const app::Peer & p = d.peers[idx];
   d.bs = {};
   d.bs.active = true;
@@ -1513,6 +1527,7 @@ lv_obj_t * game_bs_build() {
     dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
       show_forfeit_confirm([](lv_event_t * /*ev*/) {
         app::Desk & desk = app::desk();
+        score_log::note("Battleship", desk.bs.opp_name, score_log::Outcome::ForfeitSelf);
         proto::Msg m;
         m.type = proto::MsgType::BsForfeit;
         fill_msg_ids(m, desk.bs.opp_id);
@@ -1555,7 +1570,7 @@ lv_obj_t * game_bs_build() {
       attach_result_overlay(body, d.bs.i_won ? 1 : 0, [](lv_event_t * /*e*/) {
         app::desk().bs.result_dismissed = true;
         go_battleship();
-      });
+      }, "Battleship", d.bs.opp_name);
     }
     if (d.bs.over) {
       dock_play_again_home(
@@ -1585,6 +1600,7 @@ lv_obj_t * game_bs_build() {
       dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
         show_forfeit_confirm([](lv_event_t * /*ev*/) {
           app::Desk & desk = app::desk();
+          score_log::note("Battleship", desk.bs.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::BsForfeit;
           fill_msg_ids(m, desk.bs.opp_id);
@@ -1606,7 +1622,7 @@ lv_obj_t * game_bs_build() {
 void ck_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || d.ck.active || d.ck_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count || app::busy() || d.ck.active || d.ck_invite.active) return;
   const app::Peer & p = d.peers[idx];
   d.ck = {};
   d.ck.active = true;
@@ -1780,7 +1796,7 @@ void fill_ck_play(lv_obj_t * parent) {
     attach_result_overlay(parent, i_won ? 1 : 0, [](lv_event_t * /*e*/) {
       app::desk().ck.result_dismissed = true;
       go_checkers();
-    });
+    }, "Checkers", g.opp_name);
   }
 }
 
@@ -1865,6 +1881,7 @@ lv_obj_t * game_ck_build() {
       dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
         show_forfeit_confirm([](lv_event_t * /*ev*/) {
           app::Desk & desk = app::desk();
+          score_log::note("Checkers", desk.ck.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::CkForfeit;
           fill_msg_ids(m, desk.ck.opp_id);
@@ -1885,7 +1902,12 @@ lv_obj_t * game_ck_build() {
 
 std::string mem_face_path(uint8_t pair) {
   namespace fs = std::filesystem;
-  const char * name = games::mem::face_names()[pair % games::mem::kPairs];
+  pair = (uint8_t)(pair % games::mem::kPairs);
+  static std::string cache[games::mem::kPairs];
+  static bool ready[games::mem::kPairs] = {};
+  if (ready[pair]) return cache[pair];
+
+  const char * name = games::mem::face_names()[pair];
   const fs::path candidates[] = {
       fs::current_path() / "assets" / "memory",
       fs::current_path() / ".." / "assets" / "memory",
@@ -1907,10 +1929,13 @@ std::string mem_face_path(uint8_t pair) {
       /* Confirm LVGL can decode before claiming success. */
       lv_image_header_t hdr{};
       if (lv_image_decoder_get_info(s.c_str(), &hdr) != LV_RESULT_OK || hdr.w == 0) continue;
-      return s;
+      cache[pair] = std::move(s);
+      ready[pair] = true;
+      return cache[pair];
     }
   }
-  return {};
+  ready[pair] = true; /* negative-cache empty */
+  return cache[pair];
 }
 
 struct MemResolveLocal {
@@ -1947,7 +1972,7 @@ void mem_resolve_local(void * ud) {
 void mem_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || d.mem.active || d.mem_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count || app::busy() || d.mem.active || d.mem_invite.active) return;
   const app::Peer & p = d.peers[idx];
   d.mem = {};
   d.mem.active = true;
@@ -2017,7 +2042,7 @@ void fill_mem_play(lv_obj_t * parent) {
     if (up) {
       lv_obj_set_style_bg_color(card, lv_color_hex(0x1a1224), 0);
       lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-      const std::string path = mem_face_path(g.deck[i]);
+      const std::string & path = mem_face_path(g.deck[i]);
       bool shown = false;
       if (!path.empty()) {
         lv_obj_t * img = lv_image_create(card);
@@ -2061,7 +2086,7 @@ void fill_mem_play(lv_obj_t * parent) {
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
       app::desk().mem.result_dismissed = true;
       go_memory();
-    });
+    }, "Memory", g.opp_name);
   }
 }
 
@@ -2147,6 +2172,7 @@ lv_obj_t * game_mem_build() {
       dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
         show_forfeit_confirm([](lv_event_t * /*ev*/) {
           app::Desk & desk = app::desk();
+          score_log::note("Memory", desk.mem.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::MemForfeit;
           fill_msg_ids(m, desk.mem.opp_id);
@@ -2158,6 +2184,526 @@ lv_obj_t * game_mem_build() {
     }
   } else {
     peer_list(body, mem_challenge);
+    dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_games_folder(); });
+  }
+  return scr;
+}
+
+/* ================= REVERSI ================= */
+
+void rv_send_pass() {
+  app::RvGame & g = app::desk().rv;
+  proto::Msg m;
+  m.type = proto::MsgType::RvMove;
+  fill_msg_ids(m, g.opp_id);
+  m.x = -1;
+  m.y = -1;
+  app::send(m);
+  const int8_t opp = (g.my_color == games::rv::kBlack) ? games::rv::kWhite : games::rv::kBlack;
+  if (games::rv::check_over(g.board) != 0) {
+    g.over = true;
+    g.result_dismissed = false;
+  } else {
+    g.turn = opp;
+  }
+}
+
+void rv_challenge(lv_event_t * e) {
+  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  app::Desk & d = app::desk();
+  if (idx < 0 || idx >= d.peer_count || app::busy() || d.rv.active || d.rv_invite.active) return;
+  const app::Peer & p = d.peers[idx];
+  d.rv = {};
+  d.rv.active = true;
+  d.rv.waiting = true;
+  d.rv.my_color = games::rv::kBlack;
+  d.rv.turn = games::rv::kBlack;
+  games::rv::init(d.rv.board);
+  std::snprintf(d.rv.opp_id, sizeof(d.rv.opp_id), "%s", p.id);
+  std::snprintf(d.rv.opp_name, sizeof(d.rv.opp_name), "%s", p.name);
+  proto::Msg m;
+  m.type = proto::MsgType::RvInvite;
+  fill_msg_ids(m, p.id);
+  app::send(m);
+  go_reversi();
+}
+
+void rv_play_cell(lv_event_t * e) {
+  const int packed = (int)(intptr_t)lv_event_get_user_data(e);
+  const int r = packed / games::rv::kN;
+  const int c = packed % games::rv::kN;
+  app::RvGame & g = app::desk().rv;
+  if (!g.active || g.waiting || g.over || g.turn != g.my_color) return;
+  if (!games::rv::apply(g.board, r, c, g.my_color)) return;
+  proto::Msg m;
+  m.type = proto::MsgType::RvMove;
+  fill_msg_ids(m, g.opp_id);
+  m.x = (int8_t)r;
+  m.y = (int8_t)c;
+  app::send(m);
+  const int8_t w = games::rv::check_over(g.board);
+  const int8_t opp = (g.my_color == games::rv::kBlack) ? games::rv::kWhite : games::rv::kBlack;
+  if (w != 0) {
+    g.over = true;
+    g.result_dismissed = false;
+  } else if (games::rv::any_move(g.board, opp)) {
+    g.turn = opp;
+  } else if (games::rv::any_move(g.board, g.my_color)) {
+    g.turn = g.my_color; /* opponent must pass — keep playing */
+  } else {
+    g.over = true;
+    g.result_dismissed = false;
+  }
+  go_reversi();
+}
+
+void fill_rv_play(lv_obj_t * parent) {
+  app::RvGame & g = app::desk().rv;
+  const bool my_turn = !g.over && !g.waiting && g.turn == g.my_color;
+  const bool can_move = games::rv::any_move(g.board, g.my_color);
+
+  if (my_turn && !can_move && !g.over) {
+    if (games::rv::check_over(g.board) != 0) {
+      g.over = true;
+      g.result_dismissed = false;
+    } else {
+      rv_send_pass();
+    }
+    go_reversi();
+    return;
+  }
+
+  int bl = 0, wh = 0;
+  games::rv::count_pieces(g.board, &bl, &wh);
+  char score[48];
+  lv_snprintf(score, sizeof(score), "● %d   ○ %d", bl, wh);
+  make_status(parent, score);
+
+  if (g.over && !g.result_dismissed) make_status(parent, "Game over");
+  else if (g.over) make_status(parent, "Play again?");
+  else if (my_turn) make_status(parent, "Your turn");
+  else {
+    char buf[48];
+    lv_snprintf(buf, sizeof(buf), "Waiting on %s...", g.opp_name);
+    make_status(parent, buf);
+  }
+
+  constexpr int kCell = 40;
+  constexpr int kGap = 3;
+  constexpr int kPad = 8;
+  constexpr int kBoard = kPad * 2 + games::rv::kN * kCell + (games::rv::kN - 1) * kGap;
+
+  lv_obj_t * board = lv_obj_create(parent);
+  lv_obj_remove_style_all(board);
+  lv_obj_set_size(board, kBoard, kBoard);
+  lv_obj_set_style_radius(board, 12, 0);
+  lv_obj_set_style_bg_color(board, lv_color_hex(0x0f3d26), 0);
+  lv_obj_set_style_bg_opa(board, LV_OPA_COVER, 0);
+  lv_obj_set_style_pad_all(board, kPad, 0);
+  lv_obj_set_layout(board, LV_LAYOUT_GRID);
+  static lv_coord_t cols[] = {kCell, kCell, kCell, kCell, kCell, kCell, kCell, kCell, LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t rows[] = {kCell, kCell, kCell, kCell, kCell, kCell, kCell, kCell, LV_GRID_TEMPLATE_LAST};
+  lv_obj_set_grid_dsc_array(board, cols, rows);
+  lv_obj_set_style_pad_row(board, kGap, 0);
+  lv_obj_set_style_pad_column(board, kGap, 0);
+  lv_obj_remove_flag(board, LV_OBJ_FLAG_SCROLLABLE);
+
+  for (int r = 0; r < games::rv::kN; ++r) {
+    for (int c = 0; c < games::rv::kN; ++c) {
+      lv_obj_t * cell = lv_obj_create(board);
+      lv_obj_remove_style_all(cell);
+      lv_obj_set_style_radius(cell, 4, 0);
+      lv_obj_set_style_bg_color(cell, lv_color_hex(0x1a5c3a), 0);
+      lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+      lv_obj_set_grid_cell(cell, LV_GRID_ALIGN_STRETCH, c, 1, LV_GRID_ALIGN_STRETCH, r, 1);
+      lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+
+      const int8_t piece = g.board[r][c];
+      if (piece == games::rv::kBlack || piece == games::rv::kWhite) {
+        lv_obj_t * disc = lv_obj_create(cell);
+        lv_obj_remove_style_all(disc);
+        lv_obj_set_size(disc, kCell - 8, kCell - 8);
+        lv_obj_set_style_radius(disc, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(disc, piece == games::rv::kBlack ? lv_color_hex(0x1a1a1a) : lv_color_hex(0xf2f2f2),
+                                  0);
+        lv_obj_set_style_bg_opa(disc, LV_OPA_COVER, 0);
+        lv_obj_center(disc);
+        lv_obj_remove_flag(disc, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(disc, LV_OBJ_FLAG_SCROLLABLE);
+      } else if (my_turn && games::rv::would_flip(g.board, r, c, g.my_color) > 0) {
+        lv_obj_set_style_border_width(cell, 2, 0);
+        lv_obj_set_style_border_color(cell, theme::gold(), 0);
+        lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(cell, rv_play_cell, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)(r * games::rv::kN + c));
+      }
+    }
+  }
+
+  if (g.over && !g.result_dismissed) {
+    const int8_t w = games::rv::check_over(g.board);
+    const int outcome = (w < 0) ? -1 : (w == g.my_color ? 1 : 0);
+    attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
+      app::desk().rv.result_dismissed = true;
+      go_reversi();
+    }, "Reversi", g.opp_name);
+  }
+}
+
+lv_obj_t * game_rv_build() {
+  app::Desk & d = app::desk();
+  lv_obj_t * scr = make_screen();
+  char sub[40];
+  make_topbar(scr, "REVERSI", d.name,
+              game_vs_sub(sub, sizeof(sub), d.rv.active, d.rv.opp_name, d.rv_invite.active,
+                          d.rv_invite.from_name));
+  lv_obj_t * body = make_body(scr, true);
+  lv_obj_t * dock = make_dock(scr);
+
+  if (d.rv_invite.active) {
+    make_wait_block(body, "GAME INVITE", d.rv_invite.from_name, "wants to play Reversi");
+    dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      proto::Msg m;
+      m.type = proto::MsgType::RvDecline;
+      fill_msg_ids(m, desk.rv_invite.from_id);
+      app::send(m);
+      desk.rv_invite.active = false;
+      go_games_folder();
+    });
+    dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      const auto inv = desk.rv_invite;
+      desk.rv_invite.active = false;
+      desk.rv = {};
+      desk.rv.active = true;
+      desk.rv.my_color = games::rv::kWhite;
+      desk.rv.turn = games::rv::kBlack;
+      games::rv::init(desk.rv.board);
+      std::snprintf(desk.rv.opp_id, sizeof(desk.rv.opp_id), "%s", inv.from_id);
+      std::snprintf(desk.rv.opp_name, sizeof(desk.rv.opp_name), "%s", inv.from_name);
+      proto::Msg m;
+      m.type = proto::MsgType::RvAccept;
+      fill_msg_ids(m, inv.from_id);
+      app::send(m);
+      go_reversi();
+    });
+  } else if (d.rv.active && d.rv.waiting) {
+    make_wait_block(body, "CHALLENGE SENT", d.rv.opp_name, "Waiting for them to accept...");
+    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      proto::Msg m;
+      m.type = proto::MsgType::RvForfeit;
+      fill_msg_ids(m, desk.rv.opp_id);
+      app::send(m);
+      desk.rv.active = false;
+      go_reversi();
+    });
+  } else if (d.rv.active) {
+    fill_rv_play(body);
+    if (d.rv.over) {
+      dock_play_again_home(
+          dock,
+          [](lv_event_t * /*e*/) {
+            app::Desk & desk = app::desk();
+            const int8_t color = desk.rv.my_color;
+            char oid[proto::kMaxId], oname[proto::kMaxName];
+            std::snprintf(oid, sizeof(oid), "%s", desk.rv.opp_id);
+            std::snprintf(oname, sizeof(oname), "%s", desk.rv.opp_name);
+            desk.rv = {};
+            desk.rv.active = true;
+            desk.rv.waiting = true;
+            desk.rv.my_color = color;
+            desk.rv.turn = games::rv::kBlack;
+            games::rv::init(desk.rv.board);
+            std::snprintf(desk.rv.opp_id, sizeof(desk.rv.opp_id), "%s", oid);
+            std::snprintf(desk.rv.opp_name, sizeof(desk.rv.opp_name), "%s", oname);
+            proto::Msg m;
+            m.type = proto::MsgType::RvInvite;
+            fill_msg_ids(m, oid);
+            app::send(m);
+            go_reversi();
+          },
+          [](lv_event_t * /*e*/) {
+            app::desk().rv.active = false;
+            go_hub();
+          });
+    } else {
+      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
+        show_forfeit_confirm([](lv_event_t * /*ev*/) {
+          app::Desk & desk = app::desk();
+          score_log::note("Reversi", desk.rv.opp_name, score_log::Outcome::ForfeitSelf);
+          proto::Msg m;
+          m.type = proto::MsgType::RvForfeit;
+          fill_msg_ids(m, desk.rv.opp_id);
+          app::send(m);
+          desk.rv.active = false;
+          go_games_folder();
+        });
+      });
+    }
+  } else {
+    peer_list(body, rv_challenge);
+    dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_games_folder(); });
+  }
+  return scr;
+}
+
+/* ================= DOTS & BOXES ================= */
+
+void db_challenge(lv_event_t * e) {
+  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  app::Desk & d = app::desk();
+  if (idx < 0 || idx >= d.peer_count || app::busy() || d.db.active || d.db_invite.active) return;
+  const app::Peer & p = d.peers[idx];
+  d.db = {};
+  d.db.active = true;
+  d.db.waiting = true;
+  d.db.my_side = games::db::kP1;
+  d.db.turn = games::db::kP1;
+  games::db::init(d.db.state);
+  std::snprintf(d.db.opp_id, sizeof(d.db.opp_id), "%s", p.id);
+  std::snprintf(d.db.opp_name, sizeof(d.db.opp_name), "%s", p.name);
+  proto::Msg m;
+  m.type = proto::MsgType::DbInvite;
+  fill_msg_ids(m, p.id);
+  app::send(m);
+  go_dots();
+}
+
+void db_play_edge(lv_event_t * e) {
+  const int packed = (int)(intptr_t)lv_event_get_user_data(e);
+  const int is_vert = (packed >> 16) & 1;
+  const int r = (packed >> 8) & 0xff;
+  const int c = packed & 0xff;
+  app::DbGame & g = app::desk().db;
+  if (!g.active || g.waiting || g.over || g.turn != g.my_side) return;
+  const int claimed = games::db::claim(g.state, is_vert, r, c, g.my_side);
+  if (claimed < 0) return;
+  proto::Msg m;
+  m.type = proto::MsgType::DbLine;
+  fill_msg_ids(m, g.opp_id);
+  m.y = (int8_t)is_vert;
+  m.x = (int8_t)r;
+  m.col = (int8_t)c;
+  app::send(m);
+  if (games::db::over(g.state)) {
+    g.over = true;
+    g.result_dismissed = false;
+  } else if (claimed == 0) {
+    g.turn = (g.my_side == games::db::kP1) ? games::db::kP2 : games::db::kP1;
+  } /* else keep turn after claiming a box */
+  go_dots();
+}
+
+void fill_db_play(lv_obj_t * parent) {
+  app::DbGame & g = app::desk().db;
+  const bool my_turn = !g.over && !g.waiting && g.turn == g.my_side;
+
+  char score[48];
+  lv_snprintf(score, sizeof(score), "You %d  ·  %s %d",
+              g.my_side == games::db::kP1 ? g.state.score1 : g.state.score2, g.opp_name,
+              g.my_side == games::db::kP1 ? g.state.score2 : g.state.score1);
+  make_status(parent, score);
+
+  if (g.over && !g.result_dismissed) make_status(parent, "Game over");
+  else if (g.over) make_status(parent, "Play again?");
+  else if (my_turn) make_status(parent, "Your turn - tap a line");
+  else {
+    char buf[48];
+    lv_snprintf(buf, sizeof(buf), "Waiting on %s...", g.opp_name);
+    make_status(parent, buf);
+  }
+
+  constexpr int kStep = 64;
+  constexpr int kDot = 10;
+  constexpr int kThick = 10;
+  constexpr int kBoard = kStep * games::db::kBox + kDot + 8;
+  const int origin = 4;
+
+  lv_obj_t * board = lv_obj_create(parent);
+  lv_obj_remove_style_all(board);
+  lv_obj_set_size(board, kBoard, kBoard);
+  lv_obj_set_style_radius(board, 12, 0);
+  lv_obj_set_style_bg_color(board, theme::panel(), 0);
+  lv_obj_set_style_bg_opa(board, LV_OPA_COVER, 0);
+  lv_obj_remove_flag(board, LV_OBJ_FLAG_SCROLLABLE);
+
+  auto owner_color = [&](int8_t owner) -> lv_color_t {
+    if (owner == g.my_side) return theme::mint();
+    if (owner) return theme::hot();
+    return theme::border();
+  };
+
+  for (int br = 0; br < games::db::kBox; ++br) {
+    for (int bc = 0; bc < games::db::kBox; ++bc) {
+      if (!g.state.box[br][bc]) continue;
+      lv_obj_t * box = lv_obj_create(board);
+      lv_obj_remove_style_all(box);
+      lv_obj_set_pos(box, origin + bc * kStep + kDot / 2, origin + br * kStep + kDot / 2);
+      lv_obj_set_size(box, kStep - kDot / 2, kStep - kDot / 2);
+      lv_obj_set_style_bg_color(box, owner_color(g.state.box[br][bc]), 0);
+      lv_obj_set_style_bg_opa(box, LV_OPA_50, 0);
+      lv_obj_set_style_radius(box, 6, 0);
+      lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+    }
+  }
+
+  auto edge_hit = [&](int is_vert, int r, int c, int x, int y, int w, int h, bool taken) {
+    lv_obj_t * hit = lv_obj_create(board);
+    lv_obj_remove_style_all(hit);
+    lv_obj_set_pos(hit, x, y);
+    lv_obj_set_size(hit, w, h);
+    lv_obj_set_style_radius(hit, 4, 0);
+    if (taken) {
+      lv_obj_set_style_bg_color(hit, theme::ink(), 0);
+      lv_obj_set_style_bg_opa(hit, LV_OPA_COVER, 0);
+    } else if (my_turn) {
+      lv_obj_set_style_bg_color(hit, theme::gold(), 0);
+      lv_obj_set_style_bg_opa(hit, LV_OPA_40, 0);
+      lv_obj_add_flag(hit, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_add_event_cb(hit, db_play_edge, LV_EVENT_CLICKED,
+                          (void *)(intptr_t)((is_vert << 16) | (r << 8) | c));
+    } else {
+      lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
+    }
+    lv_obj_remove_flag(hit, LV_OBJ_FLAG_SCROLLABLE);
+  };
+
+  for (int r = 0; r < games::db::kDots; ++r) {
+    for (int c = 0; c < games::db::kBox; ++c) {
+      const bool taken = games::db::h_taken(g.state, r, c);
+      edge_hit(0, r, c, origin + c * kStep + kDot / 2, origin + r * kStep + (kDot - kThick) / 2,
+               kStep - kDot / 2, kThick, taken);
+    }
+  }
+  for (int r = 0; r < games::db::kBox; ++r) {
+    for (int c = 0; c < games::db::kDots; ++c) {
+      const bool taken = games::db::v_taken(g.state, r, c);
+      edge_hit(1, r, c, origin + c * kStep + (kDot - kThick) / 2, origin + r * kStep + kDot / 2, kThick,
+               kStep - kDot / 2, taken);
+    }
+  }
+
+  for (int r = 0; r < games::db::kDots; ++r) {
+    for (int c = 0; c < games::db::kDots; ++c) {
+      lv_obj_t * dot = lv_obj_create(board);
+      lv_obj_remove_style_all(dot);
+      lv_obj_set_pos(dot, origin + c * kStep, origin + r * kStep);
+      lv_obj_set_size(dot, kDot, kDot);
+      lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_bg_color(dot, theme::gold(), 0);
+      lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+      lv_obj_remove_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    }
+  }
+
+  if (g.over && !g.result_dismissed) {
+    const int8_t w = games::db::winner(g.state);
+    const int outcome = (w < 0) ? -1 : (w == g.my_side ? 1 : 0);
+    attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
+      app::desk().db.result_dismissed = true;
+      go_dots();
+    }, "Dots & Boxes", g.opp_name);
+  }
+}
+
+lv_obj_t * game_db_build() {
+  app::Desk & d = app::desk();
+  lv_obj_t * scr = make_screen();
+  char sub[40];
+  make_topbar(scr, "DOTS & BOXES", d.name,
+              game_vs_sub(sub, sizeof(sub), d.db.active, d.db.opp_name, d.db_invite.active,
+                          d.db_invite.from_name));
+  lv_obj_t * body = make_body(scr, true);
+  lv_obj_t * dock = make_dock(scr);
+
+  if (d.db_invite.active) {
+    make_wait_block(body, "GAME INVITE", d.db_invite.from_name, "wants to play Dots & Boxes");
+    dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      proto::Msg m;
+      m.type = proto::MsgType::DbDecline;
+      fill_msg_ids(m, desk.db_invite.from_id);
+      app::send(m);
+      desk.db_invite.active = false;
+      go_games_folder();
+    });
+    dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      const auto inv = desk.db_invite;
+      desk.db_invite.active = false;
+      desk.db = {};
+      desk.db.active = true;
+      desk.db.my_side = games::db::kP2;
+      desk.db.turn = games::db::kP1;
+      games::db::init(desk.db.state);
+      std::snprintf(desk.db.opp_id, sizeof(desk.db.opp_id), "%s", inv.from_id);
+      std::snprintf(desk.db.opp_name, sizeof(desk.db.opp_name), "%s", inv.from_name);
+      proto::Msg m;
+      m.type = proto::MsgType::DbAccept;
+      fill_msg_ids(m, inv.from_id);
+      app::send(m);
+      go_dots();
+    });
+  } else if (d.db.active && d.db.waiting) {
+    make_wait_block(body, "CHALLENGE SENT", d.db.opp_name, "Waiting for them to accept...");
+    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
+      app::Desk & desk = app::desk();
+      proto::Msg m;
+      m.type = proto::MsgType::DbForfeit;
+      fill_msg_ids(m, desk.db.opp_id);
+      app::send(m);
+      desk.db.active = false;
+      go_dots();
+    });
+  } else if (d.db.active) {
+    fill_db_play(body);
+    if (d.db.over) {
+      dock_play_again_home(
+          dock,
+          [](lv_event_t * /*e*/) {
+            app::Desk & desk = app::desk();
+            const int8_t side = desk.db.my_side;
+            char oid[proto::kMaxId], oname[proto::kMaxName];
+            std::snprintf(oid, sizeof(oid), "%s", desk.db.opp_id);
+            std::snprintf(oname, sizeof(oname), "%s", desk.db.opp_name);
+            desk.db = {};
+            desk.db.active = true;
+            desk.db.waiting = true;
+            desk.db.my_side = side;
+            desk.db.turn = games::db::kP1;
+            games::db::init(desk.db.state);
+            std::snprintf(desk.db.opp_id, sizeof(desk.db.opp_id), "%s", oid);
+            std::snprintf(desk.db.opp_name, sizeof(desk.db.opp_name), "%s", oname);
+            proto::Msg m;
+            m.type = proto::MsgType::DbInvite;
+            fill_msg_ids(m, oid);
+            app::send(m);
+            go_dots();
+          },
+          [](lv_event_t * /*e*/) {
+            app::desk().db.active = false;
+            go_hub();
+          });
+    } else {
+      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
+        show_forfeit_confirm([](lv_event_t * /*ev*/) {
+          app::Desk & desk = app::desk();
+          score_log::note("Dots & Boxes", desk.db.opp_name, score_log::Outcome::ForfeitSelf);
+          proto::Msg m;
+          m.type = proto::MsgType::DbForfeit;
+          fill_msg_ids(m, desk.db.opp_id);
+          app::send(m);
+          desk.db.active = false;
+          go_games_folder();
+        });
+      });
+    }
+  } else {
+    peer_list(body, db_challenge);
     dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_games_folder(); });
   }
   return scr;
@@ -2178,7 +2724,7 @@ lv_obj_t * games_folder_screen() {
   static lv_coord_t cols[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
   static lv_coord_t rows[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
   lv_obj_set_grid_dsc_array(grid, cols, rows);
-  lv_obj_set_style_pad_row(grid, 16, 0);
+  lv_obj_set_style_pad_row(grid, 12, 0);
   lv_obj_remove_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
 
   struct Item {
@@ -2193,8 +2739,11 @@ lv_obj_t * games_folder_screen() {
       {AppIcon::Battleship, "Battleship", [](lv_event_t * /*e*/) { go_battleship(); }},
       {AppIcon::Checkers, "Checkers", [](lv_event_t * /*e*/) { go_checkers(); }},
       {AppIcon::Memory, "Memory", [](lv_event_t * /*e*/) { go_memory(); }},
+      {AppIcon::Reversi, "Reversi", [](lv_event_t * /*e*/) { go_reversi(); }},
+      {AppIcon::Dots, "Dots & Boxes", [](lv_event_t * /*e*/) { go_dots(); }},
+      {AppIcon::Scoreboard, "Scoreboard", [](lv_event_t * /*e*/) { go_scoreboard(); }},
   };
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 9; ++i) {
     lv_obj_t * icon = make_app_icon(grid, items[i].icon, items[i].label, items[i].cb);
     lv_obj_set_grid_cell(icon, LV_GRID_ALIGN_CENTER, i % 3, 1, LV_GRID_ALIGN_START, i / 3, 1);
   }
@@ -2210,6 +2759,8 @@ lv_obj_t * game_c4_screen() { return game_c4_build(); }
 lv_obj_t * game_bs_screen() { return game_bs_build(); }
 lv_obj_t * game_ck_screen() { return game_ck_build(); }
 lv_obj_t * game_mem_screen() { return game_mem_build(); }
+lv_obj_t * game_rv_screen() { return game_rv_build(); }
+lv_obj_t * game_db_screen() { return game_db_build(); }
 
 void games_debug_show(const char * game, const char * panel) {
   app::Desk & d = app::desk();

@@ -1,5 +1,5 @@
 /**
- * WerkPager message protocol (shared stub).
+ * WerkBuddy message protocol (shared stub).
  * ESP-NOW payload target: keep serialized messages small (~ESP-NOW ~250B/chunk).
  * Firmware can mirror these type strings + fields later.
  */
@@ -44,6 +44,16 @@ export const MessageType = Object.freeze({
   STTT_DECLINE: 'sttt_decline',
   STTT_MOVE: 'sttt_move',
   STTT_FORFEIT: 'sttt_forfeit',
+  RV_INVITE: 'rv_invite',
+  RV_ACCEPT: 'rv_accept',
+  RV_DECLINE: 'rv_decline',
+  RV_MOVE: 'rv_move',
+  RV_FORFEIT: 'rv_forfeit',
+  DB_INVITE: 'db_invite',
+  DB_ACCEPT: 'db_accept',
+  DB_DECLINE: 'db_decline',
+  DB_LINE: 'db_line',
+  DB_FORFEIT: 'db_forfeit',
   DOODLE_STROKE: 'doodle_stroke',
   DOODLE_CLEAR: 'doodle_clear',
 });

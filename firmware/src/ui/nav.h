@@ -14,12 +14,16 @@ enum class Screen {
   Outgoing,
   Incoming,
   GamesFolder,
+  UtilsFolder,
   Ttt,
   Sttt,
   C4,
   Bs,
   Ck,
   Mem,
+  Rv,
+  Db,
+  Scoreboard,
   Doodle,
   Settings,
   Keyboard,
@@ -28,7 +32,11 @@ enum class Screen {
   OtaReleases,
   BgUpload,
   Timer,
+  Checklist,
+  Calculator,
+  PageHistory,
   Idle,
+  Setup,
 };
 
 Screen current_screen();
@@ -41,24 +49,35 @@ void go_outgoing();
 void go_incoming();
 
 void go_games_folder();
+void go_utils_folder();
 void go_ttt();
 void go_sttt();
 void go_c4();
 void go_battleship();
 void go_checkers();
 void go_memory();
+void go_reversi();
+void go_dots();
+void go_scoreboard();
 
 void go_doodle();
 void go_settings();
+void go_setup();
 void go_keyboard_name();
+void go_keyboard_setup_name();
+void go_keyboard_factory_reset();
 void go_keyboard_canned(int index);
 void go_keyboard_compose();
+void go_keyboard_checklist();
 void go_wifi_scan();
 void go_keyboard_wifi_pass();
 void go_ota_releases();
 void go_emoji_picker(int slot); /* settings slot, or kEmojiPickerCompose for Werk Room */
 void go_bg_upload();
 void go_timer();
+void go_checklist();
+void go_calculator();
+void go_page_history();
 
 /** Re-open compose with the current draft (emoji/message) intact. */
 void go_compose_refresh();

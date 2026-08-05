@@ -82,10 +82,10 @@ lv_obj_t * hub_screen() {
   lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(top, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_t * brand = lv_label_create(top);
-  lv_label_set_text(brand, "WERKPAGER");
+  lv_label_set_text(brand, "WERKBUDDY");
   lv_obj_set_style_text_color(brand, theme::gold(), 0);
-  lv_obj_set_style_text_font(brand, &lv_font_montserrat_16, 0);
-  lv_obj_set_style_text_letter_space(brand, 3, 0);
+  lv_obj_set_style_text_font(brand, font_display(18), 0);
+  lv_obj_set_style_text_letter_space(brand, 2, 0);
 
   lv_obj_t * live = lv_obj_create(top);
   lv_obj_remove_style_all(live);
@@ -145,9 +145,9 @@ lv_obj_t * hub_screen() {
 
   g_clock = lv_label_create(hero);
   lv_label_set_text(g_clock, cb);
-  lv_obj_set_style_text_color(g_clock, theme::ink(), 0);
+  lv_obj_set_style_text_color(g_clock, theme::gold(), 0);
   lv_obj_set_style_text_font(g_clock, font_display(52), 0);
-  lv_obj_set_style_text_letter_space(g_clock, 1, 0);
+  lv_obj_set_style_text_letter_space(g_clock, 2, 0);
 
   g_date = lv_label_create(hero);
   lv_label_set_text(g_date, db);
@@ -225,8 +225,9 @@ lv_obj_t * hub_screen() {
                       kGlyph, kColW, kColH, &lv_font_montserrat_12);
   make_app_icon_sized(corners, AppIcon::Games, "Games", [](lv_event_t * /*e*/) { go_games_folder(); },
                       kGlyph, kColW, kColH, &lv_font_montserrat_12);
-  make_app_icon_sized(corners, AppIcon::Timer, "Timer", [](lv_event_t * /*e*/) { go_timer(); },
-                      kGlyph, kColW, kColH, &lv_font_montserrat_12);
+  make_app_icon_sized(corners, AppIcon::Utilities, "Utilities",
+                      [](lv_event_t * /*e*/) { go_utils_folder(); }, kGlyph, kColW, kColH,
+                      &lv_font_montserrat_12);
   make_app_icon_sized(corners, AppIcon::Settings, "Settings",
                       [](lv_event_t * /*e*/) { go_settings(); }, kGlyph, kColW, kColH,
                       &lv_font_montserrat_12);

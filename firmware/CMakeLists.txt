@@ -22,6 +22,9 @@ add_executable(werkpager_sim
   src/app/storage.cpp
   src/app/background.cpp
   src/app/desk_timer.cpp
+  src/app/page_log.cpp
+  src/app/checklist.cpp
+  src/app/score_log.cpp
   src/net/sim_link.cpp
   src/ui/theme.cpp
   src/ui/chrome.cpp
@@ -33,12 +36,16 @@ add_executable(werkpager_sim
   src/ui/nav.cpp
   src/ui/scr_hub.cpp
   src/ui/scr_pager.cpp
+  src/ui/scr_page_history.cpp
   src/ui/scr_games.cpp
+  src/ui/scr_scoreboard.cpp
   src/ui/scr_doodle.cpp
   src/ui/scr_settings.cpp
+  src/ui/scr_setup.cpp
   src/ui/scr_idle.cpp
   src/ui/scr_splash.cpp
   src/ui/scr_timer.cpp
+  src/ui/scr_utils.cpp
   src/sim/screenshot.cpp
 )
 

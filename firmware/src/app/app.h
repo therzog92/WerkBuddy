@@ -8,7 +8,9 @@
 #include "games/battleship.h"
 #include "games/checkers.h"
 #include "games/c4.h"
+#include "games/dots.h"
 #include "games/memory.h"
+#include "games/reversi.h"
 #include "protocol/messages.h"
 
 #include <cstdint>
@@ -119,13 +121,31 @@ struct MemGame {
   uint8_t my_score = 0, opp_score = 0;
 };
 
+struct RvGame {
+  bool active = false, waiting = false, over = false, result_dismissed = false;
+  char opp_id[proto::kMaxId] = {};
+  char opp_name[proto::kMaxName] = {};
+  int8_t my_color = games::rv::kBlack, turn = games::rv::kBlack;
+  int8_t board[games::rv::kN][games::rv::kN] = {};
+};
+
+struct DbGame {
+  bool active = false, waiting = false, over = false, result_dismissed = false;
+  char opp_id[proto::kMaxId] = {};
+  char opp_name[proto::kMaxName] = {};
+  int8_t my_side = games::db::kP1, turn = games::db::kP1;
+  games::db::State state;
+};
+
 struct Desk {
   char id[proto::kMaxId] = "mac-tommy";
   char name[proto::kMaxName] = "Tommy";
   uint8_t theme = 0;
-  uint8_t timeout_id = 1;  /* 0=30s 1=1m 2=5m 3=off */
+  uint8_t bg_preset = 0; /* background::Preset — used when no custom photo */
+  uint8_t timeout_id = 2;  /* 0=1m 1=3m 2=5m 3=10m 4=off — default 5m */
   uint8_t idle_mode = 1;   /* 0=black 1=clock */
-  uint8_t brightness = 100; /* 10..100; pages force full */
+  uint8_t brightness = 85; /* 10..100; pages force full */
+  bool setup_done = false; /* false → first-run / post-reset setup */
   int64_t clock_offset_ms = 0;
   char wifi_ssid[33] = {}; /* optional STA; empty = not configured */
   bool wifi_connected = false;
@@ -140,13 +160,16 @@ struct Desk {
   IncomingCall incoming;
   OutgoingCall outgoing;
 
-  Invite ttt_invite, sttt_invite, c4_invite, bs_invite, ck_invite, mem_invite;
+  Invite ttt_invite, sttt_invite, c4_invite, bs_invite, ck_invite, mem_invite, rv_invite,
+      db_invite;
   TttGame ttt;
   StttGame sttt;
   C4Game c4;
   BsGame bs;
   CkGame ck;
   MemGame mem;
+  RvGame rv;
+  DbGame db;
 
   char doodle_peer_id[proto::kMaxId] = {};
   char doodle_peer_name[proto::kMaxName] = {};
@@ -158,6 +181,9 @@ Desk & desk();
 void init();
 /** Persist settings (name/theme/timeout/idle/brightness/clock/emojis/canned/peers). */
 void save();
+
+/** Wipe user data and restore defaults; leaves setup_done=false. */
+void factory_reset();
 
 /** True while any call/invite/game is live (blocks idle, like web). */
 bool busy();
@@ -175,7 +201,8 @@ struct TimeoutSpec {
   const char * label;
   uint32_t ms;
 };
-const TimeoutSpec * timeout_specs(); /* 4 entries: 30s / 1m / 5m / Off */
+constexpr int kTimeoutCount = 5;
+const TimeoutSpec * timeout_specs(); /* 1m / 3m / 5m / 10m / Off */
 
 /** Send a message through the link (sim bot now, ESP-NOW later). */
 void send(const proto::Msg & msg);

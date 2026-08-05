@@ -2,6 +2,7 @@
 
 #include "app/app.h"
 #include "app/background.h"
+#include "app/checklist.h"
 #include "protocol/messages.h"
 #include "ui/brightness.h"
 #include "ui/chrome.h"
@@ -29,7 +30,8 @@ bool g_caps = true;
 lv_obj_t * g_osk_letters[32];
 int g_osk_letter_n = 0;
 lv_obj_t * g_caps_btn = nullptr;
-/* -1 name, >=0 canned, -2 compose, -3 wifi ssid, -4 wifi password */
+/* -1 name, >=0 canned, -2 compose, -3 wifi ssid, -4 wifi password,
+ * -5 checklist, -6 factory reset confirm, -7 setup name */
 int g_osk_canned_index = -1;
 char g_wifi_ssid_draft[33] = "";
 
@@ -89,9 +91,11 @@ void osk_refresh() {
 
 void osk_type(const char * ch) {
   int max = 22;
-  if (g_osk_canned_index == -1) max = 12;
+  if (g_osk_canned_index == -1 || g_osk_canned_index == -7) max = 12;
   else if (g_osk_canned_index == -3) max = 32;
   else if (g_osk_canned_index == -4) max = 63;
+  else if (g_osk_canned_index == -5) max = 39;
+  else if (g_osk_canned_index == -6) max = 16;
   if ((int)std::strlen(g_osk_buf) >= max) return;
   char c = ch[0];
   if (g_caps && c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
@@ -151,11 +155,17 @@ void add_osk_row(lv_obj_t * parent, const char * keys, int inset, bool letters) 
 
 lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_index) {
   g_osk_canned_index = canned_index;
-  g_caps = canned_index == -1; /* name starts CAPS; others start lower */
+  g_caps = (canned_index == -1 || canned_index == -6 || canned_index == -7);
   std::snprintf(g_osk_buf, sizeof(g_osk_buf), "%s", initial ? initial : "");
 
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, canned_index == -2 ? "WERK ROOM" : "SETTINGS", app::desk().name);
+  const char * bar =
+      canned_index == -2   ? "WERK ROOM"
+      : canned_index == -5 ? "CHECKLIST"
+      : canned_index == -6 ? "FACTORY RESET"
+      : canned_index == -7 ? "SETUP"
+                           : "SETTINGS";
+  make_topbar(scr, bar, app::desk().name[0] ? app::desk().name : "WerkBuddy");
   lv_obj_t * body = make_body(scr, true);
   make_tagline(body, title);
 
@@ -229,12 +239,20 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Cancel", false, false, [](lv_event_t * /*e*/) {
     if (g_osk_canned_index == -2) go_compose_refresh();
+    else if (g_osk_canned_index == -5) go_checklist();
+    else if (g_osk_canned_index == -6) go_settings();
+    else if (g_osk_canned_index == -7) go_setup();
     else go_settings();
   });
   dock_btn(dock, "Done", true, false, [](lv_event_t * /*e*/) {
     if (g_osk_canned_index == -2) {
       compose_set_message(g_osk_buf);
       go_compose_refresh();
+      return;
+    }
+    if (g_osk_canned_index == -5) {
+      if (g_osk_buf[0]) checklist::add(g_osk_buf);
+      go_checklist();
       return;
     }
     if (g_osk_canned_index == -4) {
@@ -249,16 +267,31 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
       go_settings();
       return;
     }
+    if (g_osk_canned_index == -6) {
+      if (std::strcmp(g_osk_buf, "RESETME67") != 0) {
+        toast("Type RESETME67 to confirm");
+        return;
+      }
+      app::factory_reset();
+      theme::set(static_cast<theme::Id>(app::desk().theme));
+      brightness::apply();
+      toast("Factory reset complete");
+      go_setup();
+      return;
+    }
     app::Desk & d = app::desk();
     if (g_osk_canned_index >= 0 && g_osk_canned_index < app::kCannedCount) {
       if (!g_osk_buf[0]) std::snprintf(g_osk_buf, sizeof(g_osk_buf), "Message %d", g_osk_canned_index + 1);
       std::snprintf(d.canned[g_osk_canned_index], sizeof(d.canned[0]), "%s", g_osk_buf);
-    } else {
-      if (!g_osk_buf[0]) std::snprintf(g_osk_buf, sizeof(g_osk_buf), "Queen");
-      std::snprintf(d.name, sizeof(d.name), "%s", g_osk_buf);
+      app::save();
+      go_settings();
+      return;
     }
+    if (!g_osk_buf[0]) std::snprintf(g_osk_buf, sizeof(g_osk_buf), "Queen");
+    std::snprintf(d.name, sizeof(d.name), "%s", g_osk_buf);
     app::save();
-    go_settings();
+    if (g_osk_canned_index == -7) go_setup();
+    else go_settings();
   });
   return scr;
 }
@@ -733,12 +766,14 @@ lv_obj_t * settings_screen() {
   lv_obj_set_width(themes, lv_pct(100));
   lv_obj_set_height(themes, 40);
   lv_obj_set_flex_flow(themes, LV_FLEX_FLOW_ROW);
-  lv_obj_set_style_pad_column(themes, 8, 0);
+  lv_obj_set_style_pad_column(themes, 6, 0);
+  lv_obj_set_scroll_dir(themes, LV_DIR_HOR);
+  lv_obj_add_flag(themes, LV_OBJ_FLAG_SCROLLABLE);
   for (int i = 0; i < (int)theme::Id::Count; ++i) {
     const auto id = static_cast<theme::Id>(i);
     lv_obj_t * s = lv_obj_create(themes);
     lv_obj_remove_style_all(s);
-    lv_obj_set_size(s, 48, 32);
+    lv_obj_set_size(s, 42, 32);
     lv_obj_set_style_radius(s, 10, 0);
     theme::Id prev = theme::current();
     theme::set(id);
@@ -808,11 +843,55 @@ lv_obj_t * settings_screen() {
       lv_label_set_text(status, "Custom image set");
       lv_obj_set_style_text_color(status, theme::mint(), 0);
     } else {
-      lv_label_set_text(status, "Theme gradient (default)");
+      char st[48];
+      lv_snprintf(st, sizeof(st), "Scene: %s", background::preset_name(background::preset()));
+      lv_label_set_text(status, st);
       lv_obj_set_style_text_color(status, theme::muted(), 0);
     }
     lv_obj_set_style_text_font(status, &lv_font_montserrat_14, 0);
     lv_obj_set_width(status, lv_pct(100));
+
+    /* Built-in gradient scenes (used when no photo). */
+    lv_obj_t * scenes = lv_obj_create(body);
+    lv_obj_remove_style_all(scenes);
+    lv_obj_set_width(scenes, lv_pct(100));
+    lv_obj_set_height(scenes, 44);
+    lv_obj_set_flex_flow(scenes, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(scenes, 6, 0);
+    lv_obj_remove_flag(scenes, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (int i = 0; i < (int)background::Preset::Count; ++i) {
+      const auto p = static_cast<background::Preset>(i);
+      lv_obj_t * s = lv_button_create(scenes);
+      lv_obj_set_size(s, 40, 40);
+      lv_obj_set_style_radius(s, 12, 0);
+      lv_obj_set_style_shadow_width(s, 0, 0);
+      lv_obj_set_style_border_width(s, background::preset() == p && !background::has() ? 2 : 0, 0);
+      lv_obj_set_style_border_color(s, theme::ink(), 0);
+      uint32_t top = 0, bot = 0;
+      if (p == background::Preset::Theme) {
+        theme::Id prev = theme::current();
+        theme::set(static_cast<theme::Id>(d.theme));
+        top = lv_color_to_u32(theme::grad_top());
+        bot = lv_color_to_u32(theme::grad_bot());
+        theme::set(prev);
+      } else {
+        background::preset_colors(p, &top, &bot);
+      }
+      lv_obj_set_style_bg_color(s, lv_color_hex(top), 0);
+      lv_obj_set_style_bg_grad_color(s, lv_color_hex(bot), 0);
+      lv_obj_set_style_bg_grad_dir(s, LV_GRAD_DIR_VER, 0);
+      lv_obj_add_event_cb(
+          s,
+          [](lv_event_t * e) {
+            const int id = (int)(intptr_t)lv_event_get_user_data(e);
+            if (background::has()) background::clear();
+            background::set_preset(static_cast<background::Preset>(id));
+            toast(background::preset_name(static_cast<background::Preset>(id)));
+            go_settings();
+          },
+          LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
 
     lv_obj_t * bg_row = lv_obj_create(body);
     lv_obj_remove_style_all(bg_row);
@@ -822,7 +901,7 @@ lv_obj_t * settings_screen() {
     lv_obj_set_style_pad_column(bg_row, 6, 0);
     lv_obj_remove_flag(bg_row, LV_OBJ_FLAG_SCROLLABLE);
 
-    chip(bg_row, background::has() ? "Change" : "Add from phone", false,
+    chip(bg_row, background::has() ? "Change photo" : "Add from phone", false,
          [](lv_event_t * /*e*/) {
            char url[192], local[192], qr[256];
            if (!background::upload_session(url, sizeof(url), local, sizeof(local), qr, sizeof(qr))) {
@@ -924,7 +1003,7 @@ lv_obj_t * settings_screen() {
   lv_obj_set_flex_flow(to, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_column(to, 6, 0);
   const app::TimeoutSpec * specs = app::timeout_specs();
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < app::kTimeoutCount; ++i) {
     chip(to, specs[i].label, d.timeout_id == (uint8_t)i,
          [](lv_event_t * e) {
            const auto id = (uint8_t)(intptr_t)lv_event_get_user_data(e);
@@ -1089,6 +1168,19 @@ lv_obj_t * settings_screen() {
     }
   }
 
+  add_section(body, "Danger zone");
+  lv_obj_t * reset = lv_button_create(body);
+  lv_obj_set_width(reset, lv_pct(100));
+  lv_obj_set_height(reset, 44);
+  lv_obj_set_style_bg_color(reset, theme::danger(), 0);
+  lv_obj_set_style_shadow_width(reset, 0, 0);
+  lv_obj_t * rl = lv_label_create(reset);
+  lv_label_set_text(rl, "Factory Reset");
+  lv_obj_set_style_text_color(rl, lv_color_hex(0xffffff), 0);
+  lv_obj_center(rl);
+  lv_obj_add_event_cb(reset, [](lv_event_t * /*e*/) { go_keyboard_factory_reset(); }, LV_EVENT_CLICKED,
+                      nullptr);
+
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) { go_hub(); });
   dock_btn(dock, "Scan desks", true, false, on_scan);
@@ -1097,6 +1189,14 @@ lv_obj_t * settings_screen() {
 
 lv_obj_t * keyboard_screen_name() {
   return build_keyboard("Enter name", app::desk().name, -1);
+}
+
+lv_obj_t * keyboard_screen_setup_name() {
+  return build_keyboard("Enter name", app::desk().name, -7);
+}
+
+lv_obj_t * keyboard_screen_factory_reset() {
+  return build_keyboard("Type RESETME67 to wipe all data", "", -6);
 }
 
 lv_obj_t * keyboard_screen_canned(int index) {
@@ -1117,6 +1217,10 @@ lv_obj_t * keyboard_screen_wifi_pass() {
   else
     lv_snprintf(title, sizeof(title), "WiFi password");
   return build_keyboard(title, "", -4);
+}
+
+lv_obj_t * keyboard_screen_checklist() {
+  return build_keyboard("New task", "", -5);
 }
 
 namespace {

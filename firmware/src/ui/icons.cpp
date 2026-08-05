@@ -26,17 +26,16 @@ struct IconColors {
 uint32_t u32(lv_color_t c) { return lv_color_to_u32(c); }
 
 IconColors colors_for(AppIcon icon) {
-  /* Hub chrome follows the active theme accents (matches web --hot / --gold / --mint). */
+  /* Match web .app-glyph-* linear-gradient(145deg, …) endpoints. */
   switch (icon) {
     case AppIcon::Werk: return {u32(theme::hot()), u32(theme::gold())};
-    case AppIcon::Games:
-      return {u32(lv_color_mix(theme::hot(), theme::mint(), 90)), u32(theme::mint())};
-    case AppIcon::Doodle:
-      return {u32(lv_color_mix(theme::hot(), theme::gold(), 160)), u32(theme::gold())};
-    case AppIcon::Timer:
-      return {u32(lv_color_mix(theme::mint(), theme::gold(), 100)), u32(theme::mint())};
-    case AppIcon::Settings:
-      return {u32(lv_color_mix(theme::muted(), theme::panel(), 100)), u32(theme::border())};
+    case AppIcon::Games: return {0x5a6a88, 0x3d4a66};
+    case AppIcon::Doodle: return {0xe87858, 0x9a7ad4};
+    case AppIcon::Timer: return {u32(theme::mint()), u32(theme::gold())};
+    case AppIcon::Settings: return {0x6a7280, 0x4a5568};
+    case AppIcon::Utilities: return {u32(theme::mint()), u32(theme::hot())};
+    case AppIcon::Checklist: return {u32(theme::gold()), u32(theme::mint())};
+    case AppIcon::Calculator: return {0x6a7280, 0x2a2438};
     case AppIcon::Ttt: return {0x5b8cff, 0x7c5cff};
     case AppIcon::Sttt:
       return {u32(theme::hot()), u32(lv_color_mix(theme::hot(), theme::mint(), 128))};
@@ -44,6 +43,9 @@ IconColors colors_for(AppIcon icon) {
     case AppIcon::Battleship: return {0x0f766e, 0x115e59};
     case AppIcon::Checkers: return {0x8b3a3a, 0x2a2438};
     case AppIcon::Memory: return {0xc45a9a, 0xe8c46a};
+    case AppIcon::Reversi: return {0x1a5c3a, 0x0f3d26};
+    case AppIcon::Dots: return {0x7a5cff, 0x4a2fbf};
+    case AppIcon::Scoreboard: return {u32(theme::gold()), 0x8a6a1a};
   }
   return {0x666666, 0x333333};
 }
@@ -226,6 +228,63 @@ void draw_settings(lv_obj_t * g) {
   lv_obj_center(hole);
 }
 
+void draw_utilities(lv_obj_t * g) {
+  /* Folder-ish: like games but with wrench-ish bars */
+  const lv_color_t c = lv_color_hex(0xffffff);
+  lv_obj_t * body = lv_obj_create(g);
+  lv_obj_remove_style_all(body);
+  lv_obj_set_size(body, 44, 30);
+  lv_obj_set_style_radius(body, 8, 0);
+  lv_obj_set_style_bg_color(body, c, 0);
+  lv_obj_set_style_bg_opa(body, LV_OPA_COVER, 0);
+  lv_obj_set_pos(body, 14, 24);
+  lv_obj_t * tab = lv_obj_create(g);
+  lv_obj_remove_style_all(tab);
+  lv_obj_set_size(tab, 18, 10);
+  lv_obj_set_style_radius(tab, 4, 0);
+  lv_obj_set_style_bg_color(tab, c, 0);
+  lv_obj_set_style_bg_opa(tab, LV_OPA_COVER, 0);
+  lv_obj_set_pos(tab, 14, 16);
+  rect_bar(g, 22, 32, 28, 3, lv_color_hex(0x3d4a66));
+  rect_bar(g, 22, 40, 20, 3, lv_color_hex(0x3d4a66));
+}
+
+void draw_checklist(lv_obj_t * g) {
+  const lv_color_t c = lv_color_hex(0xffffff);
+  for (int i = 0; i < 3; ++i) {
+    const lv_coord_t y = 18 + i * 14;
+    lv_obj_t * box = lv_obj_create(g);
+    lv_obj_remove_style_all(box);
+    lv_obj_set_size(box, 12, 12);
+    lv_obj_set_style_radius(box, 3, 0);
+    lv_obj_set_style_border_width(box, 2, 0);
+    lv_obj_set_style_border_color(box, c, 0);
+    lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+    lv_obj_set_pos(box, 16, y);
+    if (i < 2) {
+      lv_obj_set_style_bg_color(box, c, 0);
+      lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    }
+    rect_bar(g, 34, y + 4, 22, 3, c);
+  }
+}
+
+void draw_calculator(lv_obj_t * g) {
+  const lv_color_t c = lv_color_hex(0xffffff);
+  lv_obj_t * frame = lv_obj_create(g);
+  lv_obj_remove_style_all(frame);
+  lv_obj_set_size(frame, 40, 48);
+  lv_obj_set_style_radius(frame, 6, 0);
+  lv_obj_set_style_border_width(frame, 2, 0);
+  lv_obj_set_style_border_color(frame, c, 0);
+  lv_obj_set_style_bg_opa(frame, LV_OPA_TRANSP, 0);
+  lv_obj_center(frame);
+  rect_bar(g, 22, 18, 28, 8, c);
+  for (int r = 0; r < 3; ++r)
+    for (int col = 0; col < 3; ++col)
+      rect_bar(g, 22 + col * 10, 30 + r * 8, 7, 5, c);
+}
+
 void draw_ttt(lv_obj_t * g) {
   const lv_color_t c = lv_color_hex(0xffffff);
   constexpr lv_coord_t kIn = 13;
@@ -379,6 +438,85 @@ void draw_mem(lv_obj_t * g) {
   lv_obj_set_pos(b, 32, 22);
 }
 
+void draw_rv(lv_obj_t * g) {
+  const lv_color_t c = lv_color_hex(0xffffff);
+  lv_obj_t * board = lv_obj_create(g);
+  lv_obj_remove_style_all(board);
+  lv_obj_set_size(board, 44, 44);
+  lv_obj_set_style_radius(board, 4, 0);
+  lv_obj_set_style_border_width(board, 2, 0);
+  lv_obj_set_style_border_color(board, c, 0);
+  lv_obj_set_style_bg_opa(board, LV_OPA_TRANSP, 0);
+  lv_obj_center(board);
+  auto disc = [&](lv_coord_t x, lv_coord_t y, bool filled) {
+    lv_obj_t * d = lv_obj_create(g);
+    lv_obj_remove_style_all(d);
+    lv_obj_set_size(d, 12, 12);
+    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_pos(d, x, y);
+    if (filled) {
+      lv_obj_set_style_bg_color(d, c, 0);
+      lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    } else {
+      lv_obj_set_style_border_width(d, 2, 0);
+      lv_obj_set_style_border_color(d, c, 0);
+      lv_obj_set_style_bg_opa(d, LV_OPA_TRANSP, 0);
+    }
+  };
+  disc(23, 23, true);
+  disc(37, 23, false);
+  disc(23, 37, false);
+  disc(37, 37, true);
+}
+
+void draw_db(lv_obj_t * g) {
+  const lv_color_t c = lv_color_hex(0xffffff);
+  constexpr int kN = 3;
+  constexpr lv_coord_t kPitch = 16;
+  constexpr lv_coord_t kOx = (72 - (kN - 1) * kPitch) / 2;
+  constexpr lv_coord_t kOy = kOx;
+  for (int r = 0; r < kN; ++r) {
+    for (int col = 0; col < kN; ++col) {
+      lv_obj_t * dot = lv_obj_create(g);
+      lv_obj_remove_style_all(dot);
+      lv_obj_set_size(dot, 6, 6);
+      lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_bg_color(dot, c, 0);
+      lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+      lv_obj_set_pos(dot, kOx + col * kPitch - 3, kOy + r * kPitch - 3);
+    }
+  }
+  /* A couple of claimed edges to read as "in progress" */
+  line(g, kOx, kOy, kOx + kPitch, kOy, 3, c);
+  line(g, kOx, kOy, kOx, kOy + kPitch, 3, c);
+  line(g, kOx + kPitch, kOy, kOx + kPitch, kOy + kPitch, 3, c);
+  lv_obj_t * box = lv_obj_create(g);
+  lv_obj_remove_style_all(box);
+  lv_obj_set_size(box, kPitch - 6, kPitch - 6);
+  lv_obj_set_pos(box, kOx + 3, kOy + 3);
+  lv_obj_set_style_bg_color(box, c, 0);
+  lv_obj_set_style_bg_opa(box, LV_OPA_30, 0);
+  lv_obj_set_style_radius(box, 2, 0);
+}
+
+void draw_scoreboard(lv_obj_t * g) {
+  const lv_color_t c = lv_color_hex(0xffffff);
+  constexpr lv_coord_t kW = 10;
+  const lv_coord_t heights[3] = {18, 30, 22};
+  for (int i = 0; i < 3; ++i) {
+    const lv_coord_t x = 16 + i * 15;
+    const lv_coord_t h = heights[i];
+    lv_obj_t * bar = lv_obj_create(g);
+    lv_obj_remove_style_all(bar);
+    lv_obj_set_size(bar, kW, h);
+    lv_obj_set_pos(bar, x, 50 - h);
+    lv_obj_set_style_radius(bar, 2, 0);
+    lv_obj_set_style_bg_color(bar, c, 0);
+    lv_obj_set_style_bg_opa(bar, i == 1 ? LV_OPA_COVER : LV_OPA_60, 0);
+  }
+  line(g, 12, 50, 60, 50, 2, c);
+}
+
 void draw_icon(lv_obj_t * g, AppIcon icon) {
   switch (icon) {
     case AppIcon::Werk: draw_werk(g); break;
@@ -386,12 +524,18 @@ void draw_icon(lv_obj_t * g, AppIcon icon) {
     case AppIcon::Doodle: draw_doodle(g); break;
     case AppIcon::Timer: draw_timer(g); break;
     case AppIcon::Settings: draw_settings(g); break;
+    case AppIcon::Utilities: draw_utilities(g); break;
+    case AppIcon::Checklist: draw_checklist(g); break;
+    case AppIcon::Calculator: draw_calculator(g); break;
     case AppIcon::Ttt: draw_ttt(g); break;
     case AppIcon::Sttt: draw_sttt(g); break;
     case AppIcon::C4: draw_c4(g); break;
     case AppIcon::Battleship: draw_bs(g); break;
     case AppIcon::Checkers: draw_ck(g); break;
     case AppIcon::Memory: draw_mem(g); break;
+    case AppIcon::Reversi: draw_rv(g); break;
+    case AppIcon::Dots: draw_db(g); break;
+    case AppIcon::Scoreboard: draw_scoreboard(g); break;
   }
 }
 
@@ -402,13 +546,33 @@ lv_obj_t * make_app_glyph(lv_obj_t * parent, AppIcon icon) {
   lv_obj_t * glyph = lv_obj_create(parent);
   lv_obj_remove_style_all(glyph);
   lv_obj_set_size(glyph, 72, 72);
-  /* Flat circle — no gradient / shadow (sleek control-panel look). */
-  lv_obj_set_style_radius(glyph, LV_RADIUS_CIRCLE, 0);
+  /* Squircle tile + gradient + soft shadow — matches web .app-glyph */
+  lv_obj_set_style_radius(glyph, 18, 0);
   lv_obj_set_style_bg_color(glyph, lv_color_hex(col.top), 0);
+  lv_obj_set_style_bg_grad_color(glyph, lv_color_hex(col.bot), 0);
+  lv_obj_set_style_bg_grad_dir(glyph, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_bg_opa(glyph, LV_OPA_COVER, 0);
-  lv_obj_set_style_shadow_width(glyph, 0, 0);
+  lv_obj_set_style_shadow_width(glyph, 16, 0);
+  lv_obj_set_style_shadow_offset_y(glyph, 6, 0);
+  lv_obj_set_style_shadow_color(glyph, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_shadow_opa(glyph, LV_OPA_40, 0);
   lv_obj_set_style_border_width(glyph, 0, 0);
+  lv_obj_set_style_clip_corner(glyph, true, 0);
   lv_obj_remove_flag(glyph, LV_OBJ_FLAG_SCROLLABLE);
+
+  /* Soft top highlight (web inset 0 1px white) */
+  lv_obj_t * sheen = lv_obj_create(glyph);
+  lv_obj_remove_style_all(sheen);
+  lv_obj_set_size(sheen, 72, 14);
+  lv_obj_set_pos(sheen, 0, 0);
+  lv_obj_set_style_radius(sheen, 18, 0);
+  lv_obj_set_style_bg_color(sheen, lv_color_hex(0xffffff), 0);
+  lv_obj_set_style_bg_opa(sheen, LV_OPA_20, 0);
+  lv_obj_set_style_bg_grad_color(sheen, lv_color_hex(0xffffff), 0);
+  lv_obj_set_style_bg_grad_dir(sheen, LV_GRAD_DIR_VER, 0);
+  lv_obj_set_style_bg_main_opa(sheen, LV_OPA_30, 0);
+  lv_obj_set_style_bg_grad_opa(sheen, LV_OPA_TRANSP, 0);
+
   draw_icon(glyph, icon);
   make_click_through(glyph);
   return glyph;

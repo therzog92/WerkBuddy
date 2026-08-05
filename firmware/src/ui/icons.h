@@ -11,12 +11,18 @@ enum class AppIcon {
   Doodle,
   Timer,
   Settings,
+  Utilities,
+  Checklist,
+  Calculator,
   Ttt,
   Sttt,
   C4,
   Battleship,
   Checkers,
   Memory,
+  Reversi,
+  Dots,
+  Scoreboard,
 };
 
 /** 72×72 rounded glyph with drawn icon (matches web app-glyph look). */

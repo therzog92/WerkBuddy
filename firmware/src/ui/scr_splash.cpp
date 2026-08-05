@@ -20,12 +20,16 @@ void clear_splash_timer() {
 
 void finish_splash(lv_timer_t * /*t*/) {
   g_splash_timer = nullptr;
-  if (current_screen() == Screen::Splash) go_hub();
+  if (current_screen() != Screen::Splash) return;
+  if (!app::desk().setup_done) go_setup();
+  else go_hub();
 }
 
 void on_tap(lv_event_t * /*e*/) {
   clear_splash_timer();
-  if (current_screen() == Screen::Splash) go_hub();
+  if (current_screen() != Screen::Splash) return;
+  if (!app::desk().setup_done) go_setup();
+  else go_hub();
 }
 
 }  // namespace
@@ -42,7 +46,7 @@ lv_obj_t * splash_screen() {
   lv_obj_add_event_cb(scr, on_tap, LV_EVENT_CLICKED, nullptr);
 
   lv_obj_t * brand = lv_label_create(scr);
-  lv_label_set_text(brand, "WERKPAGER");
+  lv_label_set_text(brand, "WERKBUDDY");
   lv_obj_set_style_text_color(brand, theme::gold(), 0);
   lv_obj_set_style_text_font(brand, &lv_font_montserrat_28, 0);
   lv_obj_set_style_text_letter_space(brand, 2, 0);

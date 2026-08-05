@@ -40,7 +40,7 @@ int main() {
     std::fprintf(stderr, "Failed to create SDL window\n");
     return 1;
   }
-  lv_sdl_window_set_title(disp, "WerkPager LVGL sim (480x480)");
+  lv_sdl_window_set_title(disp, "WerkBuddy LVGL sim (480x480)");
 
   lv_indev_t * mouse = lv_sdl_mouse_create();
   if (mouse) lv_indev_set_display(mouse, disp);
@@ -60,8 +60,9 @@ int main() {
   const char * shot = std::getenv("WERKPAGER_SHOT");
   const bool auto_shot = shot && shot[0] == '1';
 
-  /* Normal boot: splash → hub. QA env vars skip splash. */
+  /* Normal boot: splash → setup (first run) or hub. QA env vars skip splash. */
   if (!qa_jump && !auto_shot) wp::ui::go_splash();
+  else if (!wp::app::desk().setup_done) wp::ui::go_setup();
   else wp::ui::go_hub();
 
   /* WERKPAGER_SCREEN=<name> — jump to any screen for visual QA. */
@@ -90,10 +91,19 @@ int main() {
     else if (is("doodle-draw")) doodle_debug_show_draw();
     else if (is("settings")) go_settings();
     else if (is("timer")) go_timer();
+    else if (is("utilsfolder") || is("utils")) go_utils_folder();
+    else if (is("checklist")) go_checklist();
+    else if (is("calculator") || is("calc")) go_calculator();
+    else if (is("page-history") || is("history")) go_page_history();
+    else if (is("scoreboard")) go_scoreboard();
+    else if (is("setup")) go_setup();
+    else if (is("reversi") || is("rv")) go_reversi();
+    else if (is("dots") || is("db")) go_dots();
+    else if (is("sttt")) go_sttt();
     else if (is("settings-scrolled")) {
       go_settings();
       lv_obj_t * body = lv_obj_get_child(lv_screen_active(), 1);
-      if (body) lv_obj_scroll_to_y(body, 320, LV_ANIM_OFF);
+      if (body) lv_obj_scroll_to_y(body, 900, LV_ANIM_OFF);
     }
     else if (is("werk")) go_werk();
     else if (is("outgoing")) {
@@ -136,7 +146,7 @@ int main() {
   lv_timer_create(f12_poll_cb, 50, nullptr);
   wp::sim::maybe_auto_shot_and_quit();
 
-  std::printf("WerkPager PC sim ready. Click apps. F12 = save preview.png\n");
+  std::printf("WerkBuddy PC sim ready. Click apps. F12 = save preview.png\n");
 
   while (true) {
     lv_timer_handler();

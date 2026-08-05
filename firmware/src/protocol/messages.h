@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * WerkPager message protocol — firmware mirror of protocol/messages.js.
+ * WerkBuddy message protocol — firmware mirror of protocol/messages.js.
  * Keep type names in sync with the JS MessageType table (do not rename).
  *
  * Sim transport passes Msg structs directly. On ESP32 these become compact
@@ -53,6 +53,16 @@ enum class MsgType : uint8_t {
   StttDecline,
   StttMove,
   StttForfeit,
+  RvInvite,
+  RvAccept,
+  RvDecline,
+  RvMove,
+  RvForfeit,
+  DbInvite,
+  DbAccept,
+  DbDecline,
+  DbLine,
+  DbForfeit,
   DoodleStroke,
   DoodleClear,
 };

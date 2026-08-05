@@ -11,7 +11,10 @@ enum class Id : uint8_t {
   Ice = 2,
   Lemon = 3,
   Matcha = 4,
-  Count = 5,
+  Cosmic = 5,
+  Coral = 6,
+  Slate = 7,
+  Count = 8,
 };
 
 void set(Id id);
@@ -38,7 +41,7 @@ void apply_screen_bg(lv_obj_t * scr);
 /** Wallpaper dim level when a custom background is set. */
 enum class BgWash : uint8_t {
   Hub = 0,  /* photo readable behind home chrome */
-  Page,     /* settings / games / etc — considerably dimmed for text */
+  Page,     /* settings / games / etc — lightly washed for text */
   Idle,     /* clock lock screen — photo present, dimmed */
 };
 

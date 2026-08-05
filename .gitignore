@@ -9,7 +9,12 @@ firmware/third_party/lvgl/
 
 # Local desk settings (machine-specific)
 **/werkpager_settings.ini
+**/werkpager_page_log.ini
+**/werkpager_checklist.ini
+**/werkpager_score_log.ini
 firmware/sim-data/
+sim-out/
+**/preview.png
 
 # OS / editor
 .DS_Store

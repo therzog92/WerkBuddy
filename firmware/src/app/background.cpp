@@ -135,6 +135,45 @@ bool has() {
   return g_has;
 }
 
+const char * preset_name(Preset p) {
+  switch (p) {
+    case Preset::Theme: return "Theme";
+    case Preset::Aurora: return "Aurora";
+    case Preset::Sunset: return "Sunset";
+    case Preset::Ocean: return "Ocean";
+    case Preset::Ember: return "Ember";
+    case Preset::Mist: return "Mist";
+    default: return "?";
+  }
+}
+
+void preset_colors(Preset p, uint32_t * top, uint32_t * bot) {
+  uint32_t t = 0x2b1b3d, b = 0x120c18;
+  switch (p) {
+    case Preset::Theme: t = 0x2b1b3d; b = 0x120c18; break;
+    case Preset::Aurora: t = 0x1a1040; b = 0x0a2838; break;
+    case Preset::Sunset: t = 0x4a1828; b = 0x2a1010; break;
+    case Preset::Ocean: t = 0x0c2848; b = 0x061018; break;
+    case Preset::Ember: t = 0x3a1810; b = 0x140808; break;
+    case Preset::Mist: t = 0x1a2430; b = 0x0c1018; break;
+    default: break;
+  }
+  if (top) *top = t;
+  if (bot) *bot = b;
+}
+
+Preset preset() {
+  const uint8_t v = app::desk().bg_preset;
+  if (v >= (uint8_t)Preset::Count) return Preset::Theme;
+  return static_cast<Preset>(v);
+}
+
+void set_preset(Preset p) {
+  if (static_cast<uint8_t>(p) >= static_cast<uint8_t>(Preset::Count)) p = Preset::Theme;
+  app::desk().bg_preset = static_cast<uint8_t>(p);
+  app::save();
+}
+
 const char * lv_src() {
   if (!g_checked) refresh_paths();
   return g_has ? g_lv.c_str() : nullptr;
@@ -154,15 +193,43 @@ void reload() {
 }
 
 void clear() {
-  refresh_paths();
+  const char * id = app::desk().id;
+  if (!id || !id[0]) id = "mac-tommy";
+
+  if (!g_checked) refresh_paths();
+
+  /* Detach wallpaper from the live screen before unlink (Windows file lock). */
+  if (lv_obj_t * scr = lv_screen_active()) {
+    lv_obj_set_style_bg_image_src(scr, nullptr, 0);
+  }
+  if (!g_lv.empty()) lv_image_cache_drop(g_lv.c_str());
+  char alt_lv[160];
+  std::snprintf(alt_lv, sizeof(alt_lv), "S:assets/bg/%s.png", id);
+  lv_image_cache_drop(alt_lv);
+
+  const fs::path dirs[] = {
+      fs::current_path() / "assets" / "bg",
+      fs::current_path() / ".." / "assets" / "bg",
+      fs::current_path() / ".." / "sim-data" / "bg",
+      fs::current_path() / "sim-data" / "bg",
+      fs::path("C:/Users/Tommy/Projects/WerkPager/firmware/sim-data/bg"),
+      fs::path("C:/Users/Tommy/Projects/WerkPager/firmware/assets/bg"),
+  };
+
+  for (const fs::path & dir : dirs) {
+    std::error_code ec;
+    fs::remove(dir / (std::string(id) + ".png"), ec);
+    fs::remove(dir / (std::string(id) + ".jpg"), ec);
+    fs::remove(dir / (std::string(id) + ".stamp"), ec);
+  }
+
   if (!g_file.empty()) {
     std::error_code ec;
     fs::remove(g_file, ec);
-    const fs::path jpg = fs::path(g_file).replace_extension(".jpg");
-    fs::remove(jpg, ec);
-    const fs::path stamp = fs::path(g_file).replace_extension(".stamp");
-    fs::remove(stamp, ec);
+    fs::remove(fs::path(g_file).replace_extension(".jpg"), ec);
+    fs::remove(fs::path(g_file).replace_extension(".stamp"), ec);
   }
+
   g_checked = false;
   g_has = false;
   g_file.clear();

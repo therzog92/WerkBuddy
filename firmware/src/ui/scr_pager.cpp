@@ -1,6 +1,7 @@
 #include "ui/scr_pager.h"
 
 #include "app/app.h"
+#include "app/page_log.h"
 #include "ui/chrome.h"
 #include "ui/emoji_badge.h"
 #include "ui/fonts.h"
@@ -230,6 +231,7 @@ void on_send(lv_event_t * /*e*/) {
   std::snprintf(d.outgoing.emoji, sizeof(d.outgoing.emoji), "%s", m.emoji);
   std::snprintf(d.outgoing.message, sizeof(d.outgoing.message), "%s", m.message);
 
+  page_log::add(page_log::Dir::Out, g_compose_peer.name, m.emoji, m.message);
   app::send(m);
   sync_ui();
 }
@@ -361,12 +363,13 @@ lv_obj_t * pager_werk_screen() {
     make_tagline(body, "No peers saved yet. Scan or add from Settings.");
   }
   for (int i = 0; i < d.peer_count; ++i) {
-    make_peer_btn(body, d.peers[i].name, "compose a ping", on_peer, (void *)(intptr_t)i);
+    make_peer_btn(body, d.peers[i].name, nullptr, on_peer, (void *)(intptr_t)i);
   }
 
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Home", false, false, on_home);
-  dock_btn(dock, "Demo ring", false, false, on_demo_ring);
+  dock_btn(dock, "History", false, false, [](lv_event_t * /*e*/) { go_page_history(); });
+  dock_btn(dock, "Demo", false, false, on_demo_ring);
   return scr;
 }
 

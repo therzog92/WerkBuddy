@@ -8,6 +8,23 @@ namespace background {
 /** True when this desk has a stored wallpaper (one image slot). */
 bool has();
 
+/** Built-in gradient scenes when no custom photo. Theme = follow accent palette. */
+enum class Preset : uint8_t {
+  Theme = 0,
+  Aurora = 1,
+  Sunset = 2,
+  Ocean = 3,
+  Ember = 4,
+  Mist = 5,
+  Count = 6,
+};
+
+const char * preset_name(Preset p);
+/** Swatch colors for settings chips (top / bottom of gradient). */
+void preset_colors(Preset p, uint32_t * top, uint32_t * bot);
+Preset preset();
+void set_preset(Preset p);
+
 /** LVGL FS path (S:...) for the PNG wallpaper, or nullptr if none. */
 const char * lv_src();
 
@@ -32,7 +49,7 @@ bool poll_new_upload();
 
 /** Soft dark wash over wallpaper (0..255). Higher recolor = dimmer photo. */
 constexpr lv_opa_t kWashHub = 90;
-constexpr lv_opa_t kWashPage = 220;
+constexpr lv_opa_t kWashPage = 140; /* readable chrome, photo still visible */
 constexpr lv_opa_t kWashIdle = 150;
 /** Extra: page screens also lower image opa so text stays readable. */
 constexpr lv_opa_t kImageOpaHub = LV_OPA_COVER;

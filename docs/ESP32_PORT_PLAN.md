@@ -1,17 +1,17 @@
-# WerkPager → ESP32 Port Plan
+# WerkBuddy → ESP32 Port Plan
 
 **Status:** Web simulator complete. **Phase −1 complete enough** — full LVGL PC (SDL) app under `firmware/` (hub, pager, settings/OSK, all games, doodle, idle). Hardware on order.  
-**Primary target:** GUITION **ESP32-4848S040C_I** (ESP32-S3 N16R8, 4″ 480×480 capacitive ST7701 + GT911), ~3 desks (Tommy / Will / Alex).  
+**Primary target:** GUITION **ESP32-4848S040C_I** (ESP32-S3 N16R8, 4″ 480×480 capacitive ST7701 + GT911), ~3 desks.  
 **Link:** **ESP-NOW** desk-to-desk (no Wi‑Fi / no cloud required for core features).
 
 This document is the architecture + phase source of truth.  
-**When boards arrive:** also follow `docs/HARDWARE_BRINGUP_MANUAL.md` — session-by-session unbox → glass → ping → shell (one session at a time).
+**When boards arrive:** also follow `docs/HARDWARE_BRINGUP_MANUAL.md` and `AGENTS.md` — session-by-session unbox → glass → ping → shell (one session at a time).
 
 ---
 
 ## Phase −1 — LVGL on PC (done enough)
 
-**Goal:** Develop real LVGL UI before boards arrive. Tommy runs a desktop window; agents edit C++.
+**Goal:** Develop real LVGL UI before boards arrive. Operator runs a desktop window; agents edit C++.
 
 | Item | Choice |
 |------|--------|
@@ -22,7 +22,7 @@ This document is the architecture + phase source of truth.
 | Preview | F12 or `-Shot` → `firmware/sim-out/preview.png` |
 | ESP32 env | Deferred until Phase 0 (BSP / Arduino vs IDF) |
 
-**Keep `web/` as UX/behavior bible.** PC sim already has hub → settings → pager → games → doodle; on device, bring glass up (Phase 0) before re-wiring transport.
+**Keep the LVGL PC sim (`firmware/`) as UX/behavior bible.** It already has hub → settings → pager → games → doodle → utilities; on device, bring glass up (Phase 0) before re-wiring transport. (Former `web/` HTML sim archived at `../WerkBuddy-web-sim-archive/`.)
 
 ---
 
@@ -31,12 +31,12 @@ This document is the architecture + phase source of truth.
 | Layer | Location | Role |
 |--------|----------|------|
 | Message catalog | `protocol/messages.js` | All `MessageType`s + JSON helpers (sim transport) |
-| Hub / WerkPager / settings / OSK / idle | `web/app.js`, `web/index.html`, `web/styles.css` | UX + state machine reference |
-| C4 + Battleship | `web/board-games.js` | Game rules + UI flows |
-| Checkers + Memory + Doodle | `web/more-games.js` | Game rules + stroke sync |
-| Memory art | `web/assets/memory/*` | Pair faces + card back |
+| Hub / WerkPager / settings / OSK / idle | `firmware/src/ui/scr_*.cpp` | UX + state machine |
+| C4 + Battleship + Checkers + Memory | `firmware/src/ui/scr_games.cpp` | Game rules + UI flows |
+| Doodle | `firmware/src/ui/scr_doodle.cpp` | Stroke sync |
+| Memory art | `firmware/assets/memory/*` | Pair faces + card back |
 
-**Treat the web sim as the product spec.** Firmware should match screens, flows, and payloads—not invent parallel UX.
+**Treat the LVGL PC sim as the product spec.** Device firmware should match those screens, flows, and payloads—not invent parallel UX.
 
 ### Product surface (must ship)
 
@@ -83,7 +83,7 @@ Confirm against Guition docs / pinout for the exact 4848S040 revision:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  UI (LVGL) — screens mirror web/index.html  │
+│  UI (LVGL) — screens in firmware/src/ui/    │
 │  hub / werk / games / doodle / settings     │
 └──────────────────┬──────────────────────────┘
                    │ events (tap, timer)
@@ -113,7 +113,9 @@ Confirm against Guition docs / pinout for the exact 4848S040 revision:
 ```
 WerkPager/
   protocol/           # keep JS sim; add firmware/protocol/ (C headers) or codegen later
-  web/                # simulator (keep working)
+  firmware/           # LVGL PC sim (active UX bible) → ESP32 later
+  protocol/           # message type catalog
+  # web/ archived → ../WerkBuddy-web-sim-archive/
   firmware/           # NEW
     platformio.ini or CMakeLists.txt
     src/
@@ -205,7 +207,7 @@ Names: keep **max 12** chars (sim already clamps). Emoji: store as UTF-8 short s
 - [ ] Two-board ESP-NOW ping (`HELLO` / `ACK`) with RSSI log  
 - [ ] Record chosen SDK + LVGL version in this doc  
 
-**Exit:** Both boards show a tappable “WERKPAGER” label; ping toast on peer.
+**Exit:** Both boards show a tappable “WERKBUDDY” label; ping toast on peer.
 
 ### Phase 1 — Shell app (no games)
 
@@ -293,7 +295,7 @@ Touch rules carried from sim:
 
 ## 7. Assets & memory budget
 
-Memory faces live in `web/assets/memory/`. For firmware:
+Memory faces live in `firmware/assets/memory/`. For device:
 
 1. Copy into `firmware/data/memory/`  
 2. Convert oversized PNGs → **JPEG ~80–120px** square (card is ~100px on 480 display)  
@@ -318,11 +320,12 @@ On the **ESP32 desk** without Wi‑Fi:
 | Deep sleep (if we use it later) | Usually yes — RTC domain |
 | **Full power cut** (unplug, no battery) | **No** — chip has no idea how long it was dead |
 
-Most Guition 4848S040 modules **do not include a coin-cell RTC battery**. So:
+Most Guition 4848S040 modules **do not include a coin-cell RTC battery**. Rear **BAT** is for a **LiPo power cell** (desk stays powered), not RTC backup. So:
 
 1. Persist name/theme/brightness/peers/canned in **NVS** (survives power loss).  
-2. Persist last-known epoch in NVS; on boot, restore RTC from that — but it will be **frozen at power-off time** until the user re-sets Date & time (or we add a CR1220 / NTP later).  
-3. If Tommy wants true “off for 2 days → shows Dec 3” with **no Wi‑Fi**, we need a **battery-backed RTC** (module mod / external RTC) — call that out at bring-up; not assumed for v1.
+2. Persist last-known epoch in NVS; on boot, restore RTC from that — but it will be **frozen at power-off time** until the user re-sets Date & time (or we add NTP later).  
+3. Optional **LiPo on BAT** reduces how often the desk fully dies while sitting on a desk.  
+4. True “off for 2 days → correct date” with **no Wi‑Fi** still needs a **battery-backed RTC** (e.g. DS3231 on touch I²C) — not assumed for v1; not wired to the UART 4P.
 
 Settings **Date & time** writes the clock (same UX as sim). Idle clock reads it.
 
@@ -337,8 +340,8 @@ Wi‑Fi is **not** required for paging/games. Settings exposes optional actions:
 
 | Piece | Where |
 |-------|--------|
-| Source + roadmap | This git repo (`docs/`, `firmware/`, `web/`) |
-| Firmware binaries | GitHub **Release** assets, e.g. `werkpager-v1.2.0.bin` |
+| Source + roadmap | This git repo (`docs/`, `firmware/`) |
+| Firmware binaries | GitHub **Release** assets, e.g. `werkbuddy-v1.2.0.bin` |
 | Desk lists | `GET …/repos/<owner>/<repo>/releases` (paged) → show tags; highlight current `kFirmwareVersion` |
 | Desk installs | Chosen release’s `browser_download_url` over TLS |
 | Apply | ESP-IDF / Arduino OTA partition write + reboot |
@@ -356,7 +359,7 @@ Notes:
 
 | Level | How |
 |-------|-----|
-| Sim regression | Keep `web/` server; desk switcher for multi-peer flows |
+| Sim regression | LVGL PC sim; multi-peer via sim link / multi-process later |
 | Protocol | Golden vectors: pack/unpack fixtures shared if possible |
 | Dual-board | Scripted play checklist per game (invite → move → forfeit → rematch) |
 | Range | Desk ~3–10 m office; note walls / 2.4 GHz congestion |
