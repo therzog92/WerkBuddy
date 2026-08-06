@@ -6,6 +6,16 @@ Product brand: **WerkBuddy**. The pager app on Home stays **WerkPager**.
 
 Active development is the **LVGL PC simulator** under `firmware/` — the same UI stack we will flash to Guition **ESP32-4848S040** desks.
 
+## Screenshots
+
+| Home | Incoming page | Games |
+|:----:|:-------------:|:-----:|
+| ![Home hub](docs/screenshots/hub.png) | ![Incoming Werk](docs/screenshots/incoming.png) | ![Games folder](docs/screenshots/games.png) |
+
+| Checkers | Doodle | Timer |
+|:--------:|:------:|:-----:|
+| ![Checkers](docs/screenshots/checkers.png) | ![Doodle](docs/screenshots/doodle.png) | ![Timer](docs/screenshots/timer.png) |
+
 ---
 
 ## Quick start (LVGL sim)
