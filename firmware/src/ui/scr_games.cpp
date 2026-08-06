@@ -2901,6 +2901,21 @@ void games_debug_show(const char * game, const char * panel) {
       d.ttt.result_dismissed = false;
     }
     go_ttt();
+  } else if (game && !std::strcmp(game, "sttt")) {
+    d.sttt = {};
+    d.sttt.active = true;
+    d.sttt.waiting = panel && !std::strcmp(panel, "wait");
+    d.sttt.mark = 'X';
+    d.sttt.turn = 'X';
+    games::sttt::init(d.sttt.boards, d.sttt.meta, d.sttt.next_board);
+    seed_peer(d.sttt);
+    if (panel && !std::strcmp(panel, "play")) {
+      d.sttt.boards[0][0] = 'X';
+      d.sttt.boards[0][4] = 'O';
+      d.sttt.boards[4][4] = 'X';
+      d.sttt.next_board = 4;
+    }
+    go_sttt();
   } else if (game && !std::strcmp(game, "c4")) {
     d.c4 = {};
     d.c4.active = true;

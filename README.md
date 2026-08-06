@@ -8,13 +8,57 @@ Active development is the **LVGL PC simulator** under `firmware/` — the same U
 
 ## Screenshots
 
-| Home | Incoming page | Games |
-|:----:|:-------------:|:-----:|
-| ![Home hub](docs/screenshots/hub.png) | ![Incoming Werk](docs/screenshots/incoming.png) | ![Games folder](docs/screenshots/games.png) |
+LVGL PC sim (480×480). One shot per screen; games show a mid-play board.
 
-| Checkers | Doodle | Timer |
-|:--------:|:------:|:-----:|
-| ![Checkers](docs/screenshots/checkers.png) | ![Doodle](docs/screenshots/doodle.png) | ![Timer](docs/screenshots/timer.png) |
+### Shell
+
+| Splash | Setup | Home | Idle |
+|:------:|:-----:|:----:|:----:|
+| ![Splash](docs/screenshots/splash.png) | ![Setup](docs/screenshots/setup.png) | ![Home](docs/screenshots/hub.png) | ![Idle](docs/screenshots/idle.png) |
+
+### WerkPager
+
+| Peers | Compose | Outgoing | Incoming |
+|:-----:|:-------:|:--------:|:--------:|
+| ![Werk](docs/screenshots/werk.png) | ![Compose](docs/screenshots/compose.png) | ![Outgoing](docs/screenshots/outgoing.png) | ![Incoming](docs/screenshots/incoming.png) |
+
+| Page history | | | |
+|:------------:|---|---|---|
+| ![Page history](docs/screenshots/page-history.png) | | | |
+
+### Games
+
+| Folder | Tic Tac Toe | Super TTT | Connect Four |
+|:------:|:-----------:|:---------:|:------------:|
+| ![Games](docs/screenshots/games.png) | ![TTT](docs/screenshots/ttt.png) | ![STTT](docs/screenshots/sttt.png) | ![C4](docs/screenshots/c4.png) |
+
+| Battleship | Checkers | Memory | Reversi |
+|:----------:|:--------:|:------:|:-------:|
+| ![Battleship](docs/screenshots/battleship.png) | ![Checkers](docs/screenshots/checkers.png) | ![Memory](docs/screenshots/memory.png) | ![Reversi](docs/screenshots/reversi.png) |
+
+| Dots & Boxes | Scoreboard | | |
+|:------------:|:----------:|---|---|
+| ![Dots](docs/screenshots/dots.png) | ![Scoreboard](docs/screenshots/scoreboard.png) | | |
+
+### Utilities & doodle
+
+| Utils | Timer | Checklist | Calculator |
+|:-----:|:-----:|:---------:|:----------:|
+| ![Utils](docs/screenshots/utils.png) | ![Timer](docs/screenshots/timer.png) | ![Checklist](docs/screenshots/checklist.png) | ![Calculator](docs/screenshots/calculator.png) |
+
+| Doodle pick | Doodle draw | | |
+|:-----------:|:-----------:|---|---|
+| ![Doodle](docs/screenshots/doodle.png) | ![Doodle draw](docs/screenshots/doodle-draw.png) | | |
+
+### Settings
+
+| Settings | Keyboard | Emoji picker | Wi‑Fi scan |
+|:--------:|:--------:|:------------:|:----------:|
+| ![Settings](docs/screenshots/settings.png) | ![Keyboard](docs/screenshots/keyboard.png) | ![Emoji](docs/screenshots/emoji.png) | ![Wi‑Fi](docs/screenshots/wifi.png) |
+
+| Wi‑Fi password | Updates (OTA) | Background QR upload | |
+|:--------------:|:-------------:|:--------------------:|---|
+| ![Wi‑Fi password](docs/screenshots/wifi-pass.png) | ![OTA](docs/screenshots/ota.png) | ![Background upload](docs/screenshots/bg-upload.png) | |
 
 ---
 

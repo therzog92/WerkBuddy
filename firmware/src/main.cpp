@@ -65,49 +65,20 @@ int main() {
   else if (!wp::app::desk().setup_done) wp::ui::go_setup();
   else wp::ui::go_hub();
 
-  /* WERKPAGER_SCREEN=<name> — jump to any screen for visual QA. */
+  /* WERKPAGER_SCREEN=<name> — jump to any screen for visual QA / README shots. */
   if (qa_jump) {
     using namespace wp::ui;
     using namespace wp::app;
     auto is = [scr_name](const char * v) { return std::strcmp(scr_name, v) == 0; };
     if (is("splash")) go_splash();
-    else if (is("gamesfolder")) go_games_folder();
-    else if (is("ttt")) go_ttt();
-    else if (is("ttt-play")) games_debug_show("ttt", "play");
-    else if (is("ttt-win")) games_debug_show("ttt", "win");
-    else if (is("ttt-lose")) games_debug_show("ttt", "lose");
-    else if (is("c4")) go_c4();
-    else if (is("c4-play")) games_debug_show("c4", "play");
-    else if (is("c4-win")) games_debug_show("c4", "win");
-    else if (is("bs")) go_battleship();
-    else if (is("bs-setup")) games_debug_show("bs", "setup");
-    else if (is("bs-play")) games_debug_show("bs", "play");
-    else if (is("bs-defense")) games_debug_show("bs", "defense");
-    else if (is("bs-win")) games_debug_show("bs", "win");
-    else if (is("ck-play")) games_debug_show("ck", "play");
-    else if (is("ck-win")) games_debug_show("ck", "win");
-    else if (is("mem-play")) games_debug_show("mem", "play");
-    else if (is("doodle")) go_doodle();
-    else if (is("doodle-draw")) doodle_debug_show_draw();
-    else if (is("settings")) go_settings();
-    else if (is("timer")) go_timer();
-    else if (is("utilsfolder") || is("utils")) go_utils_folder();
-    else if (is("checklist")) go_checklist();
-    else if (is("calculator") || is("calc")) go_calculator();
-    else if (is("page-history") || is("history")) go_page_history();
-    else if (is("scoreboard")) go_scoreboard();
+    else if (is("hub") || is("home")) go_hub();
     else if (is("setup")) go_setup();
-    else if (is("reversi") || is("rv")) go_reversi();
-    else if (is("rv-play")) games_debug_show("rv", "play");
-    else if (is("dots") || is("db")) go_dots();
-    else if (is("db-play")) games_debug_show("db", "play");
-    else if (is("sttt")) go_sttt();
-    else if (is("settings-scrolled")) {
-      go_settings();
-      lv_obj_t * body = lv_obj_get_child(lv_screen_active(), 1);
-      if (body) lv_obj_scroll_to_y(body, 900, LV_ANIM_OFF);
-    }
+    else if (is("idle")) go_idle();
     else if (is("werk")) go_werk();
+    else if (is("compose")) {
+      if (desk().peer_count > 0) go_compose(desk().peers[0]);
+      else go_werk();
+    }
     else if (is("outgoing")) {
       Desk & d = desk();
       d.outgoing.active = true;
@@ -126,12 +97,50 @@ int main() {
       std::snprintf(d.incoming.message, sizeof(d.incoming.message), "Lipsync for your life");
       go_incoming();
     }
+    else if (is("page-history") || is("history")) go_page_history();
+    else if (is("gamesfolder") || is("games")) go_games_folder();
+    else if (is("ttt")) go_ttt();
+    else if (is("ttt-play")) games_debug_show("ttt", "play");
+    else if (is("ttt-win")) games_debug_show("ttt", "win");
+    else if (is("ttt-lose")) games_debug_show("ttt", "lose");
+    else if (is("sttt")) go_sttt();
+    else if (is("sttt-play")) games_debug_show("sttt", "play");
+    else if (is("c4")) go_c4();
+    else if (is("c4-play")) games_debug_show("c4", "play");
+    else if (is("c4-win")) games_debug_show("c4", "win");
+    else if (is("bs")) go_battleship();
+    else if (is("bs-setup")) games_debug_show("bs", "setup");
+    else if (is("bs-play")) games_debug_show("bs", "play");
+    else if (is("bs-defense")) games_debug_show("bs", "defense");
+    else if (is("bs-win")) games_debug_show("bs", "win");
+    else if (is("ck") || is("checkers")) go_checkers();
+    else if (is("ck-play")) games_debug_show("ck", "play");
+    else if (is("ck-win")) games_debug_show("ck", "win");
+    else if (is("mem") || is("memory")) go_memory();
+    else if (is("mem-play")) games_debug_show("mem", "play");
+    else if (is("reversi") || is("rv")) go_reversi();
+    else if (is("rv-play")) games_debug_show("rv", "play");
+    else if (is("dots") || is("db")) go_dots();
+    else if (is("db-play")) games_debug_show("db", "play");
+    else if (is("scoreboard")) go_scoreboard();
+    else if (is("utilsfolder") || is("utils")) go_utils_folder();
+    else if (is("timer")) go_timer();
+    else if (is("checklist")) go_checklist();
+    else if (is("calculator") || is("calc")) go_calculator();
+    else if (is("doodle")) go_doodle();
+    else if (is("doodle-draw")) doodle_debug_show_draw();
+    else if (is("settings")) go_settings();
+    else if (is("settings-scrolled")) {
+      go_settings();
+      lv_obj_t * body = lv_obj_get_child(lv_screen_active(), 1);
+      if (body) lv_obj_scroll_to_y(body, 900, LV_ANIM_OFF);
+    }
     else if (is("keyboard")) go_keyboard_name();
     else if (is("emoji")) go_emoji_picker(0);
-    else if (is("compose")) {
-      if (desk().peer_count > 0) go_compose(desk().peers[0]);
-    }
-    else if (is("idle")) go_idle();
+    else if (is("wifi") || is("wifi-scan")) go_wifi_scan();
+    else if (is("wifi-pass")) go_keyboard_wifi_pass();
+    else if (is("ota") || is("updates")) go_ota_releases();
+    else if (is("bg-upload") || is("background")) go_bg_upload();
   }
 
   if (const char * inc = std::getenv("WERKPAGER_INCOMING"); inc && inc[0] == '1') {
