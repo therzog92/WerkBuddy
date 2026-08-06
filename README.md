@@ -8,57 +8,78 @@ Active development is the **LVGL PC simulator** under `firmware/` — the same U
 
 ## Screenshots
 
-LVGL PC sim (480×480). One shot per screen; games show a mid-play board. All thumbs are the same width.
+LVGL PC sim (480×480). Previews are large plain images (not links), so clicks won’t jump to the file. Open a section below for the full set at device size.
 
-### Shell
+<p>
+<img src="docs/screenshots/hub.png" width="320" alt="Home" />
+<img src="docs/screenshots/incoming.png" width="320" alt="Incoming" />
+<img src="docs/screenshots/games.png" width="320" alt="Games" />
+<img src="docs/screenshots/battleship.png" width="320" alt="Battleship" />
+<img src="docs/screenshots/checkers.png" width="320" alt="Checkers" />
+<img src="docs/screenshots/checklist.png" width="320" alt="Checklist" />
+</p>
 
-| Splash | Setup | Home | Idle |
-|:------:|:-----:|:----:|:----:|
-| <img src="docs/screenshots/splash.png" width="140" alt="Splash" /> | <img src="docs/screenshots/setup.png" width="140" alt="Setup" /> | <img src="docs/screenshots/hub.png" width="140" alt="Home" /> | <img src="docs/screenshots/idle.png" width="140" alt="Idle" /> |
+<details>
+<summary><strong>Shell</strong> — splash, setup, home, idle</summary>
+<p>
+<img src="docs/screenshots/splash.png" width="400" alt="Splash" />
+<img src="docs/screenshots/setup.png" width="400" alt="Setup" />
+<img src="docs/screenshots/hub.png" width="400" alt="Home" />
+<img src="docs/screenshots/idle.png" width="400" alt="Idle" />
+</p>
+</details>
 
-### WerkPager
+<details>
+<summary><strong>WerkPager</strong> — peers, compose, outgoing, incoming, history</summary>
+<p>
+<img src="docs/screenshots/werk.png" width="400" alt="WerkPager" />
+<img src="docs/screenshots/compose.png" width="400" alt="Compose" />
+<img src="docs/screenshots/outgoing.png" width="400" alt="Outgoing" />
+<img src="docs/screenshots/incoming.png" width="400" alt="Incoming" />
+<img src="docs/screenshots/page-history.png" width="400" alt="Page history" />
+</p>
+</details>
 
-| Peers | Compose | Outgoing | Incoming |
-|:-----:|:-------:|:--------:|:--------:|
-| <img src="docs/screenshots/werk.png" width="140" alt="WerkPager" /> | <img src="docs/screenshots/compose.png" width="140" alt="Compose" /> | <img src="docs/screenshots/outgoing.png" width="140" alt="Outgoing" /> | <img src="docs/screenshots/incoming.png" width="140" alt="Incoming" /> |
+<details>
+<summary><strong>Games</strong> — folder + one board each</summary>
+<p>
+<img src="docs/screenshots/games.png" width="400" alt="Games" />
+<img src="docs/screenshots/ttt.png" width="400" alt="Tic Tac Toe" />
+<img src="docs/screenshots/sttt.png" width="400" alt="Super TTT" />
+<img src="docs/screenshots/c4.png" width="400" alt="Connect Four" />
+<img src="docs/screenshots/battleship.png" width="400" alt="Battleship" />
+<img src="docs/screenshots/checkers.png" width="400" alt="Checkers" />
+<img src="docs/screenshots/memory.png" width="400" alt="Memory" />
+<img src="docs/screenshots/reversi.png" width="400" alt="Reversi" />
+<img src="docs/screenshots/dots.png" width="400" alt="Dots and Boxes" />
+<img src="docs/screenshots/scoreboard.png" width="400" alt="Scoreboard" />
+</p>
+</details>
 
-| Page history | | | |
-|:------------:|---|---|---|
-| <img src="docs/screenshots/page-history.png" width="140" alt="Page history" /> | | | |
+<details>
+<summary><strong>Utilities & doodle</strong></summary>
+<p>
+<img src="docs/screenshots/utils.png" width="400" alt="Utilities" />
+<img src="docs/screenshots/timer.png" width="400" alt="Timer" />
+<img src="docs/screenshots/checklist.png" width="400" alt="Checklist" />
+<img src="docs/screenshots/calculator.png" width="400" alt="Calculator" />
+<img src="docs/screenshots/doodle.png" width="400" alt="Doodle pick" />
+<img src="docs/screenshots/doodle-draw.png" width="400" alt="Doodle draw" />
+</p>
+</details>
 
-### Games
-
-| Folder | Tic Tac Toe | Super TTT | Connect Four |
-|:------:|:-----------:|:---------:|:------------:|
-| <img src="docs/screenshots/games.png" width="140" alt="Games" /> | <img src="docs/screenshots/ttt.png" width="140" alt="Tic Tac Toe" /> | <img src="docs/screenshots/sttt.png" width="140" alt="Super TTT" /> | <img src="docs/screenshots/c4.png" width="140" alt="Connect Four" /> |
-
-| Battleship | Checkers | Memory | Reversi |
-|:----------:|:--------:|:------:|:-------:|
-| <img src="docs/screenshots/battleship.png" width="140" alt="Battleship" /> | <img src="docs/screenshots/checkers.png" width="140" alt="Checkers" /> | <img src="docs/screenshots/memory.png" width="140" alt="Memory" /> | <img src="docs/screenshots/reversi.png" width="140" alt="Reversi" /> |
-
-| Dots & Boxes | Scoreboard | | |
-|:------------:|:----------:|---|---|
-| <img src="docs/screenshots/dots.png" width="140" alt="Dots and Boxes" /> | <img src="docs/screenshots/scoreboard.png" width="140" alt="Scoreboard" /> | | |
-
-### Utilities & doodle
-
-| Utils | Timer | Checklist | Calculator |
-|:-----:|:-----:|:---------:|:----------:|
-| <img src="docs/screenshots/utils.png" width="140" alt="Utilities" /> | <img src="docs/screenshots/timer.png" width="140" alt="Timer" /> | <img src="docs/screenshots/checklist.png" width="140" alt="Checklist" /> | <img src="docs/screenshots/calculator.png" width="140" alt="Calculator" /> |
-
-| Doodle pick | Doodle draw | | |
-|:-----------:|:-----------:|---|---|
-| <img src="docs/screenshots/doodle.png" width="140" alt="Doodle pick" /> | <img src="docs/screenshots/doodle-draw.png" width="140" alt="Doodle draw" /> | | |
-
-### Settings
-
-| Settings | Keyboard | Emoji picker | Wi‑Fi scan |
-|:--------:|:--------:|:------------:|:----------:|
-| <img src="docs/screenshots/settings.png" width="140" alt="Settings" /> | <img src="docs/screenshots/keyboard.png" width="140" alt="Keyboard" /> | <img src="docs/screenshots/emoji.png" width="140" alt="Emoji picker" /> | <img src="docs/screenshots/wifi.png" width="140" alt="Wi-Fi scan" /> |
-
-| Wi‑Fi password | Updates (OTA) | Background QR upload | |
-|:--------------:|:-------------:|:--------------------:|---|
-| <img src="docs/screenshots/wifi-pass.png" width="140" alt="Wi-Fi password" /> | <img src="docs/screenshots/ota.png" width="140" alt="OTA updates" /> | <img src="docs/screenshots/bg-upload.png" width="140" alt="Background QR upload" /> | |
+<details>
+<summary><strong>Settings</strong> — keyboard, emoji, Wi‑Fi, OTA, background QR</summary>
+<p>
+<img src="docs/screenshots/settings.png" width="400" alt="Settings" />
+<img src="docs/screenshots/keyboard.png" width="400" alt="Keyboard" />
+<img src="docs/screenshots/emoji.png" width="400" alt="Emoji picker" />
+<img src="docs/screenshots/wifi.png" width="400" alt="Wi-Fi scan" />
+<img src="docs/screenshots/wifi-pass.png" width="400" alt="Wi-Fi password" />
+<img src="docs/screenshots/ota.png" width="400" alt="OTA updates" />
+<img src="docs/screenshots/bg-upload.png" width="400" alt="Background QR upload" />
+</p>
+</details>
 
 ---
 
