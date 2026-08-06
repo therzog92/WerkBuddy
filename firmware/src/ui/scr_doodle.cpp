@@ -273,14 +273,44 @@ void rebuild_tools() {
   }
 
   lv_obj_t * eras = lv_button_create(g_tools);
-  lv_obj_set_size(eras, 40, 24);
+  lv_obj_set_size(eras, 36, 28);
+  lv_obj_set_style_radius(eras, 8, 0);
   lv_obj_set_style_bg_color(eras, g_erase ? theme::gold() : theme::panel(), 0);
   lv_obj_set_style_shadow_width(eras, 0, 0);
-  lv_obj_t * el = lv_label_create(eras);
-  lv_label_set_text(el, "Er");
-  lv_obj_set_style_text_font(el, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_color(el, g_erase ? lv_color_hex(0x1a1200) : theme::ink(), 0);
-  lv_obj_center(el);
+  lv_obj_set_style_pad_all(eras, 2, 0);
+
+  /* Classic pink rubber eraser (no Unicode eraser glyph). */
+  lv_obj_t * eras_ico = lv_obj_create(eras);
+  lv_obj_remove_style_all(eras_ico);
+  lv_obj_set_size(eras_ico, 22, 14);
+  lv_obj_set_style_radius(eras_ico, 3, 0);
+  lv_obj_set_style_bg_color(eras_ico, lv_color_hex(0xf48fb1), 0);
+  lv_obj_set_style_bg_opa(eras_ico, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(eras_ico, 1, 0);
+  lv_obj_set_style_border_color(eras_ico, lv_color_hex(0xd46a8c), 0);
+  lv_obj_remove_flag(eras_ico, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(eras_ico, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_center(eras_ico);
+
+  lv_obj_t * band = lv_obj_create(eras_ico);
+  lv_obj_remove_style_all(band);
+  lv_obj_set_size(band, 6, 14);
+  lv_obj_set_style_bg_color(band, lv_color_hex(0xb8bcc8), 0);
+  lv_obj_set_style_bg_opa(band, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(band, 0, 0);
+  lv_obj_align(band, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_remove_flag(band, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(band, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t * tip = lv_obj_create(eras_ico);
+  lv_obj_remove_style_all(tip);
+  lv_obj_set_size(tip, 4, 14);
+  lv_obj_set_style_bg_color(tip, lv_color_hex(0xffc1d5), 0);
+  lv_obj_set_style_bg_opa(tip, LV_OPA_COVER, 0);
+  lv_obj_align(tip, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_remove_flag(tip, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(tip, LV_OBJ_FLAG_SCROLLABLE);
+
   lv_obj_add_event_cb(
       eras,
       [](lv_event_t * /*e*/) {
@@ -316,7 +346,7 @@ lv_obj_t * doodle_screen() {
   app::Desk & d = app::desk();
   const uint32_t gen = ++g_screen_gen;
   lv_obj_t * scr = make_screen();
-  lv_obj_t * top = make_topbar(scr, "DOODLE", d.name);
+  lv_obj_t * top = make_topbar(scr, "DOODLE", d.name, d.doodle_peer_id[0] ? nullptr : "Draw together");
   lv_obj_t * body = make_body(scr, true);
   lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t * dock = make_dock(scr);
@@ -328,11 +358,10 @@ lv_obj_t * doodle_screen() {
   lv_obj_set_flex_grow(pick, 1);
   lv_obj_set_flex_flow(pick, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(pick, 8, 0);
-  make_tagline(pick, "Send doodles to");
   if (d.peer_count == 0) make_tagline(pick, "No saved desks - add one in Settings.");
   for (int i = 0; i < d.peer_count; ++i) {
     make_peer_btn(
-        pick, d.peers[i].name, "draw together",
+        pick, d.peers[i].name, nullptr,
         [](lv_event_t * e) {
           const int idx = (int)(intptr_t)lv_event_get_user_data(e);
           app::Desk & desk = app::desk();

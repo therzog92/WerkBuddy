@@ -6,8 +6,8 @@ namespace wp {
 namespace games {
 namespace db {
 
-/* 4×4 boxes → 5×5 dots. Compact for 480px. */
-constexpr int kBox = 4;
+/* 6×6 boxes → 7×7 dots. Fits 480px with a compact dock. */
+constexpr int kBox = 6;
 constexpr int kDots = kBox + 1;
 constexpr int kHEdges = kDots * kBox; /* row-major: r * kBox + c */
 constexpr int kVEdges = kBox * kDots; /* row-major: r * kDots + c */
@@ -18,22 +18,25 @@ constexpr int8_t kP1 = 1; /* challenger */
 constexpr int8_t kP2 = 2; /* acceptor */
 
 struct State {
-  bool h[kHEdges] = {};
-  bool v[kVEdges] = {};
+  int8_t h[kHEdges] = {}; /* owner or 0 */
+  int8_t v[kVEdges] = {};
   int8_t box[kBox][kBox] = {}; /* owner or 0 */
   int8_t score1 = 0, score2 = 0;
 };
 
 inline void init(State & s) { s = {}; }
 
-inline bool h_taken(const State & s, int r, int c) {
-  if (r < 0 || r >= kDots || c < 0 || c >= kBox) return true;
+inline int8_t h_owner(const State & s, int r, int c) {
+  if (r < 0 || r >= kDots || c < 0 || c >= kBox) return kNone;
   return s.h[r * kBox + c];
 }
-inline bool v_taken(const State & s, int r, int c) {
-  if (r < 0 || r >= kBox || c < 0 || c >= kDots) return true;
+inline int8_t v_owner(const State & s, int r, int c) {
+  if (r < 0 || r >= kBox || c < 0 || c >= kDots) return kNone;
   return s.v[r * kDots + c];
 }
+
+inline bool h_taken(const State & s, int r, int c) { return h_owner(s, r, c) != kNone; }
+inline bool v_taken(const State & s, int r, int c) { return v_owner(s, r, c) != kNone; }
 
 inline int box_sides(const State & s, int br, int bc) {
   int n = 0;
@@ -50,12 +53,12 @@ inline int claim(State & s, int is_vert, int r, int c, int8_t player) {
     if (r < 0 || r >= kBox || c < 0 || c >= kDots) return -1;
     const int i = r * kDots + c;
     if (s.v[i]) return -1;
-    s.v[i] = true;
+    s.v[i] = player;
   } else {
     if (r < 0 || r >= kDots || c < 0 || c >= kBox) return -1;
     const int i = r * kBox + c;
     if (s.h[i]) return -1;
-    s.h[i] = true;
+    s.h[i] = player;
   }
 
   int claimed = 0;

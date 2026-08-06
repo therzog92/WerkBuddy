@@ -9,8 +9,8 @@ namespace wp {
 namespace ui {
 
 constexpr int kTopbarH = 64;
-constexpr int kDockH = 64;
-constexpr int kDockCompactH = 48;
+constexpr int kDockH = 52;
+constexpr int kDockCompactH = 44;
 
 lv_obj_t * make_screen(theme::BgWash wash = theme::BgWash::Page);
 lv_obj_t * make_topbar(lv_obj_t * scr, const char * title, const char * me = "Tommy",

@@ -45,6 +45,7 @@ void idle_tick(lv_timer_t * /*t*/) {
       g_screen == Screen::Keyboard || g_screen == Screen::EmojiPicker ||
       g_screen == Screen::WifiScan || g_screen == Screen::OtaReleases ||
       g_screen == Screen::BgUpload || g_screen == Screen::Splash || g_screen == Screen::Setup ||
+      g_screen == Screen::Doodle ||
       (g_screen == Screen::Timer && desk_timer::is_finished())) {
     return;
   }

@@ -154,11 +154,13 @@ const TimeoutSpec * timeout_specs() {
 
 bool busy() {
   const Desk & d = g_desk;
+  /* Doodle peer is a soft resume hint — not a lock. Leaving doodle via Home
+   * keeps the peer so you can jump back; games/pager must still work. */
   return d.incoming.active || d.outgoing.active || d.ttt_invite.active || d.ttt.active ||
          d.sttt_invite.active || d.sttt.active || d.c4_invite.active || d.c4.active ||
          d.bs_invite.active || d.bs.active || d.ck_invite.active || d.ck.active ||
          d.mem_invite.active || d.mem.active || d.rv_invite.active || d.rv.active ||
-         d.db_invite.active || d.db.active || d.doodle_peer_id[0] != '\0';
+         d.db_invite.active || d.db.active;
 }
 
 bool peer_saved(const char * id) {

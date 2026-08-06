@@ -24,13 +24,21 @@ bool g_calc_just_eq = false;
 bool g_calc_error = false;
 lv_obj_t * g_calc_lbl = nullptr;
 
+void calc_pretty_expr(const char * src, char * dst, size_t n);
+
 void calc_show() {
   if (!g_calc_lbl) return;
   if (g_calc_error) {
     lv_label_set_text(g_calc_lbl, "Error");
     return;
   }
-  lv_label_set_text(g_calc_lbl, g_calc_expr[0] ? g_calc_expr : "0");
+  if (!g_calc_expr[0]) {
+    lv_label_set_text(g_calc_lbl, "0");
+    return;
+  }
+  char pretty[96];
+  calc_pretty_expr(g_calc_expr, pretty, sizeof(pretty));
+  lv_label_set_text(g_calc_lbl, pretty);
 }
 
 char calc_last() {
@@ -49,12 +57,106 @@ int calc_open_parens() {
   return n;
 }
 
+/** Insert thousand commas into a digit run (no sign/decimal). */
+void calc_commas_digits(const char * digits, size_t len, char * out, size_t n) {
+  if (!n) return;
+  if (!len) {
+    out[0] = '\0';
+    return;
+  }
+  const size_t commas = (len - 1) / 3;
+  if (len + commas >= n) {
+    /* Truncate rather than overflow. */
+    std::snprintf(out, n, "%.*s", (int)(n > 1 ? n - 1 : 0), digits);
+    return;
+  }
+  size_t oi = 0;
+  for (size_t i = 0; i < len; ++i) {
+    if (i > 0 && (len - i) % 3 == 0) out[oi++] = ',';
+    out[oi++] = digits[i];
+  }
+  out[oi] = '\0';
+}
+
+/** Pretty number: optional leading '-', integer with commas, optional fraction. */
+void calc_pretty_number(const char * num, size_t len, char * out, size_t n) {
+  if (!n || !len) {
+    if (n) out[0] = '\0';
+    return;
+  }
+  size_t i = 0;
+  size_t o = 0;
+  auto put = [&](char c) {
+    if (o + 1 < n) out[o++] = c;
+  };
+  if (num[0] == '-') {
+    put('-');
+    ++i;
+  }
+  size_t int_start = i;
+  while (i < len && std::isdigit((unsigned char)num[i])) ++i;
+  const size_t int_len = i - int_start;
+  char int_buf[40];
+  calc_commas_digits(num + int_start, int_len, int_buf, sizeof(int_buf));
+  for (const char * p = int_buf; *p; ++p) put(*p);
+  while (i < len) put(num[i++]);
+  out[o < n ? o : n - 1] = '\0';
+}
+
+/** Display form: commas in numbers, spaces around binary ops (* shown as x). */
+void calc_pretty_expr(const char * src, char * dst, size_t n) {
+  if (!n) return;
+  size_t o = 0;
+  auto put = [&](char c) {
+    if (o + 1 < n) dst[o++] = c;
+  };
+  auto puts = [&](const char * s) {
+    while (*s) put(*s++);
+  };
+  bool prev_was_value = false; /* digit/number or ')' */
+  for (size_t i = 0; src[i];) {
+    const char c = src[i];
+    const bool unary_minus =
+        c == '-' && !prev_was_value &&
+        (i == 0 || src[i - 1] == '(' || calc_is_op(src[i - 1]));
+    if (std::isdigit((unsigned char)c) || unary_minus) {
+      size_t j = i;
+      if (src[j] == '-') ++j;
+      const size_t num_start = i;
+      while (src[j] && std::isdigit((unsigned char)src[j])) ++j;
+      if (src[j] == '.') {
+        ++j;
+        while (src[j] && std::isdigit((unsigned char)src[j])) ++j;
+      }
+      char num_pretty[48];
+      calc_pretty_number(src + num_start, j - num_start, num_pretty, sizeof(num_pretty));
+      puts(num_pretty);
+      i = j;
+      prev_was_value = true;
+      continue;
+    }
+    if (c == '+' || c == '-' || c == '*' || c == '/' || c == 'x') {
+      put(' ');
+      put(c == '*' ? 'x' : c);
+      put(' ');
+      ++i;
+      prev_was_value = false;
+      continue;
+    }
+    put(c);
+    prev_was_value = (c == ')');
+    ++i;
+  }
+  dst[o < n ? o : n - 1] = '\0';
+}
+
 void calc_format_result(double v, char * out, size_t n) {
   if (!std::isfinite(v)) {
     std::snprintf(out, n, "Error");
     return;
   }
   if (std::fabs(v) < 1e-12) v = 0;
+  /* Store plain digits (no commas) so further ops parse cleanly; display adds commas. */
   if (std::fabs(v - std::round(v)) < 1e-9 && std::fabs(v) < 1e15)
     std::snprintf(out, n, "%.0f", std::round(v));
   else
@@ -73,7 +175,8 @@ double calc_parse_expr();
 
 double calc_parse_number() {
   calc_skip();
-  if (!std::isdigit((unsigned char)g_calc_expr[g_calc_pos])) {
+  const bool starts_dot = g_calc_expr[g_calc_pos] == '.';
+  if (!starts_dot && !std::isdigit((unsigned char)g_calc_expr[g_calc_pos])) {
     g_calc_parse_ok = false;
     return 0;
   }
@@ -81,6 +184,19 @@ double calc_parse_number() {
   while (std::isdigit((unsigned char)g_calc_expr[g_calc_pos])) {
     v = v * 10 + (g_calc_expr[g_calc_pos] - '0');
     ++g_calc_pos;
+  }
+  if (g_calc_expr[g_calc_pos] == '.') {
+    ++g_calc_pos;
+    double place = 0.1;
+    if (!std::isdigit((unsigned char)g_calc_expr[g_calc_pos]) && !starts_dot) {
+      /* trailing '.' ok → treat as integer */
+    } else {
+      while (std::isdigit((unsigned char)g_calc_expr[g_calc_pos])) {
+        v += (g_calc_expr[g_calc_pos] - '0') * place;
+        place *= 0.1;
+        ++g_calc_pos;
+      }
+    }
   }
   return v;
 }
@@ -175,7 +291,7 @@ void calc_begin_edit() {
 
 void calc_append(char ch) {
   if (g_calc_just_eq) {
-    if (std::isdigit((unsigned char)ch) || ch == '(') {
+    if (std::isdigit((unsigned char)ch) || ch == '(' || ch == '.') {
       g_calc_expr[0] = '\0';
     } else if (!calc_is_op(ch)) {
       g_calc_expr[0] = '\0';
@@ -190,6 +306,29 @@ void calc_append(char ch) {
   const char last = calc_last();
   const size_t len = std::strlen(g_calc_expr);
 
+  if (ch == '.') {
+    if (last == ')' || last == '.') return;
+    /* Only one decimal in the current number token. */
+    for (size_t i = len; i > 0; --i) {
+      const char c = g_calc_expr[i - 1];
+      if (c == '.') return;
+      if (!std::isdigit((unsigned char)c)) break;
+    }
+    if (len + 1 >= (size_t)kCalcExprMax) return;
+    if (!last || calc_is_op(last) || last == '(') {
+      /* Leading decimal → "0." */
+      if (len + 2 >= (size_t)kCalcExprMax) return;
+      g_calc_expr[len] = '0';
+      g_calc_expr[len + 1] = '.';
+      g_calc_expr[len + 2] = '\0';
+    } else {
+      g_calc_expr[len] = '.';
+      g_calc_expr[len + 1] = '\0';
+    }
+    calc_show();
+    return;
+  }
+
   if (std::isdigit((unsigned char)ch)) {
     if (last == ')') return;
     if (len + 1 >= (size_t)kCalcExprMax) return;
@@ -200,7 +339,7 @@ void calc_append(char ch) {
   }
 
   if (ch == '(') {
-    if (last && (std::isdigit((unsigned char)last) || last == ')')) return;
+    if (last && (std::isdigit((unsigned char)last) || last == ')' || last == '.')) return;
     if (len + 1 >= (size_t)kCalcExprMax) return;
     g_calc_expr[len] = '(';
     g_calc_expr[len + 1] = '\0';
@@ -210,7 +349,7 @@ void calc_append(char ch) {
 
   if (ch == ')') {
     if (calc_open_parens() <= 0) return;
-    if (!last || calc_is_op(last) || last == '(') return;
+    if (!last || calc_is_op(last) || last == '(' || last == '.') return;
     if (len + 1 >= (size_t)kCalcExprMax) return;
     g_calc_expr[len] = ')';
     g_calc_expr[len + 1] = '\0';
@@ -229,6 +368,7 @@ void calc_append(char ch) {
       return;
     }
     if (!last || last == '(') return; /* binary ops need a left side */
+    if (last == '.') return;
     if (calc_is_op(last)) {
       /* replace trailing binary op (keep unary - after replace via separate tap) */
       g_calc_expr[len - 1] = ch;
@@ -352,7 +492,7 @@ lv_obj_t * checklist_screen() {
   lv_obj_set_style_pad_row(body, 8, 0);
 
   const int n = checklist::count();
-  if (n == 0) make_tagline(body, "No tasks — tap Add.");
+  if (n == 0) make_tagline(body, "No tasks - tap Add.");
 
   for (int i = 0; i < n; ++i) {
     const checklist::Item * it = checklist::at(i);
@@ -385,6 +525,8 @@ lv_obj_t * checklist_screen() {
     lv_obj_set_style_radius(box, 8, 0);
     lv_obj_set_style_border_width(box, 2, 0);
     lv_obj_set_style_border_color(box, theme::gold(), 0);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
     if (it->done) {
       lv_obj_set_style_bg_color(box, theme::gold(), 0);
       lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
@@ -392,6 +534,7 @@ lv_obj_t * checklist_screen() {
       lv_label_set_text(ck, LV_SYMBOL_OK);
       lv_obj_set_style_text_color(ck, lv_color_hex(0x1a1200), 0);
       lv_obj_center(ck);
+      lv_obj_remove_flag(ck, LV_OBJ_FLAG_CLICKABLE);
     } else {
       lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
     }
@@ -402,6 +545,7 @@ lv_obj_t * checklist_screen() {
     lv_obj_set_style_text_font(lab, &lv_font_montserrat_16, 0);
     lv_label_set_long_mode(lab, LV_LABEL_LONG_DOT);
     lv_obj_set_flex_grow(lab, 1);
+    lv_obj_remove_flag(lab, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_add_event_cb(
         tog,
@@ -508,7 +652,8 @@ lv_obj_t * calculator_screen() {
   calc_btn(grid, "3", 2, 3, 1, dig, (void *)(intptr_t)3, false);
   calc_btn(grid, "-", 3, 3, 1, op, (void *)(intptr_t)'-', true);
 
-  calc_btn(grid, "0", 0, 4, 2, dig, (void *)(intptr_t)0, false);
+  calc_btn(grid, "0", 0, 4, 1, dig, (void *)(intptr_t)0, false);
+  calc_btn(grid, ".", 1, 4, 1, [](lv_event_t * /*e*/) { calc_append('.'); }, nullptr, false);
   calc_btn(grid, "=", 2, 4, 1, [](lv_event_t * /*e*/) { calc_eq(); }, nullptr, true);
   calc_btn(grid, "+", 3, 4, 1, op, (void *)(intptr_t)'+', true);
 

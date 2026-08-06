@@ -223,7 +223,7 @@ lv_obj_t * make_dock(lv_obj_t * scr) {
   lv_obj_set_size(dock, WP_HOR_RES, kDockH);
   lv_obj_align(dock, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_pad_hor(dock, 12, 0);
-  lv_obj_set_style_pad_ver(dock, 10, 0);
+  lv_obj_set_style_pad_ver(dock, 6, 0);
   lv_obj_set_flex_flow(dock, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(dock, 8, 0);
@@ -248,7 +248,7 @@ void style_peer_like(lv_obj_t * btn) {
 lv_obj_t * dock_btn(lv_obj_t * dock, const char * label, bool primary, bool danger,
                     lv_event_cb_t cb, void * user_data) {
   lv_obj_t * btn = lv_button_create(dock);
-  lv_obj_set_height(btn, 44);
+  lv_obj_set_height(btn, 36);
   lv_obj_set_flex_grow(btn, 1);
   lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_shadow_width(btn, 0, 0);
@@ -339,15 +339,18 @@ void show_confirm(const char * message, const char * yes_label, bool yes_danger,
   lv_obj_add_flag(layer, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t * card = lv_obj_create(layer);
-  lv_obj_set_size(card, 340, 160);
+  lv_obj_set_width(card, 340);
+  lv_obj_set_height(card, LV_SIZE_CONTENT);
   lv_obj_center(card);
   lv_obj_set_style_radius(card, 16, 0);
   lv_obj_set_style_bg_color(card, theme::panel(), 0);
   lv_obj_set_style_border_color(card, theme::border(), 0);
   lv_obj_set_style_border_width(card, 2, 0);
   lv_obj_set_style_pad_all(card, 16, 0);
+  lv_obj_set_style_pad_row(card, 14, 0);
   lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_flex_align(card, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t * msg = lv_label_create(card);
   lv_label_set_text(msg, message && message[0] ? message : "Are you sure?");

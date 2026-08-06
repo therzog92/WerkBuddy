@@ -106,6 +106,18 @@ void dock_play_again_home(lv_obj_t * dock, lv_event_cb_t on_again, lv_event_cb_t
   dock_btn(dock, "Home", false, false, on_home);
 }
 
+/** Slim centered Forfeit control — not a full-width slab. */
+lv_obj_t * dock_forfeit_btn(lv_obj_t * dock, lv_event_cb_t on_confirm) {
+  lv_obj_t * btn = dock_btn(dock, "Forfeit", false, true, [](lv_event_t * e) {
+    auto * cb = reinterpret_cast<lv_event_cb_t>(lv_event_get_user_data(e));
+    show_forfeit_confirm(cb);
+  }, (void *)on_confirm);
+  lv_obj_set_flex_grow(btn, 0);
+  lv_obj_set_width(btn, 120);
+  lv_obj_set_height(btn, 28);
+  return btn;
+}
+
 lv_obj_t * make_status(lv_obj_t * parent, const char * text) {
   lv_obj_t * s = lv_label_create(parent);
   lv_label_set_text(s, text);
@@ -114,6 +126,62 @@ lv_obj_t * make_status(lv_obj_t * parent, const char * text) {
   lv_obj_set_style_text_align(s, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_width(s, lv_pct(100));
   return s;
+}
+
+/** Light score pill: Name · disc · n   Name · disc · n (shared by scored games). */
+lv_obj_t * make_score_pill(lv_obj_t * parent, const char * name_a, int score_a, lv_color_t accent_a,
+                           const char * name_b, int score_b, lv_color_t accent_b) {
+  lv_obj_t * pill = lv_obj_create(parent);
+  lv_obj_remove_style_all(pill);
+  lv_obj_set_height(pill, 26);
+  lv_obj_set_width(pill, LV_SIZE_CONTENT);
+  lv_obj_set_style_pad_hor(pill, 12, 0);
+  lv_obj_set_style_pad_ver(pill, 3, 0);
+  lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(pill, lv_color_hex(0xd6cfc4), 0);
+  lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
+  lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(pill, 12, 0);
+  lv_obj_remove_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+
+  const lv_color_t pill_ink = lv_color_hex(0x1a1220);
+  auto add_side = [&](const char * name, int n, lv_color_t accent) {
+    lv_obj_t * side = lv_obj_create(pill);
+    lv_obj_remove_style_all(side);
+    lv_obj_set_size(side, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(side, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(side, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(side, 4, 0);
+    lv_obj_remove_flag(side, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(side, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t * lab = lv_label_create(side);
+    lv_label_set_text(lab, name);
+    lv_obj_set_style_text_color(lab, pill_ink, 0);
+    lv_obj_set_style_text_font(lab, &lv_font_montserrat_12, 0);
+
+    lv_obj_t * disc = lv_obj_create(side);
+    lv_obj_remove_style_all(disc);
+    lv_obj_set_size(disc, 12, 12);
+    lv_obj_set_style_radius(disc, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(disc, accent, 0);
+    lv_obj_set_style_bg_opa(disc, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(disc, 1, 0);
+    lv_obj_set_style_border_color(disc, lv_color_hex(0x5a5048), 0);
+    lv_obj_remove_flag(disc, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t * num = lv_label_create(side);
+    char buf[8];
+    lv_snprintf(buf, sizeof(buf), "%d", n);
+    lv_label_set_text(num, buf);
+    lv_obj_set_style_text_color(num, pill_ink, 0);
+    lv_obj_set_style_text_font(num, &lv_font_montserrat_14, 0);
+  };
+  add_side(name_a, score_a, accent_a);
+  add_side(name_b, score_b, accent_b);
+  return pill;
 }
 
 lv_obj_t * make_wait_block(lv_obj_t * parent, const char * eye, const char * name, const char * sub) {
@@ -147,7 +215,7 @@ void peer_list(lv_obj_t * parent, lv_event_cb_t on_peer) {
   const app::Desk & d = app::desk();
   if (d.peer_count == 0) make_tagline(parent, "No saved desks - add one in Settings.");
   for (int i = 0; i < d.peer_count; ++i) {
-    make_peer_btn(parent, d.peers[i].name, "challenge", on_peer, (void *)(intptr_t)i);
+    make_peer_btn(parent, d.peers[i].name, nullptr, on_peer, (void *)(intptr_t)i);
   }
 }
 
@@ -362,9 +430,8 @@ lv_obj_t * game_ttt_build() {
             go_games_folder();
           });
     } else {
-      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-        show_forfeit_confirm([](lv_event_t * /*ev*/) {
-          app::Desk & desk = app::desk();
+      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+app::Desk & desk = app::desk();
           score_log::note("Tic Tac Toe", desk.ttt.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::TttForfeit;
@@ -372,7 +439,6 @@ lv_obj_t * game_ttt_build() {
           app::send(m);
           desk.ttt.active = false;
           go_games_folder();
-        });
       });
     }
   } else {
@@ -747,9 +813,8 @@ lv_obj_t * game_sttt_build() {
       const uint32_t n = lv_obj_get_child_count(dock);
       for (uint32_t i = 0; i < n; ++i) lv_obj_set_height(lv_obj_get_child(dock, i), 36);
     } else {
-      lv_obj_t * btn = dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-        show_forfeit_confirm([](lv_event_t * /*ev*/) {
-          app::Desk & desk = app::desk();
+      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+app::Desk & desk = app::desk();
           score_log::note("Super TTT", desk.sttt.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::StttForfeit;
@@ -757,9 +822,7 @@ lv_obj_t * game_sttt_build() {
           app::send(m);
           desk.sttt.active = false;
           go_games_folder();
-        });
       });
-      lv_obj_set_height(btn, 36);
     }
   } else {
     peer_list(body, sttt_challenge);
@@ -1111,9 +1174,8 @@ lv_obj_t * game_c4_build() {
             go_games_folder();
           });
     } else {
-      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-        show_forfeit_confirm([](lv_event_t * /*ev*/) {
-          app::Desk & desk = app::desk();
+      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+app::Desk & desk = app::desk();
           score_log::note("Connect Four", desk.c4.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::C4Forfeit;
@@ -1121,7 +1183,6 @@ lv_obj_t * game_c4_build() {
           app::send(m);
           desk.c4.active = false;
           go_games_folder();
-        });
       });
     }
   } else {
@@ -1524,9 +1585,8 @@ lv_obj_t * game_bs_build() {
         });
       }
     }
-    dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-      show_forfeit_confirm([](lv_event_t * /*ev*/) {
-        app::Desk & desk = app::desk();
+    dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+app::Desk & desk = app::desk();
         score_log::note("Battleship", desk.bs.opp_name, score_log::Outcome::ForfeitSelf);
         proto::Msg m;
         m.type = proto::MsgType::BsForfeit;
@@ -1535,7 +1595,6 @@ lv_obj_t * game_bs_build() {
         desk.bs.active = false;
         go_games_folder();
       });
-    });
   } else if (d.bs.active) {
     make_status(body, d.bs.over ? (d.bs.result_dismissed ? "Play again?" : "Game over")
                                 : (d.bs.last_msg[0] ? d.bs.last_msg
@@ -1597,9 +1656,8 @@ lv_obj_t * game_bs_build() {
             go_games_folder();
           });
     } else {
-      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-        show_forfeit_confirm([](lv_event_t * /*ev*/) {
-          app::Desk & desk = app::desk();
+      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+app::Desk & desk = app::desk();
           score_log::note("Battleship", desk.bs.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::BsForfeit;
@@ -1607,7 +1665,6 @@ lv_obj_t * game_bs_build() {
           app::send(m);
           desk.bs.active = false;
           go_games_folder();
-        });
       });
     }
   } else {
@@ -1727,13 +1784,20 @@ void fill_ck_play(lv_obj_t * parent) {
   }
 
   constexpr int kCell = 40;
+  /* High-contrast mauve board; mint + soft rose pieces (easy to read). */
+  const lv_color_t sq_light = lv_color_mix(theme::ink(), theme::panel(), LV_OPA_30);
+  const lv_color_t sq_dark = theme::bg0();
+  const lv_color_t piece_rose = lv_color_mix(theme::hot(), theme::ink(), LV_OPA_70);
+  const lv_color_t piece_mint = theme::mint();
   lv_obj_t * board = lv_obj_create(parent);
   lv_obj_remove_style_all(board);
   lv_obj_set_size(board, 8 * kCell, 8 * kCell);
-  lv_obj_set_style_radius(board, 12, 0);
+  lv_obj_set_style_radius(board, 14, 0);
   lv_obj_set_style_clip_corner(board, true, 0);
-  lv_obj_set_style_border_width(board, 6, 0);
-  lv_obj_set_style_border_color(board, lv_color_hex(0x4a1828), 0);
+  lv_obj_set_style_border_width(board, 2, 0);
+  lv_obj_set_style_border_color(board, theme::border(), 0);
+  lv_obj_set_style_bg_color(board, theme::bg1(), 0);
+  lv_obj_set_style_bg_opa(board, LV_OPA_COVER, 0);
   lv_obj_remove_flag(board, LV_OBJ_FLAG_SCROLLABLE);
 
   for (int vy = 0; vy < 8; ++vy) {
@@ -1748,7 +1812,7 @@ void fill_ck_play(lv_obj_t * parent) {
       lv_obj_set_size(cell, kCell, kCell);
       lv_obj_set_pos(cell, vx * kCell, vy * kCell);
       const bool dark = (x + y) % 2 == 1;
-      lv_obj_set_style_bg_color(cell, dark ? lv_color_hex(0x6b3a55) : lv_color_hex(0xf0e0c8), 0);
+      lv_obj_set_style_bg_color(cell, dark ? sq_dark : sq_light, 0);
       lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
       lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
       if (g.sel_x == x && g.sel_y == y) {
@@ -1762,17 +1826,12 @@ void fill_ck_play(lv_obj_t * parent) {
         lv_obj_set_size(piece, 28, 28);
         lv_obj_set_style_radius(piece, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(piece, LV_OPA_COVER, 0);
-        if (games::ck::is_red(p)) {
-          lv_obj_set_style_bg_color(piece, lv_color_hex(0xc41e3a), 0);
-        } else {
-          lv_obj_set_style_bg_color(piece, lv_color_hex(0x1a1220), 0);
-          lv_obj_set_style_border_width(piece, 2, 0);
-          lv_obj_set_style_border_color(piece, theme::gold(), 0);
-        }
+        const bool red = games::ck::is_red(p);
+        lv_obj_set_style_bg_color(piece, red ? piece_rose : piece_mint, 0);
         if (games::ck::is_king(p)) {
           lv_obj_t * k = lv_label_create(piece);
           lv_label_set_text(k, "K");
-          lv_obj_set_style_text_color(k, theme::gold(), 0);
+          lv_obj_set_style_text_color(k, theme::bg0(), 0);
           lv_obj_set_style_text_font(k, &lv_font_montserrat_12, 0);
           lv_obj_center(k);
         }
@@ -1878,9 +1937,8 @@ lv_obj_t * game_ck_build() {
             go_games_folder();
           });
     } else {
-      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-        show_forfeit_confirm([](lv_event_t * /*ev*/) {
-          app::Desk & desk = app::desk();
+      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+app::Desk & desk = app::desk();
           score_log::note("Checkers", desk.ck.opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::CkForfeit;
@@ -1888,7 +1946,6 @@ lv_obj_t * game_ck_build() {
           app::send(m);
           desk.ck.active = false;
           go_games_folder();
-        });
       });
     }
   } else {
@@ -2019,10 +2076,24 @@ void mem_flip(lv_event_t * e) {
 
 void fill_mem_play(lv_obj_t * parent) {
   app::MemGame & g = app::desk().mem;
-  char status[64];
-  lv_snprintf(status, sizeof(status), "You %d - %s %d%s", g.my_score, g.opp_name, g.opp_score,
-              g.my_turn && !g.lock ? " - your turn" : "");
+
+  lv_obj_set_style_pad_row(parent, 2, 0);
+  lv_obj_set_style_pad_ver(parent, 0, 0);
+  lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  const char * status = "Your turn";
+  char wait_buf[48];
+  if (g.over && !g.result_dismissed) status = "Game over";
+  else if (g.over) status = "Play again?";
+  else if (g.lock) status = "Matching...";
+  else if (!g.my_turn) {
+    lv_snprintf(wait_buf, sizeof(wait_buf), "Waiting on %s...", g.opp_name);
+    status = wait_buf;
+  }
   make_status(parent, status);
+
+  make_score_pill(parent, app::desk().name, g.my_score, theme::mint(), g.opp_name, g.opp_score,
+                  theme::hot());
 
   constexpr int kCard = 72, kGap = 8;
   lv_obj_t * board = lv_obj_create(parent);
@@ -2140,6 +2211,11 @@ lv_obj_t * game_mem_build() {
       go_memory();
     });
   } else if (d.mem.active) {
+    lv_obj_set_height(dock, kDockCompactH);
+    lv_obj_set_style_pad_ver(dock, 4, 0);
+    lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
+    lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     fill_mem_play(body);
     if (d.mem.over) {
       dock_play_again_home(
@@ -2169,17 +2245,15 @@ lv_obj_t * game_mem_build() {
             go_games_folder();
           });
     } else {
-      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-        show_forfeit_confirm([](lv_event_t * /*ev*/) {
-          app::Desk & desk = app::desk();
-          score_log::note("Memory", desk.mem.opp_name, score_log::Outcome::ForfeitSelf);
-          proto::Msg m;
-          m.type = proto::MsgType::MemForfeit;
-          fill_msg_ids(m, desk.mem.opp_id);
-          app::send(m);
-          desk.mem.active = false;
-          go_games_folder();
-        });
+      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+        app::Desk & desk = app::desk();
+        score_log::note("Memory", desk.mem.opp_name, score_log::Outcome::ForfeitSelf);
+        proto::Msg m;
+        m.type = proto::MsgType::MemForfeit;
+        fill_msg_ids(m, desk.mem.opp_id);
+        app::send(m);
+        desk.mem.active = false;
+        go_games_folder();
       });
     }
   } else {
@@ -2275,22 +2349,30 @@ void fill_rv_play(lv_obj_t * parent) {
 
   int bl = 0, wh = 0;
   games::rv::count_pieces(g.board, &bl, &wh);
-  char score[48];
-  lv_snprintf(score, sizeof(score), "● %d   ○ %d", bl, wh);
-  make_status(parent, score);
 
-  if (g.over && !g.result_dismissed) make_status(parent, "Game over");
-  else if (g.over) make_status(parent, "Play again?");
-  else if (my_turn) make_status(parent, "Your turn");
-  else {
-    char buf[48];
-    lv_snprintf(buf, sizeof(buf), "Waiting on %s...", g.opp_name);
-    make_status(parent, buf);
+  lv_obj_set_style_pad_row(parent, 2, 0);
+  lv_obj_set_style_pad_ver(parent, 0, 0);
+  lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  const char * status = "Your turn";
+  char wait_buf[48];
+  if (g.over && !g.result_dismissed) status = "Game over";
+  else if (g.over) status = "Play again?";
+  else if (!my_turn) {
+    lv_snprintf(wait_buf, sizeof(wait_buf), "Waiting on %s...", g.opp_name);
+    status = wait_buf;
   }
+  make_status(parent, status);
 
-  constexpr int kCell = 40;
-  constexpr int kGap = 3;
-  constexpr int kPad = 8;
+  const char * black_name = (g.my_color == games::rv::kBlack) ? app::desk().name : g.opp_name;
+  const char * white_name = (g.my_color == games::rv::kWhite) ? app::desk().name : g.opp_name;
+  make_score_pill(parent, black_name, bl, lv_color_hex(0x1a1a1a), white_name, wh,
+                  lv_color_hex(0xffffff));
+
+  /* status+pill ~46 under compact dock → cells ≤ 37 keep full board visible. */
+  constexpr int kCell = 37;
+  constexpr int kGap = 2;
+  constexpr int kPad = 4;
   constexpr int kBoard = kPad * 2 + games::rv::kN * kCell + (games::rv::kN - 1) * kGap;
 
   lv_obj_t * board = lv_obj_create(parent);
@@ -2400,6 +2482,11 @@ lv_obj_t * game_rv_build() {
       go_reversi();
     });
   } else if (d.rv.active) {
+    lv_obj_set_height(dock, kDockCompactH);
+    lv_obj_set_style_pad_ver(dock, 4, 0);
+    lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
+    lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     fill_rv_play(body);
     if (d.rv.over) {
       dock_play_again_home(
@@ -2429,17 +2516,15 @@ lv_obj_t * game_rv_build() {
             go_hub();
           });
     } else {
-      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-        show_forfeit_confirm([](lv_event_t * /*ev*/) {
-          app::Desk & desk = app::desk();
-          score_log::note("Reversi", desk.rv.opp_name, score_log::Outcome::ForfeitSelf);
-          proto::Msg m;
-          m.type = proto::MsgType::RvForfeit;
-          fill_msg_ids(m, desk.rv.opp_id);
-          app::send(m);
-          desk.rv.active = false;
-          go_games_folder();
-        });
+      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+        app::Desk & desk = app::desk();
+        score_log::note("Reversi", desk.rv.opp_name, score_log::Outcome::ForfeitSelf);
+        proto::Msg m;
+        m.type = proto::MsgType::RvForfeit;
+        fill_msg_ids(m, desk.rv.opp_id);
+        app::send(m);
+        desk.rv.active = false;
+        go_games_folder();
       });
     }
   } else {
@@ -2499,27 +2584,41 @@ void db_play_edge(lv_event_t * e) {
 void fill_db_play(lv_obj_t * parent) {
   app::DbGame & g = app::desk().db;
   const bool my_turn = !g.over && !g.waiting && g.turn == g.my_side;
+  const int my_score = g.my_side == games::db::kP1 ? g.state.score1 : g.state.score2;
+  const int opp_score = g.my_side == games::db::kP1 ? g.state.score2 : g.state.score1;
 
-  char score[48];
-  lv_snprintf(score, sizeof(score), "You %d  ·  %s %d",
-              g.my_side == games::db::kP1 ? g.state.score1 : g.state.score2, g.opp_name,
-              g.my_side == games::db::kP1 ? g.state.score2 : g.state.score1);
-  make_status(parent, score);
+  lv_obj_set_style_pad_row(parent, 2, 0);
+  lv_obj_set_style_pad_ver(parent, 2, 0);
+  lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  if (g.over && !g.result_dismissed) make_status(parent, "Game over");
-  else if (g.over) make_status(parent, "Play again?");
-  else if (my_turn) make_status(parent, "Your turn - tap a line");
-  else {
-    char buf[48];
-    lv_snprintf(buf, sizeof(buf), "Waiting on %s...", g.opp_name);
-    make_status(parent, buf);
+  const char * status = "Your turn - tap a line";
+  char wait_buf[48];
+  if (g.over && !g.result_dismissed) status = "Game over";
+  else if (g.over) status = "Play again?";
+  else if (!my_turn) {
+    lv_snprintf(wait_buf, sizeof(wait_buf), "Waiting on %s...", g.opp_name);
+    status = wait_buf;
   }
+  make_status(parent, status);
 
-  constexpr int kStep = 64;
-  constexpr int kDot = 10;
-  constexpr int kThick = 10;
-  constexpr int kBoard = kStep * games::db::kBox + kDot + 8;
-  const int origin = 4;
+  make_score_pill(parent, app::desk().name, my_score, theme::mint(), g.opp_name, opp_score,
+                  theme::hot());
+
+  auto owner_color = [&](int8_t owner) -> lv_color_t {
+    if (owner == g.my_side) return theme::mint();
+    if (owner) return theme::hot();
+    return theme::border();
+  };
+
+  /* Soft continuous lattice — thin + low-contrast so it doesn’t Hermann-flicker
+   * against bright dots. Claimed edges stay thick + player-colored. */
+  constexpr int kDot = 6;
+  constexpr int kThickClaim = 8;
+  constexpr int kThickEmpty = 3;
+  constexpr int kOrigin = 4;
+  constexpr int kBoardInner = 310;
+  constexpr int kStep = (kBoardInner - kDot) / games::db::kBox;
+  constexpr int kBoard = kStep * games::db::kBox + kDot + kOrigin * 2;
 
   lv_obj_t * board = lv_obj_create(parent);
   lv_obj_remove_style_all(board);
@@ -2529,60 +2628,67 @@ void fill_db_play(lv_obj_t * parent) {
   lv_obj_set_style_bg_opa(board, LV_OPA_COVER, 0);
   lv_obj_remove_flag(board, LV_OBJ_FLAG_SCROLLABLE);
 
-  auto owner_color = [&](int8_t owner) -> lv_color_t {
-    if (owner == g.my_side) return theme::mint();
-    if (owner) return theme::hot();
-    return theme::border();
-  };
-
   for (int br = 0; br < games::db::kBox; ++br) {
     for (int bc = 0; bc < games::db::kBox; ++bc) {
       if (!g.state.box[br][bc]) continue;
       lv_obj_t * box = lv_obj_create(board);
       lv_obj_remove_style_all(box);
-      lv_obj_set_pos(box, origin + bc * kStep + kDot / 2, origin + br * kStep + kDot / 2);
+      lv_obj_set_pos(box, kOrigin + bc * kStep + kDot / 2, kOrigin + br * kStep + kDot / 2);
       lv_obj_set_size(box, kStep - kDot / 2, kStep - kDot / 2);
       lv_obj_set_style_bg_color(box, owner_color(g.state.box[br][bc]), 0);
-      lv_obj_set_style_bg_opa(box, LV_OPA_50, 0);
-      lv_obj_set_style_radius(box, 6, 0);
+      lv_obj_set_style_bg_opa(box, LV_OPA_40, 0);
+      lv_obj_set_style_radius(box, 4, 0);
       lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
     }
   }
 
-  auto edge_hit = [&](int is_vert, int r, int c, int x, int y, int w, int h, bool taken) {
+  auto edge_hit = [&](int is_vert, int r, int c, int x, int y, int w, int h, int8_t owner) {
+    /* Hit target is always the fat corridor; visual line is a centered child. */
     lv_obj_t * hit = lv_obj_create(board);
     lv_obj_remove_style_all(hit);
     lv_obj_set_pos(hit, x, y);
     lv_obj_set_size(hit, w, h);
-    lv_obj_set_style_radius(hit, 4, 0);
-    if (taken) {
-      lv_obj_set_style_bg_color(hit, theme::ink(), 0);
-      lv_obj_set_style_bg_opa(hit, LV_OPA_COVER, 0);
-    } else if (my_turn) {
-      lv_obj_set_style_bg_color(hit, theme::gold(), 0);
-      lv_obj_set_style_bg_opa(hit, LV_OPA_40, 0);
-      lv_obj_add_flag(hit, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_add_event_cb(hit, db_play_edge, LV_EVENT_CLICKED,
-                          (void *)(intptr_t)((is_vert << 16) | (r << 8) | c));
-    } else {
-      lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
-    }
+    lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
     lv_obj_remove_flag(hit, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t * line = lv_obj_create(hit);
+    lv_obj_remove_style_all(line);
+    lv_obj_set_style_radius(line, LV_RADIUS_CIRCLE, 0);
+    lv_obj_remove_flag(line, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(line, LV_OBJ_FLAG_SCROLLABLE);
+
+    if (owner) {
+      if (is_vert) lv_obj_set_size(line, kThickClaim, h);
+      else lv_obj_set_size(line, w, kThickClaim);
+      lv_obj_set_style_bg_color(line, owner_color(owner), 0);
+      lv_obj_set_style_bg_opa(line, LV_OPA_COVER, 0);
+    } else {
+      if (is_vert) lv_obj_set_size(line, kThickEmpty, h);
+      else lv_obj_set_size(line, w, kThickEmpty);
+      lv_obj_set_style_bg_color(line, theme::border(), 0);
+      lv_obj_set_style_bg_opa(line, LV_OPA_70, 0);
+      if (my_turn) {
+        lv_obj_add_flag(hit, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(hit, db_play_edge, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)((is_vert << 16) | (r << 8) | c));
+      }
+    }
+    lv_obj_center(line);
   };
 
+  const int hit_pad = (kThickClaim - kDot) / 2;
   for (int r = 0; r < games::db::kDots; ++r) {
     for (int c = 0; c < games::db::kBox; ++c) {
-      const bool taken = games::db::h_taken(g.state, r, c);
-      edge_hit(0, r, c, origin + c * kStep + kDot / 2, origin + r * kStep + (kDot - kThick) / 2,
-               kStep - kDot / 2, kThick, taken);
+      edge_hit(0, r, c, kOrigin + c * kStep + kDot / 2,
+               kOrigin + r * kStep - hit_pad, kStep - kDot / 2, kThickClaim,
+               games::db::h_owner(g.state, r, c));
     }
   }
   for (int r = 0; r < games::db::kBox; ++r) {
     for (int c = 0; c < games::db::kDots; ++c) {
-      const bool taken = games::db::v_taken(g.state, r, c);
-      edge_hit(1, r, c, origin + c * kStep + (kDot - kThick) / 2, origin + r * kStep + kDot / 2, kThick,
-               kStep - kDot / 2, taken);
+      edge_hit(1, r, c, kOrigin + c * kStep - hit_pad, kOrigin + r * kStep + kDot / 2, kThickClaim,
+               kStep - kDot / 2, games::db::v_owner(g.state, r, c));
     }
   }
 
@@ -2590,11 +2696,12 @@ void fill_db_play(lv_obj_t * parent) {
     for (int c = 0; c < games::db::kDots; ++c) {
       lv_obj_t * dot = lv_obj_create(board);
       lv_obj_remove_style_all(dot);
-      lv_obj_set_pos(dot, origin + c * kStep, origin + r * kStep);
+      lv_obj_set_pos(dot, kOrigin + c * kStep, kOrigin + r * kStep);
       lv_obj_set_size(dot, kDot, kDot);
       lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-      lv_obj_set_style_bg_color(dot, theme::gold(), 0);
-      lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+      /* Soft dots (not bright gold) — bright hubs are what trigger Hermann flicker. */
+      lv_obj_set_style_bg_color(dot, theme::muted(), 0);
+      lv_obj_set_style_bg_opa(dot, LV_OPA_70, 0);
       lv_obj_remove_flag(dot, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
     }
@@ -2660,6 +2767,11 @@ lv_obj_t * game_db_build() {
       go_dots();
     });
   } else if (d.db.active) {
+    lv_obj_set_height(dock, kDockCompactH);
+    lv_obj_set_style_pad_ver(dock, 4, 0);
+    lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
+    lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     fill_db_play(body);
     if (d.db.over) {
       dock_play_again_home(
@@ -2689,17 +2801,15 @@ lv_obj_t * game_db_build() {
             go_hub();
           });
     } else {
-      dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) {
-        show_forfeit_confirm([](lv_event_t * /*ev*/) {
-          app::Desk & desk = app::desk();
-          score_log::note("Dots & Boxes", desk.db.opp_name, score_log::Outcome::ForfeitSelf);
-          proto::Msg m;
-          m.type = proto::MsgType::DbForfeit;
-          fill_msg_ids(m, desk.db.opp_id);
-          app::send(m);
-          desk.db.active = false;
-          go_games_folder();
-        });
+      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+        app::Desk & desk = app::desk();
+        score_log::note("Dots & Boxes", desk.db.opp_name, score_log::Outcome::ForfeitSelf);
+        proto::Msg m;
+        m.type = proto::MsgType::DbForfeit;
+        fill_msg_ids(m, desk.db.opp_id);
+        app::send(m);
+        desk.db.active = false;
+        go_games_folder();
       });
     }
   } else {
@@ -2857,6 +2967,36 @@ void games_debug_show(const char * game, const char * panel) {
       for (int i = 0; i < 4; ++i) d.mem.matched[i] = true;
     }
     go_memory();
+  } else if (game && !std::strcmp(game, "rv")) {
+    d.rv = {};
+    d.rv.active = true;
+    d.rv.my_color = games::rv::kBlack;
+    d.rv.turn = games::rv::kBlack;
+    games::rv::init(d.rv.board);
+    seed_peer(d.rv);
+    if (panel && !std::strcmp(panel, "win")) {
+      d.rv.over = true;
+      d.rv.result_dismissed = false;
+    }
+    go_reversi();
+  } else if (game && !std::strcmp(game, "db")) {
+    d.db = {};
+    d.db.active = true;
+    d.db.my_side = games::db::kP1;
+    d.db.turn = games::db::kP1;
+    games::db::init(d.db.state);
+    seed_peer(d.db);
+    /* Seed a few edges so player-colored lines show in screenshots. */
+    games::db::claim(d.db.state, 0, 0, 0, games::db::kP1);
+    games::db::claim(d.db.state, 1, 0, 0, games::db::kP2);
+    games::db::claim(d.db.state, 0, 1, 0, games::db::kP2);
+    games::db::claim(d.db.state, 0, 0, 1, games::db::kP1);
+    games::db::claim(d.db.state, 1, 1, 1, games::db::kP1);
+    if (panel && !std::strcmp(panel, "win")) {
+      d.db.over = true;
+      d.db.result_dismissed = false;
+    }
+    go_dots();
   }
 }
 

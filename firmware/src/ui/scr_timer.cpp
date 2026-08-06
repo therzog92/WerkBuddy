@@ -20,9 +20,12 @@ lv_obj_t * g_status_lbl = nullptr;
 lv_obj_t * g_primary_btn = nullptr;
 lv_obj_t * g_primary_lbl = nullptr;
 lv_obj_t * g_picker = nullptr;
+lv_obj_t * g_roller_hr = nullptr;
 lv_obj_t * g_roller_min = nullptr;
 lv_obj_t * g_roller_sec = nullptr;
 lv_obj_t * g_preset_row = nullptr;
+lv_obj_t * g_slot_row = nullptr;
+lv_obj_t * g_slot_btns[desk_timer::kSlots] = {};
 bool g_syncing_rollers = false;
 
 void refresh_ui();
@@ -36,19 +39,37 @@ void on_deleted(lv_event_t * /*e*/) {
   g_primary_btn = nullptr;
   g_primary_lbl = nullptr;
   g_picker = nullptr;
+  g_roller_hr = nullptr;
   g_roller_min = nullptr;
   g_roller_sec = nullptr;
   g_preset_row = nullptr;
+  g_slot_row = nullptr;
+  for (int i = 0; i < desk_timer::kSlots; ++i) g_slot_btns[i] = nullptr;
 }
 
-const char * min_options() {
-  static char buf[400];
+const char * hr_options() {
+  static char buf[120];
   static bool ready = false;
   if (!ready) {
     buf[0] = '\0';
-    for (int i = 0; i <= 99; ++i) {
+    for (int i = 0; i <= 23; ++i) {
       char one[8];
       std::snprintf(one, sizeof(one), i ? "\n%d" : "%d", i);
+      std::strncat(buf, one, sizeof(buf) - std::strlen(buf) - 1);
+    }
+    ready = true;
+  }
+  return buf;
+}
+
+const char * min_options() {
+  static char buf[220];
+  static bool ready = false;
+  if (!ready) {
+    buf[0] = '\0';
+    for (int i = 0; i <= 59; ++i) {
+      char one[8];
+      std::snprintf(one, sizeof(one), i ? "\n%02d" : "%02d", i);
       std::strncat(buf, one, sizeof(buf) - std::strlen(buf) - 1);
     }
     ready = true;
@@ -72,7 +93,7 @@ const char * sec_options() {
 }
 
 void style_roller(lv_obj_t * r) {
-  lv_obj_set_width(r, 100);
+  lv_obj_set_width(r, 72);
   lv_obj_set_style_bg_color(r, theme::panel(), 0);
   lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
   lv_obj_set_style_radius(r, 14, 0);
@@ -88,20 +109,22 @@ void style_roller(lv_obj_t * r) {
 }
 
 void apply_rollers_to_duration() {
-  if (!g_roller_min || !g_roller_sec) return;
+  if (!g_roller_hr || !g_roller_min || !g_roller_sec) return;
   if (desk_timer::state() != desk_timer::State::Idle) return;
+  const uint32_t h = (uint32_t)lv_roller_get_selected(g_roller_hr);
   const uint32_t m = (uint32_t)lv_roller_get_selected(g_roller_min);
   const uint32_t s = (uint32_t)lv_roller_get_selected(g_roller_sec);
-  uint32_t ms = m * 60 * 1000 + s * 1000;
+  uint32_t ms = h * 3600 * 1000 + m * 60 * 1000 + s * 1000;
   if (ms < 1000) ms = 1000;
   desk_timer::set_duration_ms(ms);
 }
 
 void sync_rollers_from_duration() {
-  if (!g_roller_min || !g_roller_sec) return;
+  if (!g_roller_hr || !g_roller_min || !g_roller_sec) return;
   g_syncing_rollers = true;
   const uint32_t sec = desk_timer::duration_ms() / 1000;
-  lv_roller_set_selected(g_roller_min, (uint16_t)(sec / 60), LV_ANIM_OFF);
+  lv_roller_set_selected(g_roller_hr, (uint16_t)(sec / 3600), LV_ANIM_OFF);
+  lv_roller_set_selected(g_roller_min, (uint16_t)((sec / 60) % 60), LV_ANIM_OFF);
   lv_roller_set_selected(g_roller_sec, (uint16_t)(sec % 60), LV_ANIM_OFF);
   g_syncing_rollers = false;
 }
@@ -125,46 +148,73 @@ void style_chip(lv_obj_t * b, bool selected) {
     lv_obj_set_style_text_color(l, selected ? lv_color_hex(0x1a1200) : theme::ink(), 0);
 }
 
+void rebuild_slot_tabs() {
+  if (!g_slot_row) return;
+  for (int i = 0; i < desk_timer::kSlots; ++i) {
+    lv_obj_t * b = g_slot_btns[i];
+    if (!b) continue;
+    const bool sel = desk_timer::selected() == i;
+    style_chip(b, sel);
+    lv_obj_t * l = lv_obj_get_child(b, 0);
+    if (!l) continue;
+    char lab[24];
+    const auto st = desk_timer::state(i);
+    if (st == desk_timer::State::Running || st == desk_timer::State::Paused) {
+      char rem[16];
+      desk_timer::format_remaining(i, rem, sizeof(rem));
+      lv_snprintf(lab, sizeof(lab), "T%d %s", i + 1, rem);
+    } else if (st == desk_timer::State::Finished) {
+      lv_snprintf(lab, sizeof(lab), "T%d done", i + 1);
+    } else {
+      lv_snprintf(lab, sizeof(lab), "Timer %d", i + 1);
+    }
+    lv_label_set_text(l, lab);
+  }
+}
+
 void rebuild_presets() {
   if (!g_preset_row) return;
   while (lv_obj_get_child_count(g_preset_row) > 0) lv_obj_delete(lv_obj_get_child(g_preset_row, 0));
 
-  static const uint32_t kPresetsMin[] = {5, 10, 15, 25, 45};
-  const uint32_t cur_min = desk_timer::duration_ms() / 60000;
+  struct Preset {
+    uint32_t ms;
+    const char * lab;
+  };
+  static const Preset kPresets[] = {
+      {5 * 60 * 1000, "5m"},  {10 * 60 * 1000, "10m"}, {15 * 60 * 1000, "15m"},
+      {30 * 60 * 1000, "30m"}, {45 * 60 * 1000, "45m"}, {4 * 3600 * 1000, "4h"},
+  };
+  const uint32_t cur = desk_timer::duration_ms();
   const bool can_edit = desk_timer::state() == desk_timer::State::Idle;
-  const bool exact_min = (desk_timer::duration_ms() % 60000) == 0;
 
-  for (uint32_t m : kPresetsMin) {
-    char lab[8];
-    lv_snprintf(lab, sizeof(lab), "%um", (unsigned)m);
+  for (const Preset & p : kPresets) {
     lv_obj_t * b = lv_button_create(g_preset_row);
-    lv_obj_set_size(b, 56, 34);
+    lv_obj_set_size(b, 48, 32);
     lv_obj_set_style_radius(b, 12, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_t * l = lv_label_create(b);
-    lv_label_set_text(l, lab);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+    lv_label_set_text(l, p.lab);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_12, 0);
     lv_obj_center(l);
-    style_chip(b, can_edit && exact_min && cur_min == m);
+    style_chip(b, can_edit && cur == p.ms);
     if (!can_edit) lv_obj_add_state(b, LV_STATE_DISABLED);
     lv_obj_add_event_cb(
         b,
         [](lv_event_t * e) {
           if (desk_timer::state() != desk_timer::State::Idle) return;
-          const uint32_t mins = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
-          desk_timer::set_duration_ms(mins * 60 * 1000);
+          const uint32_t ms = (uint32_t)(uintptr_t)lv_event_get_user_data(e);
+          desk_timer::set_duration_ms(ms);
           sync_rollers_from_duration();
           refresh_ui();
         },
-        LV_EVENT_CLICKED, (void *)(uintptr_t)m);
+        LV_EVENT_CLICKED, (void *)(uintptr_t)p.ms);
   }
 }
 
 void refresh_ui() {
   if (!g_time_lbl) return;
   const auto st = desk_timer::state();
-  /* Finished takes over the whole screen — rebuild via go_timer. */
-  if (st == desk_timer::State::Finished) {
+  if (desk_timer::is_finished()) {
     go_timer();
     return;
   }
@@ -213,12 +263,16 @@ void refresh_ui() {
         (st == desk_timer::State::Running) ? theme::ink() : lv_color_hex(0x1a1200), 0);
   }
 
+  rebuild_slot_tabs();
+
   static desk_timer::State s_last = desk_timer::State::Idle;
   static uint32_t s_dur = 0;
-  if (st != s_last || desk_timer::duration_ms() != s_dur ||
+  static int s_sel = -1;
+  if (st != s_last || desk_timer::duration_ms() != s_dur || desk_timer::selected() != s_sel ||
       (g_preset_row && lv_obj_get_child_count(g_preset_row) == 0)) {
     s_last = st;
     s_dur = desk_timer::duration_ms();
+    s_sel = desk_timer::selected();
     rebuild_presets();
   }
 }
@@ -273,6 +327,7 @@ void on_alarm_deleted(lv_event_t * /*e*/) {
 }
 
 lv_obj_t * timer_alarm_screen() {
+  const int which = desk_timer::finished_slot();
   lv_obj_t * scr = lv_obj_create(nullptr);
   lv_obj_remove_style_all(scr);
   lv_obj_set_size(scr, WP_HOR_RES, WP_VER_RES);
@@ -386,7 +441,9 @@ lv_obj_t * timer_alarm_screen() {
   lv_obj_move_foreground(body);
 
   lv_obj_t * eye = lv_label_create(body);
-  lv_label_set_text(eye, "TIMER");
+  char eye_buf[16];
+  lv_snprintf(eye_buf, sizeof(eye_buf), "TIMER %d", which >= 0 ? which + 1 : 1);
+  lv_label_set_text(eye, eye_buf);
   lv_obj_set_style_text_color(eye, lv_color_hex(0xffffff), 0);
   lv_obj_set_style_text_font(eye, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_letter_space(eye, 4, 0);
@@ -425,7 +482,9 @@ lv_obj_t * timer_alarm_screen() {
   lv_obj_set_style_text_letter_space(title, 2, 0);
 
   lv_obj_t * msg = lv_label_create(body);
-  lv_label_set_text(msg, "Your desk timer finished");
+  char msg_buf[40];
+  lv_snprintf(msg_buf, sizeof(msg_buf), "Timer %d finished", which >= 0 ? which + 1 : 1);
+  lv_label_set_text(msg, msg_buf);
   lv_obj_set_style_text_color(msg, lv_color_hex(0xffffff), 0);
   lv_obj_set_style_text_font(msg, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
@@ -445,7 +504,36 @@ lv_obj_t * timer_setup_screen() {
   make_topbar(scr, "TIMER", app::desk().name);
   lv_obj_t * body = make_body(scr, true);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(body, 10, 0);
+  lv_obj_set_style_pad_row(body, 8, 0);
+
+  g_slot_row = lv_obj_create(body);
+  lv_obj_remove_style_all(g_slot_row);
+  lv_obj_set_width(g_slot_row, lv_pct(100));
+  lv_obj_set_height(g_slot_row, 36);
+  lv_obj_set_flex_flow(g_slot_row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(g_slot_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(g_slot_row, 8, 0);
+  for (int i = 0; i < desk_timer::kSlots; ++i) {
+    lv_obj_t * b = lv_button_create(g_slot_row);
+    g_slot_btns[i] = b;
+    lv_obj_set_size(b, 160, 32);
+    lv_obj_set_style_radius(b, 14, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_t * l = lv_label_create(b);
+    char lab[16];
+    lv_snprintf(lab, sizeof(lab), "Timer %d", i + 1);
+    lv_label_set_text(l, lab);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+    lv_obj_center(l);
+    lv_obj_add_event_cb(
+        b,
+        [](lv_event_t * e) {
+          desk_timer::select((int)(intptr_t)lv_event_get_user_data(e));
+          sync_rollers_from_duration();
+          refresh_ui();
+        },
+        LV_EVENT_CLICKED, (void *)(intptr_t)i);
+  }
 
   g_status_lbl = lv_label_create(body);
   lv_label_set_text(g_status_lbl, "Desk timer");
@@ -454,17 +542,17 @@ lv_obj_t * timer_setup_screen() {
 
   g_time_lbl = lv_label_create(body);
   lv_obj_set_style_text_color(g_time_lbl, theme::ink(), 0);
-  lv_obj_set_style_text_font(g_time_lbl, font_display(72), 0);
+  lv_obj_set_style_text_font(g_time_lbl, font_display(56), 0);
   lv_obj_set_style_text_letter_space(g_time_lbl, 2, 0);
   lv_obj_add_flag(g_time_lbl, LV_OBJ_FLAG_HIDDEN);
 
   g_picker = lv_obj_create(body);
   lv_obj_remove_style_all(g_picker);
   lv_obj_set_width(g_picker, lv_pct(100));
-  lv_obj_set_height(g_picker, 150);
+  lv_obj_set_height(g_picker, 140);
   lv_obj_set_flex_flow(g_picker, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(g_picker, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(g_picker, 10, 0);
+  lv_obj_set_style_pad_column(g_picker, 6, 0);
   lv_obj_remove_flag(g_picker, LV_OBJ_FLAG_SCROLLABLE);
 
   auto make_col = [](lv_obj_t * parent, const char * unit) {
@@ -481,16 +569,28 @@ lv_obj_t * timer_setup_screen() {
     return col;
   };
 
+  auto make_colon = [](lv_obj_t * parent) {
+    lv_obj_t * colon = lv_label_create(parent);
+    lv_label_set_text(colon, ":");
+    lv_obj_set_style_text_color(colon, theme::gold(), 0);
+    lv_obj_set_style_text_font(colon, font_display(36), 0);
+  };
+
+  lv_obj_t * hr_col = make_col(g_picker, "hr");
+  g_roller_hr = lv_roller_create(hr_col);
+  lv_roller_set_options(g_roller_hr, hr_options(), LV_ROLLER_MODE_NORMAL);
+  style_roller(g_roller_hr);
+  lv_obj_add_event_cb(g_roller_hr, on_roller, LV_EVENT_VALUE_CHANGED, nullptr);
+
+  make_colon(g_picker);
+
   lv_obj_t * min_col = make_col(g_picker, "min");
   g_roller_min = lv_roller_create(min_col);
   lv_roller_set_options(g_roller_min, min_options(), LV_ROLLER_MODE_NORMAL);
   style_roller(g_roller_min);
   lv_obj_add_event_cb(g_roller_min, on_roller, LV_EVENT_VALUE_CHANGED, nullptr);
 
-  lv_obj_t * colon = lv_label_create(g_picker);
-  lv_label_set_text(colon, ":");
-  lv_obj_set_style_text_color(colon, theme::gold(), 0);
-  lv_obj_set_style_text_font(colon, font_display(40), 0);
+  make_colon(g_picker);
 
   lv_obj_t * sec_col = make_col(g_picker, "sec");
   g_roller_sec = lv_roller_create(sec_col);
@@ -501,14 +601,14 @@ lv_obj_t * timer_setup_screen() {
   g_preset_row = lv_obj_create(body);
   lv_obj_remove_style_all(g_preset_row);
   lv_obj_set_width(g_preset_row, lv_pct(100));
-  lv_obj_set_height(g_preset_row, 40);
+  lv_obj_set_height(g_preset_row, 36);
   lv_obj_set_flex_flow(g_preset_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(g_preset_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(g_preset_row, 6, 0);
+  lv_obj_set_style_pad_column(g_preset_row, 4, 0);
 
   g_primary_btn = lv_button_create(body);
-  lv_obj_set_size(g_primary_btn, 200, 48);
+  lv_obj_set_size(g_primary_btn, 200, 44);
   lv_obj_set_style_radius(g_primary_btn, 16, 0);
   lv_obj_set_style_shadow_width(g_primary_btn, 0, 0);
   g_primary_lbl = lv_label_create(g_primary_btn);

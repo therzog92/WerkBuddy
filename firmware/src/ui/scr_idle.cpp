@@ -40,13 +40,30 @@ void tick(lv_timer_t * /*t*/) {
   lv_label_set_text(g_time, tb);
   lv_label_set_text(g_date, db);
   if (g_timer_lbl) {
-    if (desk_timer::is_active()) {
-      char rem[16];
-      desk_timer::format_remaining(rem, sizeof(rem));
-      char line[32];
-      lv_snprintf(line, sizeof(line), "Timer %s", rem);
-      lv_label_set_text(g_timer_lbl, line);
+    if (desk_timer::is_finished()) {
+      lv_label_set_text(g_timer_lbl, "Time's up");
       lv_obj_remove_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+    } else if (desk_timer::is_active()) {
+      char parts[2][16];
+      int n = 0;
+      for (int i = 0; i < desk_timer::kSlots; ++i) {
+        if (!desk_timer::is_active(i)) continue;
+        desk_timer::format_remaining(i, parts[n], sizeof(parts[n]));
+        ++n;
+      }
+      char line[48];
+      if (n >= 2)
+        lv_snprintf(line, sizeof(line), "T1 %s / T2 %s", parts[0], parts[1]);
+      else if (n == 1)
+        lv_snprintf(line, sizeof(line), "Timer %s", parts[0]);
+      else
+        line[0] = '\0';
+      if (line[0]) {
+        lv_label_set_text(g_timer_lbl, line);
+        lv_obj_remove_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+      } else {
+        lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+      }
     } else {
       lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
     }

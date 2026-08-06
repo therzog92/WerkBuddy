@@ -98,7 +98,9 @@ int main() {
     else if (is("scoreboard")) go_scoreboard();
     else if (is("setup")) go_setup();
     else if (is("reversi") || is("rv")) go_reversi();
+    else if (is("rv-play")) games_debug_show("rv", "play");
     else if (is("dots") || is("db")) go_dots();
+    else if (is("db-play")) games_debug_show("db", "play");
     else if (is("sttt")) go_sttt();
     else if (is("settings-scrolled")) {
       go_settings();
