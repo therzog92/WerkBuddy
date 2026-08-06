@@ -8,7 +8,7 @@ Instructions for Cursor (and other) agents working in this repo. Prefer this fil
 
 - **Brand:** WerkBuddy (splash / hub chrome). **Pager app name:** WerkPager.
 - **Target board:** Guition **ESP32-4848S040** (ESP32-S3 N16R8 typical, 480×480 capacitive).
-- **Link:** ESP-NOW between desks. Wi‑Fi is optional (SNTP / OTA only).
+- **Link:** ESP-NOW between desks. Wi‑Fi is optional and **ephemeral** (join for SNTP/OTA, then disconnect — never stay on STA). Paging MAY drop while STA is up (same radio/channel). See port plan §8b.
 - **UX source of truth:** `firmware/` LVGL PC sim (`scripts/run-sim.ps1`). Do not revive the archived web sim for new work.
 - **Protocol:** Keep `protocol/messages.js` type names in sync with `firmware/src/protocol/messages.h`. Binary on device; ~250 B ESP-NOW budget.
 

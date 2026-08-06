@@ -85,10 +85,11 @@ Details: `docs/HARDWARE_BRINGUP_MANUAL.md` and `docs/ESP32_PORT_PLAN.md`.
 
 ## Optional Wi‑Fi (device)
 
-Paging/games stay **ESP-NOW**. Settings may later use Wi‑Fi for:
+Paging/games stay **ESP-NOW**. Wi‑Fi is **ephemeral only** — never leave STA associated for long:
 
-- **Sync time** (SNTP) after power loss  
-- **OTA** from GitHub Release `.bin` assets  
+- Save credentials in NVS; Settings can show “Saved: …” without staying on the AP
+- **Sync time** (SNTP) / **OTA** / similar: join briefly → do the job → **disconnect**
+- ESP-NOW and STA share the same 2.4 GHz radio. While STA is up, the radio follows the AP’s channel, so **paging/games MAY drop or go offline** until Wi‑Fi disconnects
 
 See `docs/ESP32_PORT_PLAN.md` §8b.
 

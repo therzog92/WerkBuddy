@@ -70,7 +70,7 @@ Then do each Session when the agent says you’re ready. One chunk at a time.
 
 **PC sim / web:** Yes — clock is an offset from the computer’s clock, so closing for 2 days still lands on the right day.
 
-**Real GUITION board, unplugged:** Settings (name, theme, brightness, peers, canned) survive in flash/NVS. **Wall-clock advancing while fully powered off does not**, unless the board has a battery-backed RTC (these modules usually don’t). After a full unplug, re-set Date & time — or use optional **Wi‑Fi → Sync time** (SNTP). OTA can ship as **GitHub Release** `.bin` assets (port plan §8b). Core paging stays ESP-NOW offline.
+**Real GUITION board, unplugged:** Settings (name, theme, brightness, peers, canned) survive in flash/NVS. **Wall-clock advancing while fully powered off does not**, unless the board has a battery-backed RTC (these modules usually don’t). After a full unplug, re-set Date & time — or use optional **Wi‑Fi → Sync time** (SNTP; join briefly then disconnect). OTA can ship as **GitHub Release** `.bin` assets (port plan §8b). Core paging stays ESP-NOW; Wi‑Fi is ephemeral only — paging may drop while STA is associated.
 
 ## Explicit non-goals (still)
 

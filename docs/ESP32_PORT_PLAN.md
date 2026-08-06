@@ -266,7 +266,7 @@ For each: port rules from JS first (unit-testable), then LVGL UI.
 - [ ] Sound? (optional buzzer / DAC—only if hardware supports)  
 - [ ] Long-press / double-tap edge cases  
 - [ ] Memory asset size budget (compress JPEGs aggressively)  
-- [ ] **Optional Wi‑Fi:** SNTP clock sync + **OTA from GitHub Releases** (see §8b). Core paging stays ESP-NOW offline.
+- [ ] **Optional Wi‑Fi:** ephemeral STA for SNTP + **OTA from GitHub Releases** (see §8b). Never stay associated; paging may drop while STA is up.
 
 ---
 
@@ -333,8 +333,16 @@ Settings **Date & time** writes the clock (same UX as sim). Idle clock reads it.
 
 Wi‑Fi is **not** required for paging/games. Settings exposes optional actions:
 
-1. **Sync time** — join STA → SNTP → write RTC / `clock_offset` (fixes “unplugged for 2 days” when online).  
-2. **Updates** — list GitHub Releases (not only latest); user picks a tag to **upgrade or downgrade**, then download + flash.
+1. **Sync time** — join STA → SNTP → write RTC / `clock_offset` → **disconnect STA**.  
+2. **Updates** — join STA → list GitHub Releases (upgrade/downgrade) → download + flash → **disconnect** when the update UI closes (or reboot after apply).
+
+**Radio policy (hard requirement):**
+
+- ESP-NOW and Wi‑Fi STA share the **same** 2.4 GHz radio on the ESP32-S3.
+- **Never stay associated for long.** Persist SSID/password in NVS; “saved network” ≠ “connected.”
+- Join only for the duration of Sync time, OTA, or similarly short optional jobs, then tear STA down.
+- While STA is up, the radio locks to the AP’s channel. **Paging / games / doodle MAY go offline or drop** until disconnect — that is accepted; do not design for always-on STA + ESP-NOW coexistence.
+- PC sim may show a sticky “Connected” flag as a stub; device firmware must implement ephemeral join/leave.
 
 **Yes, OTA binaries can live on GitHub:**
 
@@ -349,9 +357,8 @@ Wi‑Fi is **not** required for paging/games. Settings exposes optional actions:
 Notes:
 
 - Prefer a **public** repo (or release assets) so desks don’t need a GitHub token; if private, use a fine-scoped token in NVS (more ops pain).  
-- Keep ESP-NOW working with Wi‑Fi STA connected (same radio; test coexistence).  
-- PC sim stubs these buttons; real STA/SNTP/OTA is Phase 6 / post–Phase 0 device work.  
-- Settings UI already has **Sync time** / **Check update** stubs.
+- Real STA/SNTP/OTA is Phase 6 / post–Phase 0 device work.  
+- Settings UI already has **Sync time** / **Updates** stubs.
 
 ---
 
