@@ -678,12 +678,13 @@ lv_obj_t * pager_incoming_screen() {
 
   lv_obj_t * body = lv_obj_create(scr);
   lv_obj_remove_style_all(body);
-  lv_obj_set_size(body, WP_HOR_RES, WP_VER_RES - kDockH);
+  lv_obj_set_size(body, WP_HOR_RES, WP_VER_RES);
   lv_obj_set_style_bg_opa(body, LV_OPA_TRANSP, 0);
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(body, 8, 0);
   lv_obj_set_style_pad_top(body, 28, 0);
+  lv_obj_set_style_pad_bottom(body, 80, 0); /* leave room for overlay buttons + captions */
   lv_obj_remove_flag(body, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_move_foreground(body);
@@ -741,23 +742,57 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_set_style_text_font(hint, font_body_italic(14), 0);
   lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
 
-  lv_obj_t * dock = make_dock(scr);
-  lv_obj_t * yes = dock_btn(dock, "Shantay", true, false, on_shantay);
-  lv_obj_set_style_radius(yes, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(yes, lv_color_hex(0xf0c24b), 0);
-  lv_obj_set_height(yes, 48);
+  /* Transparent action row over the call wash — no opaque dock strip. */
+  constexpr lv_coord_t kIncomingDockH = 72;
+  lv_obj_t * dock = lv_obj_create(scr);
+  lv_obj_remove_style_all(dock);
+  lv_obj_set_size(dock, WP_HOR_RES, kIncomingDockH);
+  lv_obj_align(dock, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_opa(dock, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_hor(dock, 12, 0);
+  lv_obj_set_style_pad_ver(dock, 4, 0);
+  lv_obj_set_flex_flow(dock, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(dock, 8, 0);
+  lv_obj_remove_flag(dock, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_move_foreground(dock);
 
-  lv_obj_t * no = dock_btn(dock, "Sashay away", false, true, on_sashay);
-  lv_obj_set_style_radius(no, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(no, lv_color_hex(0xff6b8a), 0);
-  lv_obj_set_height(no, 48);
-  const uint32_t cnt = lv_obj_get_child_count(no);
-  for (uint32_t i = 0; i < cnt; ++i) {
-    lv_obj_t * ch = lv_obj_get_child(no, i);
-    if (lv_obj_check_type(ch, &lv_label_class)) {
-      lv_obj_set_style_text_color(ch, lv_color_hex(0x2a0610), 0);
+  auto make_action = [&](const char * label, const char * sub, bool primary, bool danger,
+                         lv_event_cb_t cb) {
+    lv_obj_t * col = lv_obj_create(dock);
+    lv_obj_remove_style_all(col);
+    lv_obj_set_flex_grow(col, 1);
+    lv_obj_set_height(col, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(col, 2, 0);
+    lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t * btn = dock_btn(col, label, primary, danger, cb);
+    lv_obj_set_width(btn, lv_pct(100));
+    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_height(btn, 48);
+    if (primary) lv_obj_set_style_bg_color(btn, lv_color_hex(0xf0c24b), 0);
+    if (danger) {
+      lv_obj_set_style_bg_color(btn, lv_color_hex(0xff6b8a), 0);
+      const uint32_t cnt = lv_obj_get_child_count(btn);
+      for (uint32_t i = 0; i < cnt; ++i) {
+        lv_obj_t * ch = lv_obj_get_child(btn, i);
+        if (lv_obj_check_type(ch, &lv_label_class))
+          lv_obj_set_style_text_color(ch, lv_color_hex(0x2a0610), 0);
+      }
     }
-  }
+
+    lv_obj_t * cap = lv_label_create(col);
+    lv_label_set_text(cap, sub);
+    lv_obj_set_style_text_color(cap, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_opa(cap, LV_OPA_70, 0);
+    lv_obj_set_style_text_font(cap, font_body_italic(12), 0);
+  };
+
+  make_action("Shantay", "(acknowledge)", true, false, on_shantay);
+  make_action("Sashay away", "(ignore)", false, true, on_sashay);
 
   return scr;
 }

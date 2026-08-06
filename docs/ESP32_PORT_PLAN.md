@@ -343,7 +343,7 @@ Wi‑Fi is **not** required for paging/games. Settings exposes optional actions:
 - **Never stay associated for long.** Persist SSID/password in NVS; “saved network” ≠ “connected.”
 - Join only for the duration of Sync time, OTA, or similarly short optional jobs, then tear STA down.
 - While STA is up, the radio locks to the AP’s channel. **Paging / games / doodle MAY go offline or drop** until disconnect — that is accepted; do not design for always-on STA + ESP-NOW coexistence.
-- PC sim may show a sticky “Connected” flag as a stub; device firmware must implement ephemeral join/leave.
+- Settings shows **Saved** network (not always-on Connected). Sim joins only during Sync time / Updates, then drops — device must do the same with real STA.
 
 **Yes, OTA binaries can live on GitHub:**
 
@@ -358,8 +358,9 @@ Wi‑Fi is **not** required for paging/games. Settings exposes optional actions:
 Notes:
 
 - Prefer a **public** repo (or release assets) so desks don’t need a GitHub token; if private, use a fine-scoped token in NVS (more ops pain).  
-- Real STA/SNTP/OTA is Phase 6 / post–Phase 0 device work.  
-- Settings UI already has **Sync time** / **Updates** stubs.
+- Repo is **public**; test tags `v0.1.0` / `v0.2.0` / `v0.3.0` ship placeholder `.bin` assets.  
+- PC sim Updates screen already lists live GitHub Releases (`sim/github_ota.cpp`); Install adopts the tag (Settings shows `Release …` at top) — flash/apply still waits for boards.  
+- Real STA/SNTP/OTA partition write is Phase 6 / post–Phase 0 device work.
 
 ---
 

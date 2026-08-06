@@ -4,6 +4,7 @@
 #include "app/background.h"
 #include "app/checklist.h"
 #include "protocol/messages.h"
+#include "sim/github_ota.h"
 #include "ui/brightness.h"
 #include "ui/chrome.h"
 #include "ui/emoji_badge.h"
@@ -256,14 +257,14 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
       return;
     }
     if (g_osk_canned_index == -4) {
-      /* PC sim: accept any password; device will join STA for real. */
+      /* Save credentials only — do not stay associated (ephemeral STA policy). */
       app::Desk & d = app::desk();
       std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", g_wifi_ssid_draft);
-      d.wifi_connected = true;
+      d.wifi_connected = false;
       g_wifi_ssid_draft[0] = '\0';
       g_osk_buf[0] = '\0'; /* don't keep password */
       app::save();
-      toast_fmt("Connected to %s", d.wifi_ssid);
+      toast_fmt("Saved %s", d.wifi_ssid);
       go_settings();
       return;
     }
@@ -748,7 +749,14 @@ lv_obj_t * settings_screen() {
   make_topbar(scr, "SETTINGS", d.name);
   lv_obj_t * body = make_body(scr, true);
   lv_obj_set_style_pad_bottom(body, 12, 0);
-  make_tagline(body, "Settings");
+
+  lv_obj_t * ver = lv_label_create(body);
+  char ver_lbl[40];
+  lv_snprintf(ver_lbl, sizeof(ver_lbl), "Release %s", app::firmware_version());
+  lv_label_set_text(ver, ver_lbl);
+  lv_obj_set_style_text_color(ver, theme::muted(), 0);
+  lv_obj_set_style_text_font(ver, &lv_font_montserrat_14, 0);
+  lv_obj_set_width(ver, lv_pct(100));
 
   add_section(body, "My name");
   lv_obj_t * name = lv_button_create(body);
@@ -909,8 +917,8 @@ lv_obj_t * settings_screen() {
              toast("Start run-bg-upload.ps1 first");
              return;
            }
-           if (!app::desk().wifi_connected) {
-             toast("Connect to Wi-Fi first");
+           if (!app::desk().wifi_ssid[0]) {
+             toast("Save a Wi-Fi network first");
              return;
            }
            go_bg_upload();
@@ -931,17 +939,27 @@ lv_obj_t * settings_screen() {
   add_section(body, "WiFi (optional) - clock sync & OTA updates");
   {
     lv_obj_t * status = lv_label_create(body);
-    if (d.wifi_connected && d.wifi_ssid[0]) {
-      char st[48];
-      lv_snprintf(st, sizeof(st), "Connected - %s", d.wifi_ssid);
+    if (d.wifi_ssid[0]) {
+      char st[56];
+      if (d.wifi_connected)
+        lv_snprintf(st, sizeof(st), "Joining now - %s", d.wifi_ssid);
+      else
+        lv_snprintf(st, sizeof(st), "Saved - %s", d.wifi_ssid);
       lv_label_set_text(status, st);
-      lv_obj_set_style_text_color(status, theme::mint(), 0);
+      lv_obj_set_style_text_color(status, d.wifi_connected ? theme::mint() : theme::ink(), 0);
     } else {
-      lv_label_set_text(status, "Not connected");
+      lv_label_set_text(status, "No network saved");
       lv_obj_set_style_text_color(status, theme::muted(), 0);
     }
     lv_obj_set_style_text_font(status, &lv_font_montserrat_14, 0);
     lv_obj_set_width(status, lv_pct(100));
+
+    lv_obj_t * policy = lv_label_create(body);
+    lv_label_set_text(policy, "Not always on. Joins only for Sync time & Updates, then drops.");
+    lv_obj_set_style_text_color(policy, theme::muted(), 0);
+    lv_obj_set_style_text_font(policy, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(policy, lv_pct(100));
+    lv_label_set_long_mode(policy, LV_LABEL_LONG_WRAP);
 
     lv_obj_t * wifi_row = lv_obj_create(body);
     lv_obj_remove_style_all(wifi_row);
@@ -951,15 +969,15 @@ lv_obj_t * settings_screen() {
     lv_obj_set_style_pad_column(wifi_row, 6, 0);
     lv_obj_remove_flag(wifi_row, LV_OBJ_FLAG_SCROLLABLE);
 
-    chip(wifi_row, d.wifi_connected ? "Change" : "Scan Wi-Fi", false,
+    chip(wifi_row, d.wifi_ssid[0] ? "Change" : "Scan Wi-Fi", false,
          [](lv_event_t * /*e*/) { go_wifi_scan(); }, nullptr);
-    if (d.wifi_connected) {
-      chip(wifi_row, "Disconnect", false,
+    if (d.wifi_ssid[0]) {
+      chip(wifi_row, "Forget", false,
            [](lv_event_t * /*e*/) {
              app::desk().wifi_connected = false;
              app::desk().wifi_ssid[0] = '\0';
              app::save();
-             toast("Wi-Fi disconnected");
+             toast("Wi-Fi forgotten");
              go_settings();
            },
            nullptr);
@@ -975,22 +993,26 @@ lv_obj_t * settings_screen() {
 
     chip(wifi_acts, "Sync time", false,
          [](lv_event_t * /*e*/) {
-           if (!app::desk().wifi_connected) {
-             toast("Connect to Wi-Fi first");
+           if (!app::desk().wifi_ssid[0]) {
+             toast("Save a Wi-Fi network first");
              return;
            }
+           /* Sim: join → SNTP → disconnect. Device will do real STA. */
+           app::desk().wifi_connected = true;
            app::desk().clock_offset_ms = 0;
+           app::desk().wifi_connected = false;
            app::save();
-           toast("Time synced");
+           toast("Time synced — Wi-Fi dropped");
            /* stay put — go_settings() would jump scroll to top */
          },
          nullptr);
     chip(wifi_acts, "Updates", false,
          [](lv_event_t * /*e*/) {
-           if (!app::desk().wifi_connected) {
-             toast("Connect to Wi-Fi first");
+           if (!app::desk().wifi_ssid[0]) {
+             toast("Save a Wi-Fi network first");
              return;
            }
+           app::desk().wifi_connected = true; /* STA up for Updates UI */
            go_ota_releases();
          },
          nullptr);
@@ -1251,10 +1273,10 @@ void on_pick_ap(lv_event_t * e) {
   if (ap.open) {
     app::Desk & d = app::desk();
     std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", ap.ssid);
-    d.wifi_connected = true;
+    d.wifi_connected = false;
     g_wifi_ssid_draft[0] = '\0';
     app::save();
-    toast_fmt("Connected to %s", d.wifi_ssid);
+    toast_fmt("Saved %s", d.wifi_ssid);
     go_settings();
     return;
   }
@@ -1327,34 +1349,65 @@ lv_obj_t * wifi_scan_screen() {
 
 namespace {
 
-struct OtaRelease {
-  const char * tag;  /* e.g. v0.1.0 */
-  const char * note; /* short label */
-};
+sim::github_ota::Release g_ota_cache[sim::github_ota::kMaxReleases];
+int g_ota_cache_n = 0;
+bool g_ota_cache_ok = false;
+char g_ota_cache_err[96] = {};
+bool g_ota_force_refresh = false;
 
-/* PC sim mock list — device fetches GitHub Releases API. */
-const OtaRelease kOtaReleases[] = {
-    {"v0.2.0", "latest"},
-    {"v0.1.0-sim", "this build"},
-    {"v0.1.0", "stable"},
-    {"v0.0.9", "older"},
-};
-constexpr int kOtaReleaseCount = (int)(sizeof(kOtaReleases) / sizeof(kOtaReleases[0]));
+bool ota_ensure_cache() {
+  if (g_ota_cache_ok && !g_ota_force_refresh) return true;
+  g_ota_force_refresh = false;
+  g_ota_cache_err[0] = '\0';
+  const int n = sim::github_ota::fetch_releases(g_ota_cache, sim::github_ota::kMaxReleases,
+                                                g_ota_cache_err, (int)sizeof(g_ota_cache_err));
+  if (n < 0) {
+    g_ota_cache_n = 0;
+    g_ota_cache_ok = false;
+    return false;
+  }
+  g_ota_cache_n = n;
+  g_ota_cache_ok = true;
+  return true;
+}
+
+int g_ota_pending_idx = -1;
+
+void ota_leave_disconnect() {
+  app::desk().wifi_connected = false;
+}
+
+void ota_do_install(lv_event_t * /*e*/) {
+  const int idx = g_ota_pending_idx;
+  g_ota_pending_idx = -1;
+  if (idx < 0 || idx >= g_ota_cache_n) return;
+  const sim::github_ota::Release & r = g_ota_cache[idx];
+  /* Real desks: download .bin + flash OTA partition. Sim: adopt tag. */
+  app::set_firmware_version(r.tag);
+  ota_leave_disconnect();
+  if (r.has_bin)
+    toast_fmt("Installed %s (sim)", r.tag);
+  else
+    toast_fmt("Installed %s (no .bin asset)", r.tag);
+  go_hub();
+}
 
 void on_pick_release(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
-  if (idx < 0 || idx >= kOtaReleaseCount) return;
-  const OtaRelease & r = kOtaReleases[idx];
-  /* Match "0.1.0-sim" against tag "v0.1.0-sim" */
-  const char * cur = app::kFirmwareVersion;
-  const char * tag_body = r.tag[0] == 'v' ? r.tag + 1 : r.tag;
-  if (std::strcmp(tag_body, cur) == 0) {
+  if (idx < 0 || idx >= g_ota_cache_n) return;
+  const sim::github_ota::Release & r = g_ota_cache[idx];
+  const char * body = sim::github_ota::tag_body(r.tag);
+  if (std::strcmp(body, app::firmware_version()) == 0) {
     toast("Already on this version");
     return;
   }
-  /* Real desks: download asset + flash. Sim: pretend. */
-  toast_fmt("Would install %s", r.tag);
-  go_settings();
+  g_ota_pending_idx = idx;
+  char msg[96];
+  const char * label = r.name[0] ? r.name : r.tag;
+  lv_snprintf(msg, sizeof(msg), "Install %s?\nRunning %s now.", label, app::firmware_version());
+  show_confirm(msg, "Install", false, ota_do_install, [](lv_event_t * /*e*/) {
+    g_ota_pending_idx = -1;
+  });
 }
 
 }  // namespace
@@ -1363,64 +1416,91 @@ lv_obj_t * ota_releases_screen() {
   lv_obj_t * scr = make_screen();
   make_topbar(scr, "SETTINGS", app::desk().name);
   lv_obj_t * body = make_body(scr, true);
-  make_tagline(body, "Install a release");
+  make_tagline(body, "GitHub Releases");
 
   lv_obj_t * cur = lv_label_create(body);
   char cur_lbl[48];
-  lv_snprintf(cur_lbl, sizeof(cur_lbl), "Running %s", app::kFirmwareVersion);
+  lv_snprintf(cur_lbl, sizeof(cur_lbl), "Running %s", app::firmware_version());
   lv_label_set_text(cur, cur_lbl);
   lv_obj_set_style_text_color(cur, theme::muted(), 0);
   lv_obj_set_style_text_font(cur, &lv_font_montserrat_12, 0);
   lv_obj_set_width(cur, lv_pct(100));
 
-  lv_obj_t * hint = lv_label_create(body);
-  lv_label_set_text(hint, "Pick any version to upgrade or downgrade.");
-  lv_obj_set_style_text_color(hint, theme::muted(), 0);
-  lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
-  lv_obj_set_width(hint, lv_pct(100));
+  lv_obj_t * src = lv_label_create(body);
+  lv_label_set_text(src, "therzog92/WerkBuddy");
+  lv_obj_set_style_text_color(src, theme::muted(), 0);
+  lv_obj_set_style_text_font(src, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(src, lv_pct(100));
 
-  for (int i = 0; i < kOtaReleaseCount; ++i) {
-    const OtaRelease & r = kOtaReleases[i];
-    const char * tag_body = r.tag[0] == 'v' ? r.tag + 1 : r.tag;
-    const bool is_current = std::strcmp(tag_body, app::kFirmwareVersion) == 0;
+  if (!ota_ensure_cache()) {
+    lv_obj_t * err = lv_label_create(body);
+    char msg[128];
+    lv_snprintf(msg, sizeof(msg), "Fetch failed: %s",
+                g_ota_cache_err[0] ? g_ota_cache_err : "unknown");
+    lv_label_set_text(err, msg);
+    lv_obj_set_style_text_color(err, theme::danger(), 0);
+    lv_obj_set_style_text_font(err, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(err, lv_pct(100));
+  } else {
+    lv_obj_t * hint = lv_label_create(body);
+    lv_label_set_text(hint, "Pick any version to upgrade or downgrade.");
+    lv_obj_set_style_text_color(hint, theme::muted(), 0);
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(hint, lv_pct(100));
 
-    lv_obj_t * b = lv_button_create(body);
-    lv_obj_set_width(b, lv_pct(100));
-    lv_obj_set_height(b, 52);
-    lv_obj_set_style_radius(b, 12, 0);
-    lv_obj_set_style_bg_color(b, theme::panel(), 0);
-    lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_set_style_border_width(b, is_current ? 2 : 1, 0);
-    lv_obj_set_style_border_color(b, is_current ? theme::gold() : theme::border(), 0);
-    lv_obj_set_style_pad_hor(b, 12, 0);
-    lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(b, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    for (int i = 0; i < g_ota_cache_n; ++i) {
+      const sim::github_ota::Release & r = g_ota_cache[i];
+      const char * body_tag = sim::github_ota::tag_body(r.tag);
+      const bool is_current = std::strcmp(body_tag, app::firmware_version()) == 0;
 
-    lv_obj_t * left = lv_obj_create(b);
-    lv_obj_remove_style_all(left);
-    lv_obj_set_size(left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(left, 2, 0);
-    lv_obj_t * name = lv_label_create(left);
-    lv_label_set_text(name, r.tag);
-    lv_obj_set_style_text_color(name, theme::ink(), 0);
-    lv_obj_set_style_text_font(name, &lv_font_montserrat_16, 0);
-    lv_obj_t * meta = lv_label_create(left);
-    lv_label_set_text(meta, is_current ? "current" : r.note);
-    lv_obj_set_style_text_color(meta, is_current ? theme::gold() : theme::muted(), 0);
-    lv_obj_set_style_text_font(meta, &lv_font_montserrat_12, 0);
+      lv_obj_t * b = lv_button_create(body);
+      lv_obj_set_width(b, lv_pct(100));
+      lv_obj_set_height(b, 52);
+      lv_obj_set_style_radius(b, 12, 0);
+      lv_obj_set_style_bg_color(b, theme::panel(), 0);
+      lv_obj_set_style_shadow_width(b, 0, 0);
+      lv_obj_set_style_border_width(b, is_current ? 2 : 1, 0);
+      lv_obj_set_style_border_color(b, is_current ? theme::gold() : theme::border(), 0);
+      lv_obj_set_style_pad_hor(b, 12, 0);
+      lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(b, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
+                           LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_t * action = lv_label_create(b);
-    lv_label_set_text(action, is_current ? "OK" : "Install");
-    lv_obj_set_style_text_color(action, is_current ? theme::muted() : theme::mint(), 0);
-    lv_obj_set_style_text_font(action, &lv_font_montserrat_14, 0);
+      lv_obj_t * left = lv_obj_create(b);
+      lv_obj_remove_style_all(left);
+      lv_obj_set_size(left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+      lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
+      lv_obj_set_style_pad_row(left, 2, 0);
+      lv_obj_t * name = lv_label_create(left);
+      lv_label_set_text(name, r.name[0] ? r.name : r.tag);
+      lv_obj_set_style_text_color(name, theme::ink(), 0);
+      lv_obj_set_style_text_font(name, &lv_font_montserrat_16, 0);
+      lv_obj_t * meta = lv_label_create(left);
+      if (is_current)
+        lv_label_set_text(meta, "current");
+      else if (i == 0)
+        lv_label_set_text(meta, r.has_bin ? "latest" : "latest (no bin)");
+      else
+        lv_label_set_text(meta, r.has_bin ? r.tag : "no .bin");
+      lv_obj_set_style_text_color(meta, is_current ? theme::gold() : theme::muted(), 0);
+      lv_obj_set_style_text_font(meta, &lv_font_montserrat_12, 0);
 
-    lv_obj_add_event_cb(b, on_pick_release, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+      lv_obj_t * action = lv_label_create(b);
+      lv_label_set_text(action, is_current ? "OK" : "Install");
+      lv_obj_set_style_text_color(action, is_current ? theme::muted() : theme::mint(), 0);
+      lv_obj_set_style_text_font(action, &lv_font_montserrat_14, 0);
+
+      lv_obj_add_event_cb(b, on_pick_release, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
   }
 
   lv_obj_t * dock = make_dock(scr);
-  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_settings(); });
+  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) {
+    ota_leave_disconnect();
+    go_settings();
+  });
   dock_btn(dock, "Refresh", true, false, [](lv_event_t * /*e*/) {
+    g_ota_force_refresh = true;
     toast("Fetching releases…");
     go_ota_releases();
   });

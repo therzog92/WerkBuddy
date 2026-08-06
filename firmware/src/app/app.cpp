@@ -228,6 +228,20 @@ void init() {
 
 void save() { storage::save(g_desk); }
 
+const char * firmware_version() {
+  return g_desk.fw_version[0] ? g_desk.fw_version : kFirmwareVersion;
+}
+
+void set_firmware_version(const char * tag) {
+  if (!tag || !tag[0]) {
+    g_desk.fw_version[0] = '\0';
+  } else {
+    const char * body = (tag[0] == 'v' || tag[0] == 'V') ? tag + 1 : tag;
+    copy_str(g_desk.fw_version, sizeof(g_desk.fw_version), body);
+  }
+  save();
+}
+
 void factory_reset() {
   char id[proto::kMaxId];
   copy_str(id, sizeof(id), g_desk.id);

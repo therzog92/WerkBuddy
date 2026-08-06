@@ -52,6 +52,7 @@ add_executable(werkpager_sim
   src/sim/screenshot.cpp
   src/sim/driver.cpp
   src/sim/playthrough.cpp
+  src/sim/github_ota.cpp
 )
 
 target_include_directories(werkpager_sim PRIVATE
@@ -70,7 +71,7 @@ target_link_libraries(werkpager_sim PRIVATE lvgl ${SDL2_LIBRARIES})
 target_link_options(werkpager_sim PRIVATE ${SDL2_LDFLAGS_OTHER})
 
 if(WIN32)
-  target_link_libraries(werkpager_sim PRIVATE mingw32 ws2_32)
+  target_link_libraries(werkpager_sim PRIVATE mingw32 ws2_32 winhttp)
 endif()
 
 add_custom_command(TARGET werkpager_sim POST_BUILD
@@ -84,9 +85,14 @@ add_custom_command(TARGET werkpager_sim POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           "${CMAKE_SOURCE_DIR}/assets/fx"
           "${CMAKE_BINARY_DIR}/assets/fx"
+  # Wipe memory dest first — copy_directory does not delete removed faces.
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "${CMAKE_BINARY_DIR}/assets/memory"
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           "${CMAKE_SOURCE_DIR}/assets/memory"
           "${CMAKE_BINARY_DIR}/assets/memory"
+  COMMAND ${CMAKE_COMMAND} -E rm -rf
+          "${CMAKE_BINARY_DIR}/assets/memory/_orig"
+          "${CMAKE_BINARY_DIR}/assets/memory/_preview"
   COMMAND ${CMAKE_COMMAND} -E copy_directory
           "${CMAKE_SOURCE_DIR}/assets/icons"
           "${CMAKE_BINARY_DIR}/assets/icons"

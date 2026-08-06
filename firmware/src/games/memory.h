@@ -14,13 +14,11 @@ namespace mem {
 constexpr int kCards = 16;
 constexpr int kPairs = 8;
 
-/** Pair ids map to firmware/assets/memory/<name>.png */
-inline const char * const * face_names() {
-  static const char * names[kPairs] = {
-      "bob", "katya", "jinkx", "michelle", "trixie", "jinkx2", "michelle2", "logo",
-  };
-  return names;
-}
+/**
+ * Pair art is loaded from firmware/assets/memory/*.{png,jpg,jpeg}.
+ * UI picks kPairs faces from that folder using the match seed (same seed ⇒
+ * same faces on both desks if the folder matches). Drop in more anytime.
+ */
 
 /* mulberry32 PRNG — identical constants to the web sim */
 struct Rng {

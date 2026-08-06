@@ -19,12 +19,14 @@
 #include "ui/nav.h"
 #include "ui/theme.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace wp {
 namespace ui {
@@ -1963,42 +1965,119 @@ lv_obj_t * game_ck_build() {
 
 /* ================= MEMORY ================= */
 
-std::string mem_face_path(uint8_t pair) {
-  namespace fs = std::filesystem;
-  pair = (uint8_t)(pair % games::mem::kPairs);
-  static std::string cache[games::mem::kPairs];
-  static bool ready[games::mem::kPairs] = {};
-  if (ready[pair]) return cache[pair];
+/** LVGL "S:..." paths for the 8 pairs of the active match (seed-picked). */
+std::string g_mem_faces[games::mem::kPairs];
+uint32_t g_mem_faces_seed = 0;
+bool g_mem_faces_bound = false;
 
-  const char * name = games::mem::face_names()[pair];
+std::filesystem::path mem_assets_dir() {
+  namespace fs = std::filesystem;
   const fs::path candidates[] = {
       fs::current_path() / "assets" / "memory",
       fs::current_path() / ".." / "assets" / "memory",
       fs::path("C:/Users/Tommy/Projects/WerkPager/firmware/assets/memory"),
   };
   for (const auto & dir : candidates) {
-    /* Prefer PNG (LV_USE_LODEPNG); fall back to jpg copies if present. */
-    const char * exts[] = {".png", ".jpg", ".jpeg"};
-    for (const char * ext : exts) {
-      fs::path p = dir / (std::string(name) + ext);
-      std::error_code ec;
-      if (!fs::exists(p, ec)) continue;
-      fs::path canon = fs::weakly_canonical(p, ec);
-      if (ec) canon = fs::absolute(p, ec);
-      if (ec) continue;
-      std::string s = "S:" + canon.string();
-      for (char & c : s)
-        if (c == '\\') c = '/';
-      /* Confirm LVGL can decode before claiming success. */
-      lv_image_header_t hdr{};
-      if (lv_image_decoder_get_info(s.c_str(), &hdr) != LV_RESULT_OK || hdr.w == 0) continue;
-      cache[pair] = std::move(s);
-      ready[pair] = true;
-      return cache[pair];
-    }
+    std::error_code ec;
+    if (fs::is_directory(dir, ec)) return dir;
   }
-  ready[pair] = true; /* negative-cache empty */
-  return cache[pair];
+  return {};
+}
+
+std::string mem_lvgl_path(const std::filesystem::path & p) {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  fs::path canon = fs::weakly_canonical(p, ec);
+  if (ec) canon = fs::absolute(p, ec);
+  if (ec) return {};
+  std::string s = "S:" + canon.string();
+  for (char & c : s)
+    if (c == '\\') c = '/';
+  lv_image_header_t hdr{};
+  if (lv_image_decoder_get_info(s.c_str(), &hdr) != LV_RESULT_OK || hdr.w == 0) return {};
+  return s;
+}
+
+/** Sorted unique stems → best path (png preferred). Rescans folder each call. */
+std::vector<std::string> mem_scan_pool() {
+  namespace fs = std::filesystem;
+  std::vector<std::string> out;
+  const fs::path dir = mem_assets_dir();
+  if (dir.empty()) return out;
+
+  struct Cand {
+    std::string stem;
+    fs::path path;
+    int rank; /* lower = better; png=0 jpg=1 jpeg=2 */
+  };
+  std::vector<Cand> cands;
+  std::error_code ec;
+  for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+    if (!it->is_regular_file(ec)) continue;
+    const fs::path p = it->path();
+    std::string ext = p.extension().string();
+    for (char & c : ext)
+      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    int rank = -1;
+    if (ext == ".png") rank = 0;
+    else if (ext == ".jpg") rank = 1;
+    else if (ext == ".jpeg") rank = 2;
+    if (rank < 0) continue;
+    std::string stem = p.stem().string();
+    if (stem.empty() || stem[0] == '_' || stem[0] == '.') continue;
+    cands.push_back({stem, p, rank});
+  }
+  std::sort(cands.begin(), cands.end(), [](const Cand & a, const Cand & b) {
+    if (a.stem != b.stem) return a.stem < b.stem;
+    return a.rank < b.rank;
+  });
+  std::string last;
+  for (const Cand & c : cands) {
+    if (c.stem == last) continue;
+    last = c.stem;
+    std::string lvgl = mem_lvgl_path(c.path);
+    if (!lvgl.empty()) out.push_back(std::move(lvgl));
+  }
+  return out;
+}
+
+/** Pick kPairs faces from the folder using seed (deterministic for MP sync). */
+void mem_bind_faces(uint32_t seed) {
+  for (int i = 0; i < games::mem::kPairs; ++i) g_mem_faces[i].clear();
+  g_mem_faces_seed = seed;
+  g_mem_faces_bound = true;
+
+  std::vector<std::string> pool = mem_scan_pool();
+  const int n = (int)pool.size();
+  if (n <= 0) return;
+
+  if (n <= games::mem::kPairs) {
+    for (int i = 0; i < games::mem::kPairs; ++i) g_mem_faces[i] = pool[i % n];
+    return;
+  }
+
+  /* Shuffle pool indices with a salt distinct from build_deck's shuffle. */
+  std::vector<int> idx((size_t)n);
+  for (int i = 0; i < n; ++i) idx[(size_t)i] = i;
+  games::mem::Rng rng(seed ^ 0xA5C3F1EDu);
+  for (int i = n - 1; i > 0; --i) {
+    const int j = (int)(rng.next() * (i + 1));
+    const int tmp = idx[(size_t)i];
+    idx[(size_t)i] = idx[(size_t)j];
+    idx[(size_t)j] = tmp;
+  }
+  for (int i = 0; i < games::mem::kPairs; ++i) g_mem_faces[i] = pool[(size_t)idx[(size_t)i]];
+}
+
+void mem_prepare_deck(uint32_t seed, uint8_t deck[games::mem::kCards]) {
+  games::mem::build_deck(seed, deck);
+  mem_bind_faces(seed);
+}
+
+const std::string & mem_face_path(uint8_t pair) {
+  pair = (uint8_t)(pair % games::mem::kPairs);
+  if (!g_mem_faces_bound) mem_bind_faces(app::mem().seed);
+  return g_mem_faces[pair];
 }
 
 struct MemResolveLocal {
@@ -2043,7 +2122,7 @@ void mem_challenge(lv_event_t * e) {
   app::mem().waiting = true;
   app::mem().seed = (uint32_t)std::rand();
   app::mem().my_turn = true;
-  games::mem::build_deck(app::mem().seed, app::mem().deck);
+  mem_prepare_deck(app::mem().seed, app::mem().deck);
   std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", p.id);
   std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", p.name);
   proto::Msg m;
@@ -2125,9 +2204,13 @@ void fill_mem_play(lv_obj_t * parent) {
       if (!path.empty()) {
         lv_obj_t * img = lv_image_create(card);
         lv_image_set_src(img, path.c_str());
-        /* Faces are authored at 96px; scale to card inset. Avoid set_size — it
-         * can clip/blank scaled file images in LVGL 9. */
-        const int32_t scale = ((kCard - 8) * 256) / 96;
+        /* Scale whatever source size to the card inset (authoring target 96px
+         * via tools/memory-crop). Avoid set_size — can clip/blank in LVGL 9. */
+        int32_t src_w = 96;
+        lv_image_header_t hdr{};
+        if (lv_image_decoder_get_info(path.c_str(), &hdr) == LV_RESULT_OK && hdr.w > 0)
+          src_w = (int32_t)hdr.w;
+        const int32_t scale = ((kCard - 8) * 256) / src_w;
         lv_image_set_scale(img, scale);
         lv_obj_center(img);
         lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
@@ -2197,7 +2280,7 @@ lv_obj_t * game_mem_build() {
       app::mem().active = true;
       app::mem().seed = inv.seed;
       app::mem().my_turn = false;
-      games::mem::build_deck(app::mem().seed, app::mem().deck);
+      mem_prepare_deck(app::mem().seed, app::mem().deck);
       std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", inv.from_id);
       std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", inv.from_name);
       proto::Msg m;
@@ -2229,7 +2312,7 @@ lv_obj_t * game_mem_build() {
             app::mem().waiting = true;
             app::mem().seed = (uint32_t)std::rand();
             app::mem().my_turn = true;
-            games::mem::build_deck(app::mem().seed, app::mem().deck);
+            mem_prepare_deck(app::mem().seed, app::mem().deck);
             std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", oid);
             std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", oname);
             proto::Msg m;
@@ -3024,7 +3107,7 @@ void games_debug_show(const char * game, const char * panel) {
     app::mem().active = true;
     app::mem().seed = 42;
     app::mem().my_turn = true;
-    games::mem::build_deck(app::mem().seed, app::mem().deck);
+    mem_prepare_deck(app::mem().seed, app::mem().deck);
     seed_peer(app::mem());
     if (panel && !std::strcmp(panel, "play")) {
       /* Face a full row so asset decode is visible in screenshots. */
@@ -3155,7 +3238,7 @@ bool accept_incoming_slot(int idx) {
       app::mem().active = true;
       app::mem().seed = inv.seed;
       app::mem().my_turn = false;
-      games::mem::build_deck(app::mem().seed, app::mem().deck);
+      mem_prepare_deck(app::mem().seed, app::mem().deck);
       std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", inv.from_id);
       std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", inv.from_name);
       m.type = proto::MsgType::MemAccept;

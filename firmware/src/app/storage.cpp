@@ -78,10 +78,13 @@ bool load(app::Desk & d) {
     } else if (!std::strcmp(key, "wifi_ssid")) {
       std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", val);
     } else if (!std::strcmp(key, "wifi_connected")) {
-      d.wifi_connected = std::atoi(val) != 0;
+      /* Legacy key ignored — association is never persisted (ephemeral STA). */
+      (void)val;
     } else if (!std::strcmp(key, "hs_2048")) {
       d.high_score_2048 = std::atoi(val);
       if (d.high_score_2048 < 0) d.high_score_2048 = 0;
+    } else if (!std::strcmp(key, "fw_version")) {
+      std::snprintf(d.fw_version, sizeof(d.fw_version), "%s", val);
     } else if (!std::strncmp(key, "emoji", 5)) {
       const int i = std::atoi(key + 5);
       if (i >= 0 && i < app::kEmojiSlots) std::snprintf(d.emojis[i], sizeof(d.emojis[i]), "%s", val);
@@ -125,8 +128,9 @@ void save(const app::Desk & d) {
   put_int(f, "setup_done", d.setup_done ? 1 : 0);
   put_int(f, "clock_offset_ms", d.clock_offset_ms);
   put(f, "wifi_ssid", d.wifi_ssid);
-  put_int(f, "wifi_connected", d.wifi_connected ? 1 : 0);
+  /* Do not persist wifi_connected — STA is join-for-job only. */
   put_int(f, "hs_2048", d.high_score_2048);
+  if (d.fw_version[0]) put(f, "fw_version", d.fw_version);
   for (int i = 0; i < app::kEmojiSlots; ++i) {
     char key[16];
     std::snprintf(key, sizeof(key), "emoji%d", i);

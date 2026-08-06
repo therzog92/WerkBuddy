@@ -259,6 +259,7 @@ void handle_line(const char * line) {
     else if (!std::strcmp(where, "scoreboard")) go_scoreboard();
     else if (!std::strcmp(where, "active") || !std::strcmp(where, "active-games")) go_active_games();
     else if (!std::strcmp(where, "ttt")) go_ttt();
+    else if (!std::strcmp(where, "ota") || !std::strcmp(where, "updates")) go_ota_releases();
     else {
       reply("FAIL unknown-nav");
       return;

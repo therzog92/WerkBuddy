@@ -22,8 +22,12 @@ namespace app {
 constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
-/** Shown in Updates UI; bump when shipping a Release. */
+/** Build default shown in Updates UI; bump when shipping a Release. */
 constexpr const char * kFirmwareVersion = "0.1.0-sim";
+/** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
+const char * firmware_version();
+/** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
+void set_firmware_version(const char * tag);
 
 struct Peer {
   char id[proto::kMaxId] = {};
@@ -147,8 +151,8 @@ struct Desk {
   uint8_t brightness = 85; /* 10..100; pages force full */
   bool setup_done = false; /* false → first-run / post-reset setup */
   int64_t clock_offset_ms = 0;
-  char wifi_ssid[33] = {}; /* optional STA; empty = not configured */
-  bool wifi_connected = false;
+  char wifi_ssid[33] = {}; /* saved STA network; empty = none (≠ associated) */
+  bool wifi_connected = false; /* ephemeral: true only while Sync/OTA job holds STA */
   char emojis[kEmojiSlots][proto::kMaxEmoji] = {};
   char canned[kCannedCount][proto::kMaxMessage] = {};
 
@@ -166,6 +170,7 @@ struct Desk {
   char doodle_peer_name[proto::kMaxName] = {};
 
   int high_score_2048 = 0; /* solo 2048 best score */
+  char fw_version[24] = {}; /* installed tag body; empty → kFirmwareVersion */
 };
 
 Desk & desk();
