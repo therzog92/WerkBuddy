@@ -207,6 +207,7 @@ Names: keep **max 12** chars (sim already clamps). Emoji: store as UTF-8 short s
 - [ ] Confirm touch coordinates map to 480×480 (Y-flip if needed)  
 - [ ] Two-board ESP-NOW ping (`HELLO` / `ACK`) with RSSI log  
 - [ ] Record chosen SDK + LVGL version in this doc  
+- [ ] USB serial healthy enough to host device drive later (§8c)
 
 **Exit:** Both boards show a tappable “WERKBUDDY” label; ping toast on peer.
 
@@ -218,8 +219,9 @@ Names: keep **max 12** chars (sim already clamps). Emoji: store as UTF-8 short s
 - [ ] NVS: name, theme id, timeout, idle mode, clockOffsetMs (date+time)  
 - [ ] Discover / discover_reply over ESP-NOW  
 - [ ] Peer list UI  
+- [ ] **Device drive (debug builds only)** — USB framebuffer `shot` + injected `tap`/`swipe` (§8c); **compile out of release** so normal desk use is unaffected  
 
-**Exit:** Set name/date/time/theme on A; B sees A after scan.
+**Exit:** Set name/date/time/theme on A; B sees A after scan. Debug flash can be screenshot/tapped by an agent without product-path interference.
 
 ### Phase 2 — WerkPager calls
 
@@ -362,6 +364,37 @@ Notes:
 - PC sim Updates screen already lists live GitHub Releases (`sim/github_ota.cpp`); Install adopts the tag (Settings shows `Release …` at top) — flash/apply still waits for boards.  
 - Real STA/SNTP/OTA partition write is Phase 6 / post–Phase 0 device work.
 
+### 8c. Agent device drive (debug only — must not affect product use)
+
+**Goal:** After boards arrive, agents can **see** the glass and **poke** it the same way as the PC sim (`WERKPAGER_DRIVE` + `shot` / `tap`), so bring-up isn’t guesswork from serial logs alone.
+
+**Ship as a debug bridge, not a product feature:**
+
+| Requirement | Rule |
+|-------------|------|
+| Default off | **Compile-time disabled** in release / retail builds (`WERKPAGER_DEVICE_DRIVE` or equiv. **off** unless explicitly enabled for a debug flash). |
+| No end-user UI | No Settings toggle, no hub entry, no toasts advertising drive mode. |
+| Arm only when useful | When the debug build is flashed: bridge listens on **USB CDC/serial** only while a host is connected (or an explicit one-shot “arm” from the host script). Idle desks with nothing plugged in behave like a normal product binary. |
+| Non-interference | Drive must not change ESP-NOW behavior, game rules, NVS defaults, or timing when **disarmed / not compiled in**. Injected touches are ignored unless armed. Screenshot is pull-only (no overlay chrome). |
+| Host tooling | PC script (sibling of `firmware/scripts/drive-sim.ps1`) issues `tap` / `swipe` / `shot` / `screen`; framebuffer dump lands as e.g. `firmware/sim-out/device-preview.png` for the agent to read. |
+| Dual-board | Prefer **two desks** on the same host (two COM ports), both flashed with the **debug** drive build. Host script addresses A vs B (`drive-a` / `drive-b` or `-Port`). Agent acts as both people: invite / accept / moves / forfeit over **real ESP-NOW** while pulling `shot` from each glass. |
+| Safety | Never bind drive to public Wi‑Fi by default. Prefer USB. If a network path is ever added, keep it ephemeral + debug-build-only. |
+
+**Ladder:**
+
+1. Phase 0 — one board: glass + touch + USB serial.  
+2. Single-board device drive — `shot` / `tap` on A.  
+3. **Two-board agent QA** — A+B on USB, both debug-driven; scripted ESP-NOW pager + games without the operator playing both sides. Place boards a few meters apart so range isn’t only “same desk.”  
+4. Release flashes — drive compiled out; humans use desks normally.
+
+**When to build it:** after Phase 0 glass + USB serial work (so we have a flush path and a COM port). Target: **before or alongside Phase 1 shell** so agents can validate hub/settings on glass without the operator narrating every pixel. Dual-COM control lands as soon as two boards ping over ESP-NOW. PC sim drive remains the daily UX loop; device drive is for glass/radio-specific bugs.
+
+**Exit criteria:**
+
+- **Single board:** Agent flashes a **debug** build, runs `shot`, views a PNG of the live framebuffer, `tap`s a known control — serial + image agree.  
+- **Dual board:** Agent drives A and B through discover → WerkPager call → at least one game invite/accept/move/forfeit on real ESP-NOW, with per-board screenshots.  
+- **Release:** Drive compiled out; zero drive code path in normal use.
+
 ---
 
 ## 9. Testing strategy
@@ -371,8 +404,10 @@ Notes:
 | Sim regression | LVGL PC sim; multi-peer via sim link / multi-process later |
 | Protocol | Golden vectors: pack/unpack fixtures shared if possible |
 | Dual-board | Scripted play checklist per game (invite → move → forfeit → rematch) |
+| Dual-board agent QA | Two debug-driven desks on one PC (§8c): agent plays both sides over real ESP-NOW |
 | Range | Desk ~3–10 m office; note walls / 2.4 GHz congestion |
 | Soak | Idle timeout + overnight RTC drift check |
+| Glass agent QA | Device drive (§8c): USB `shot`/`tap` on **debug** builds only; release builds have drive compiled out |
 
 **Sim stays canonical** until firmware feature-complete; fix UX in sim first when possible, then port.
 
@@ -407,6 +442,7 @@ Then: `docs/ESP32_PORT_PLAN.md` for architecture; do **not** skip to games.
 | 2026-08-03 | Plan written from completed web sim | Pre-hardware |
 | 2026-08-04 | Phase −1: LVGL 9.3 + SDL2 PC sim (CMake/MinGW) | Full UI surface on PC (not just hub stub) |
 | 2026-08-04 | Bring-up manual written | `docs/HARDWARE_BRINGUP_MANUAL.md` |
+| 2026-08-06 | Device drive (§8c) on roadmap | Debug USB shot/tap; dual-COM A+B agent QA; compile-out for release; no product UI |
 | | Board model target | GUITION ESP32-4848S040C_I |
 | | SDK: _TBD_ | Lock in Session 2 of bring-up manual |
 | | LVGL version: **9.3** (PC); device pin later | Prefer 9.x on device if BSP allows |

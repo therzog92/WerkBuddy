@@ -17,3 +17,4 @@ When working on this project toward real desks / Guition ESP32-S3 **4848S040** /
 8. When boards arrive, start at **Session 0** in the bring-up manual (unbox), then Phase 0 glass + ping, then Phase 1 shell — **not games first**.
 9. Product brand is **WerkBuddy**; the Home pager app tile/screens stay **WerkPager**.
 10. **LiPo:** rear **BAT** is MX1.25 2P (`BAT+`/`BAT−`) for a single LiPo cell only — never 5 V. See `AGENTS.md` § LiPo. UART 4P is serial, not I²C for an RTC.
+11. **Device drive** (USB `shot`/`tap` for agents on glass) is roadmap §8c — **debug builds only**, compile out of release, no product UI, must not alter ESP-NOW/game behavior when disarmed. Prefer **two driven boards** for ESP-NOW / game QA once Phase 0 ping works.

@@ -10,7 +10,8 @@ Instructions for Cursor (and other) agents working in this repo. Prefer this fil
 - **Target board:** Guition **ESP32-4848S040** (ESP32-S3 N16R8 typical, 480×480 capacitive).
 - **Link:** ESP-NOW between desks. Wi‑Fi is optional and **ephemeral** (join for SNTP/OTA, then disconnect — never stay on STA). Paging MAY drop while STA is up (same radio/channel). See port plan §8b.
 - **UX source of truth:** `firmware/` LVGL PC sim (`scripts/run-sim.ps1`). Do not revive the archived web sim for new work.
-- **Interactive QA:** Prefer the TCP drive (`WERKPAGER_DRIVE=1`, `scripts/drive-sim.ps1`) — `tap` / `swipe` / `shot` / `screen` — over `WERKPAGER_SCREEN` jumps when validating real navigation. Keep screen jumps for static README galleries.
+- **Interactive QA (PC sim):** Prefer the TCP drive (`WERKPAGER_DRIVE=1`, `scripts/drive-sim.ps1`) — `tap` / `swipe` / `shot` / `screen` — over `WERKPAGER_SCREEN` jumps when validating real navigation. Keep screen jumps for static README galleries.
+- **Interactive QA (real glass):** Planned **device drive** over USB (`docs/ESP32_PORT_PLAN.md` §8c) — same shot/tap idea for agents. Prefer **two boards / two COM ports** so the agent can act as both desks for ESP-NOW pager + games. **Debug builds only**; must compile out of release so normal desk use is unaffected. No Settings UI for it.
 - **Protocol:** Keep `protocol/messages.js` type names in sync with `firmware/src/protocol/messages.h`. Binary on device; ~250 B ESP-NOW budget.
 
 ---

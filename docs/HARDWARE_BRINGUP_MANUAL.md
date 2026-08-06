@@ -58,6 +58,7 @@ Then do each Session when the agent says you’re ready. One chunk at a time.
 | Gap | Why it matters | When to fix |
 |-----|----------------|-------------|
 | No device build target | Can’t flash WerkBuddy yet | Phase 0 |
+| No agent glass drive | Agents can’t see/poke the panel like the PC sim | Phase 1 debug builds — §8c (USB shot/tap; dual-COM A+B for ESP-NOW QA; **off in release**) |
 | SDL `main.cpp` + `LV_COLOR_DEPTH 32` | Device needs RGB565 + PSRAM FB + GT911 indev | Phase 0 |
 | No `pack()` / `unpack()` | ESP-NOW can’t carry fat `Msg` as-is | Phase 0 ping → Phase 3 games |
 | Sim bots only (`mac-will` / `mac-alex`) | Real peers = Wi‑Fi MAC hex | Phase 0–1 |
