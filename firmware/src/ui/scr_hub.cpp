@@ -1,5 +1,6 @@
 #include "ui/scr_hub.h"
 
+#include "app/active_games.h"
 #include "app/app.h"
 #include "app/desk_timer.h"
 #include "ui/chrome.h"
@@ -220,6 +221,68 @@ lv_obj_t * hub_screen() {
         lv_obj_set_style_transform_scale(g, kLo + ((kHi - kLo) * v) / 1000, 0);
       });
       lv_anim_start(&a);
+    }
+  }
+
+  {
+    const int n_active = app::active_count();
+    const int n_turn = app::your_turn_count();
+    if (n_active > 0) {
+      lv_obj_t * strip = lv_button_create(body);
+      lv_obj_remove_style_all(strip);
+      lv_obj_set_width(strip, lv_pct(100));
+      lv_obj_set_height(strip, LV_SIZE_CONTENT);
+      lv_obj_set_style_pad_ver(strip, 6, 0);
+      lv_obj_set_style_pad_hor(strip, 8, 0);
+      lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+      lv_obj_set_style_pad_column(strip, 10, 0);
+      lv_obj_add_flag(strip, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_add_event_cb(strip, [](lv_event_t * /*e*/) { go_active_games(); }, LV_EVENT_CLICKED,
+                          nullptr);
+
+      lv_obj_t * count_lbl = lv_label_create(strip);
+      char abuf[40];
+      lv_snprintf(abuf, sizeof(abuf), "Active Games: %d", n_active);
+      lv_label_set_text(count_lbl, abuf);
+      lv_obj_set_style_text_color(count_lbl, theme::ink(), 0);
+      lv_obj_set_style_text_font(count_lbl, &lv_font_montserrat_14, 0);
+
+      if (n_turn > 0) {
+        /* Fixed bright green pill — readable on every wallpaper/theme. */
+        constexpr uint32_t kTurnGreen = 0x3ddc84;
+        lv_obj_t * pill = lv_obj_create(strip);
+        lv_obj_remove_style_all(pill);
+        lv_obj_set_height(pill, 28);
+        lv_obj_set_style_pad_hor(pill, 12, 0);
+        lv_obj_set_style_pad_ver(pill, 4, 0);
+        lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(pill, lv_color_hex(kTurnGreen), 0);
+        lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
+        lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER);
+        lv_obj_remove_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+
+        lv_obj_t * turn_lbl = lv_label_create(pill);
+        lv_label_set_text(turn_lbl, "Your Turn");
+        lv_obj_set_style_text_color(turn_lbl, lv_color_hex(0x062012), 0);
+        lv_obj_set_style_text_font(turn_lbl, &lv_font_montserrat_14, 0);
+
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, pill);
+        lv_anim_set_values(&a, 170, 255);
+        lv_anim_set_duration(&a, 700);
+        lv_anim_set_playback_duration(&a, 700);
+        lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+        lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
+          lv_obj_set_style_bg_opa(static_cast<lv_obj_t *>(obj), (lv_opa_t)v, 0);
+        });
+        lv_anim_start(&a);
+      }
     }
   }
 

@@ -207,7 +207,9 @@ lv_obj_t * make_body(lv_obj_t * scr, bool with_dock) {
   lv_obj_set_size(body, WP_HOR_RES, h);
   lv_obj_set_pos(body, 0, kTopbarH);
   lv_obj_set_style_pad_hor(body, 14, 0);
-  lv_obj_set_style_pad_ver(body, 6, 0);
+  lv_obj_set_style_pad_top(body, 6, 0);
+  /* Extra bottom pad so the last row isn't clipped under the dock edge. */
+  lv_obj_set_style_pad_bottom(body, with_dock ? 16 : 6, 0);
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
   lv_obj_set_style_pad_row(body, 8, 0);
@@ -224,6 +226,9 @@ lv_obj_t * make_dock(lv_obj_t * scr) {
   lv_obj_align(dock, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_pad_hor(dock, 12, 0);
   lv_obj_set_style_pad_ver(dock, 6, 0);
+  /* Opaque strip so scrolled page chrome never peeks through dock buttons. */
+  lv_obj_set_style_bg_color(dock, theme::grad_bot(), 0);
+  lv_obj_set_style_bg_opa(dock, LV_OPA_COVER, 0);
   lv_obj_set_flex_flow(dock, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(dock, 8, 0);

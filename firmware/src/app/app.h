@@ -160,19 +160,12 @@ struct Desk {
   IncomingCall incoming;
   OutgoingCall outgoing;
 
-  Invite ttt_invite, sttt_invite, c4_invite, bs_invite, ck_invite, mem_invite, rv_invite,
-      db_invite;
-  TttGame ttt;
-  StttGame sttt;
-  C4Game c4;
-  BsGame bs;
-  CkGame ck;
-  MemGame mem;
-  RvGame rv;
-  DbGame db;
+  /* Active matches live in active_games registry (cap 24, keyed by kind+peer). */
 
   char doodle_peer_id[proto::kMaxId] = {};
   char doodle_peer_name[proto::kMaxName] = {};
+
+  int high_score_2048 = 0; /* solo 2048 best score */
 };
 
 Desk & desk();
@@ -185,7 +178,7 @@ void save();
 /** Wipe user data and restore defaults; leaves setup_done=false. */
 void factory_reset();
 
-/** True while any call/invite/game is live (blocks idle, like web). */
+/** True while pager call is live (blocks idle). Games do not block idle. */
 bool busy();
 
 bool peer_saved(const char * id);

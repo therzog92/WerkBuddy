@@ -16,7 +16,7 @@
 3. After each Session succeeds, **stop**. Say what worked and what the *next* Session is named — do **not** paste Sessions 3–8 in one reply.
 4. Do **not** jump to games, doodle, or full app flash until Phase 0 exit criteria are met.
 5. Prefer fixing product behavior in the PC LVGL sim first; port to glass second.
-6. Never invent hover-only UX, cloud/Wi‑Fi for v1, or mid-game multi-resume.
+6. Never invent hover-only UX or cloud/always-on Wi‑Fi for v1. Multi-game resume follows the port plan (cap 24).
 
 ### For the operator
 
@@ -77,7 +77,8 @@ Then do each Session when the agent says you’re ready. One chunk at a time.
 - Internet / cloud / NTP required for v1  
 - Hover-only UI  
 - Shipping JSON over ESP-NOW in production  
-- Background multi-game resume  
+- Persisting active games across full power-off  
+
 - Perfect CSS pixel parity  
 
 ---

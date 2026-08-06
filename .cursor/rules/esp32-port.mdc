@@ -12,7 +12,7 @@ When working on this project toward real desks / Guition ESP32-S3 **4848S040** /
 3. Treat **`firmware/` LVGL (PC SDL sim)** as the UX + behavior source of truth. Prefer fixing flows there when iterating product behavior; **shipping UI is the same LVGL stack** on ESP32 later. The former `web/` HTML sim is archived outside this repo — do not revive it for new work.
 4. Keep **`protocol/messages.js` type names** in sync with any C/C++ enums; don’t silently rename.
 5. Prefer **binary ESP-NOW payloads** on device (JSON was sim-only). Respect ~250B practical limits (doodle chunking already designed).
-6. Do **not** invent hover-only UI, always-on Wi‑Fi, cloud requirements for v1, or mid-game “resume many games” unless the plan/phases are updated. Optional Wi‑Fi is **ephemeral STA only** (SNTP/OTA then disconnect); paging MAY drop while associated — see port plan §8b.
+6. Do **not** invent hover-only UI, always-on Wi‑Fi, or cloud requirements for v1. Multi-game resume (cap 24, one type per peer, Forfeit+Home, Active Games, 24h monotonic auto-forfeit) is in-scope — see port plan. Optional Wi‑Fi is **ephemeral STA only** (SNTP/OTA then disconnect); paging MAY drop while associated — see port plan §8b.
 7. **Phase −1 (pre-hardware):** edit `firmware/src/ui/*`, run `firmware/scripts/run-sim.ps1` (or `-Shot` for `sim-out/preview.png`).
 8. When boards arrive, start at **Session 0** in the bring-up manual (unbox), then Phase 0 glass + ping, then Phase 1 shell — **not games first**.
 9. Product brand is **WerkBuddy**; the Home pager app tile/screens stay **WerkPager**.

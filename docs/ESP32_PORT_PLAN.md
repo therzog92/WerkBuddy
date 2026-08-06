@@ -52,7 +52,8 @@ This document is the architecture + phase source of truth.
 - Display **480×480**, touch-first (no hover-dependent UX)  
 - ESP-NOW ~**250 byte** practical payload → chunk doodle strokes; prefer binary on device  
 - Forfeit always confirms: *“Are you sure you want to forfeit?”*  
-- Games do **not** background-resume yet (mid-game exit = forfeit path only)  
+- **Multi-game:** up to **24** concurrent matches (invites + in-play); at most one of each game type per peer. Outgoing invite dock is **Cancel + Home** (Home leaves the invite pending). In-play dock is **Forfeit + Home**. Active Games lists live matches and pending invites (sent/received) with **Cancel**. Hub shows `Active Games: N` and a flashing **Your Turn** when needed. Background moves toast `"{Game} vs {Opponent}: Your Turn"`. Idle may fire while games are live — games are not cleared. **24h auto-forfeit** for the desk whose turn it is, using monotonic uptime (`lv_tick_get`); wall-clock Settings cannot cheat; time pauses while powered off.  
+
 - Checkers: each player’s **own pieces at bottom** (view transform only; shared logical coords on wire)  
 - Memory: shared **seed** at invite; flip `{cardA, cardB}`; art from flash assets  
 
@@ -380,7 +381,8 @@ Notes:
 
 - Internet / cloud sync  
 - More than ~3–8 peers discovered  
-- Background multi-game resume  
+- Persisting active games across full power-off (RAM slots for v1)  
+
 - Perfect CSS parity / web fonts on device  
 - Hover-only interactions  
 - Shipping JSON ESP-NOW in production builds  

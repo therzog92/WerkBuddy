@@ -46,6 +46,7 @@ IconColors colors_for(AppIcon icon) {
     case AppIcon::Reversi: return {0x1a5c3a, 0x0f3d26};
     case AppIcon::Dots: return {0x7a5cff, 0x4a2fbf};
     case AppIcon::Scoreboard: return {u32(theme::gold()), 0x8a6a1a};
+    case AppIcon::G2048: return {0xf2b179, 0xedc22e};
   }
   return {0x666666, 0x333333};
 }
@@ -517,6 +518,23 @@ void draw_scoreboard(lv_obj_t * g) {
   line(g, 12, 50, 60, 50, 2, c);
 }
 
+void draw_g2048(lv_obj_t * g) {
+  const lv_color_t c = lv_color_hex(0xffffff);
+  constexpr lv_coord_t kIn = 14;
+  constexpr lv_coord_t kCell = 10;
+  constexpr lv_coord_t kGap = 3;
+  for (int r = 0; r < 4; ++r) {
+    for (int col = 0; col < 4; ++col) {
+      rect_bar(g, kIn + col * (kCell + kGap), kIn + r * (kCell + kGap), kCell, kCell, c);
+    }
+  }
+  lv_obj_t * lab = lv_label_create(g);
+  lv_label_set_text(lab, "2048");
+  lv_obj_set_style_text_color(lab, c, 0);
+  lv_obj_set_style_text_font(lab, &lv_font_montserrat_12, 0);
+  lv_obj_align(lab, LV_ALIGN_BOTTOM_MID, 0, -4);
+}
+
 void draw_icon(lv_obj_t * g, AppIcon icon) {
   switch (icon) {
     case AppIcon::Werk: draw_werk(g); break;
@@ -536,6 +554,7 @@ void draw_icon(lv_obj_t * g, AppIcon icon) {
     case AppIcon::Reversi: draw_rv(g); break;
     case AppIcon::Dots: draw_db(g); break;
     case AppIcon::Scoreboard: draw_scoreboard(g); break;
+    case AppIcon::G2048: draw_g2048(g); break;
   }
 }
 

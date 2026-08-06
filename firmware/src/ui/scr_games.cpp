@@ -1,6 +1,7 @@
 #include "ui/scr_games.h"
 
 #include "app/app.h"
+#include "app/active_games.h"
 #include "app/score_log.h"
 #include "games/battleship.h"
 #include "games/c4.h"
@@ -104,6 +105,14 @@ void attach_result_overlay(lv_obj_t * parent, int outcome /*1 win, 0 lose, -1 dr
 void dock_play_again_home(lv_obj_t * dock, lv_event_cb_t on_again, lv_event_cb_t on_home) {
   dock_btn(dock, "Play again", true, false, on_again);
   dock_btn(dock, "Home", false, false, on_home);
+}
+
+/** Outgoing invite: Cancel frees the slot; Home leaves it in Active Games. */
+void dock_cancel_home(lv_obj_t * dock) {
+  dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
+    app::cancel_slot(app::focus_index());
+  });
+  dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) { go_hub(); });
 }
 
 /** Slim centered Forfeit control — not a full-width slab. */
@@ -210,6 +219,28 @@ lv_obj_t * make_wait_block(lv_obj_t * parent, const char * eye, const char * nam
   return box;
 }
 
+
+bool begin_kind(app::GameKind kind, const app::Peer & p) {
+  if (app::begin_match(kind, p.id)) return true;
+  if (app::find_slot(kind, p.id) >= 0) {
+    char buf[72];
+    lv_snprintf(buf, sizeof(buf), "Already playing %s with %s", app::kind_name(kind), p.name);
+    toast(buf);
+  } else if (app::active_count() >= app::kMaxActiveGames) {
+    char buf[56];
+    lv_snprintf(buf, sizeof(buf), "Active Games full (%d max)", app::kMaxActiveGames);
+    toast(buf);
+  } else {
+    toast("Can't start that game");
+  }
+  return false;
+}
+
+void dock_forfeit_home(lv_obj_t * dock, lv_event_cb_t on_confirm) {
+  dock_forfeit_btn(dock, on_confirm);
+  dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) { go_hub(); });
+}
+
 void peer_list(lv_obj_t * parent, lv_event_cb_t on_peer) {
   make_tagline(parent, "Challenge a peer");
   const app::Desk & d = app::desk();
@@ -224,15 +255,16 @@ void peer_list(lv_obj_t * parent, lv_event_cb_t on_peer) {
 void ttt_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || app::busy() || d.ttt.active || d.ttt_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count) return;
   const app::Peer & p = d.peers[idx];
-  d.ttt = {};
-  d.ttt.active = true;
-  d.ttt.waiting = true;
-  d.ttt.mark = 'X';
-  d.ttt.turn = 'X';
-  std::snprintf(d.ttt.opp_id, sizeof(d.ttt.opp_id), "%s", p.id);
-  std::snprintf(d.ttt.opp_name, sizeof(d.ttt.opp_name), "%s", p.name);
+  if (!begin_kind(app::GameKind::Ttt, p)) return;
+  app::ttt() = {};
+  app::ttt().active = true;
+  app::ttt().waiting = true;
+  app::ttt().mark = 'X';
+  app::ttt().turn = 'X';
+  std::snprintf(app::ttt().opp_id, sizeof(app::ttt().opp_id), "%s", p.id);
+  std::snprintf(app::ttt().opp_name, sizeof(app::ttt().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::TttInvite;
   fill_msg_ids(m, p.id);
@@ -242,7 +274,7 @@ void ttt_challenge(lv_event_t * e) {
 
 void ttt_play_cell(lv_event_t * e) {
   const int cell = (int)(intptr_t)lv_event_get_user_data(e);
-  app::TttGame & g = app::desk().ttt;
+  app::TttGame & g = app::ttt();
   if (!g.active || g.waiting || g.over || g.turn != g.mark) return;
   if (cell < 0 || cell >= 9 || g.board[cell]) return;
   g.board[cell] = g.mark;
@@ -262,7 +294,7 @@ void ttt_play_cell(lv_event_t * e) {
 }
 
 void fill_ttt_play(lv_obj_t * parent) {
-  app::TttGame & g = app::desk().ttt;
+  app::TttGame & g = app::ttt();
   const bool my_turn = !g.over && !g.waiting && g.turn == g.mark;
   const char win = games::ttt::winner(g.board);
   if (g.over && !g.result_dismissed) {
@@ -348,7 +380,7 @@ void fill_ttt_play(lv_obj_t * parent) {
   if (g.over && !g.result_dismissed) {
     const int outcome = !win ? -1 : (win == g.mark ? 1 : 0);
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
-      app::desk().ttt.result_dismissed = true;
+      app::ttt().result_dismissed = true;
       go_ttt();
     }, "Tic Tac Toe", g.opp_name);
   }
@@ -359,66 +391,58 @@ lv_obj_t * game_ttt_build() {
   lv_obj_t * scr = make_screen();
   char sub[40];
   make_topbar(scr, "TIC TAC TOE", d.name,
-              game_vs_sub(sub, sizeof(sub), d.ttt.active, d.ttt.opp_name, d.ttt_invite.active,
-                          d.ttt_invite.from_name));
+              game_vs_sub(sub, sizeof(sub), app::ttt().active, app::ttt().opp_name, app::invite_active(app::GameKind::Ttt),
+                          app::invite_ref(app::GameKind::Ttt).from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
-  if (d.ttt_invite.active) {
-    make_wait_block(body, "GAME INVITE", d.ttt_invite.from_name, "wants to play Tic Tac Toe");
+  if (app::invite_active(app::GameKind::Ttt)) {
+    make_wait_block(body, "GAME INVITE", app::invite_ref(app::GameKind::Ttt).from_name, "wants to play Tic Tac Toe");
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
       proto::Msg m;
       m.type = proto::MsgType::TttDecline;
-      fill_msg_ids(m, desk.ttt_invite.from_id);
+      fill_msg_ids(m, app::invite_ref(app::GameKind::Ttt).from_id);
       app::send(m);
-      desk.ttt_invite.active = false;
+      app::end_focused();
       go_games_folder();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = desk.ttt_invite;
-      desk.ttt_invite.active = false;
-      desk.ttt = {};
-      desk.ttt.active = true;
-      desk.ttt.mark = 'O';
-      desk.ttt.turn = 'X';
-      std::snprintf(desk.ttt.opp_id, sizeof(desk.ttt.opp_id), "%s", inv.from_id);
-      std::snprintf(desk.ttt.opp_name, sizeof(desk.ttt.opp_name), "%s", inv.from_name);
+      const auto inv = app::invite_ref(app::GameKind::Ttt);
+      app::accept_invite(app::GameKind::Ttt);
+      app::ttt() = {};
+      app::ttt().active = true;
+      app::ttt().mark = 'O';
+      app::ttt().turn = 'X';
+      std::snprintf(app::ttt().opp_id, sizeof(app::ttt().opp_id), "%s", inv.from_id);
+      std::snprintf(app::ttt().opp_name, sizeof(app::ttt().opp_name), "%s", inv.from_name);
       proto::Msg m;
       m.type = proto::MsgType::TttAccept;
       fill_msg_ids(m, inv.from_id);
       app::send(m);
       go_ttt();
     });
-  } else if (d.ttt.active && d.ttt.waiting) {
-    make_wait_block(body, "CHALLENGE SENT", d.ttt.opp_name, "Waiting for them to accept...");
-    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
-      app::Desk & desk = app::desk();
-      proto::Msg m;
-      m.type = proto::MsgType::TttForfeit;
-      fill_msg_ids(m, desk.ttt.opp_id);
-      app::send(m);
-      desk.ttt.active = false;
-      go_ttt();
-    });
-  } else if (d.ttt.active) {
+  } else if (app::ttt().active && app::ttt().waiting) {
+    make_wait_block(body, "CHALLENGE SENT", app::ttt().opp_name, "Waiting for them to accept...");
+    dock_cancel_home(dock);
+  } else if (app::ttt().active) {
     fill_ttt_play(body);
-    if (d.ttt.over) {
+    if (app::ttt().over) {
       dock_play_again_home(
           dock,
           [](lv_event_t * /*e*/) {
             app::Desk & desk = app::desk();
             app::Peer p;
-            std::snprintf(p.id, sizeof(p.id), "%s", desk.ttt.opp_id);
-            std::snprintf(p.name, sizeof(p.name), "%s", desk.ttt.opp_name);
-            desk.ttt = {};
-            desk.ttt.active = true;
-            desk.ttt.waiting = true;
-            desk.ttt.mark = 'X';
-            desk.ttt.turn = 'X';
-            std::snprintf(desk.ttt.opp_id, sizeof(desk.ttt.opp_id), "%s", p.id);
-            std::snprintf(desk.ttt.opp_name, sizeof(desk.ttt.opp_name), "%s", p.name);
+            std::snprintf(p.id, sizeof(p.id), "%s", app::ttt().opp_id);
+            std::snprintf(p.name, sizeof(p.name), "%s", app::ttt().opp_name);
+            app::ttt() = {};
+            app::ttt().active = true;
+            app::ttt().waiting = true;
+            app::ttt().mark = 'X';
+            app::ttt().turn = 'X';
+            std::snprintf(app::ttt().opp_id, sizeof(app::ttt().opp_id), "%s", p.id);
+            std::snprintf(app::ttt().opp_name, sizeof(app::ttt().opp_name), "%s", p.name);
             proto::Msg m;
             m.type = proto::MsgType::TttInvite;
             fill_msg_ids(m, p.id);
@@ -426,19 +450,19 @@ lv_obj_t * game_ttt_build() {
             go_ttt();
           },
           [](lv_event_t * /*e*/) {
-            app::desk().ttt.active = false;
-            go_games_folder();
+            app::end_focused();
+            go_hub();
           });
     } else {
-      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
-app::Desk & desk = app::desk();
-          score_log::note("Tic Tac Toe", desk.ttt.opp_name, score_log::Outcome::ForfeitSelf);
+      dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
+        app::Desk & desk = app::desk();
+          score_log::note("Tic Tac Toe", app::ttt().opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::TttForfeit;
-          fill_msg_ids(m, desk.ttt.opp_id);
+          fill_msg_ids(m, app::ttt().opp_id);
           app::send(m);
-          desk.ttt.active = false;
-          go_games_folder();
+          app::end_focused();
+          go_hub();
       });
     }
   } else {
@@ -453,16 +477,17 @@ app::Desk & desk = app::desk();
 void sttt_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || app::busy() || d.sttt.active || d.sttt_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count) return;
   const app::Peer & p = d.peers[idx];
-  d.sttt = {};
-  d.sttt.active = true;
-  d.sttt.waiting = true;
-  d.sttt.mark = 'X';
-  d.sttt.turn = 'X';
-  games::sttt::init(d.sttt.boards, d.sttt.meta, d.sttt.next_board);
-  std::snprintf(d.sttt.opp_id, sizeof(d.sttt.opp_id), "%s", p.id);
-  std::snprintf(d.sttt.opp_name, sizeof(d.sttt.opp_name), "%s", p.name);
+  if (!begin_kind(app::GameKind::Sttt, p)) return;
+  app::sttt() = {};
+  app::sttt().active = true;
+  app::sttt().waiting = true;
+  app::sttt().mark = 'X';
+  app::sttt().turn = 'X';
+  games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
+  std::snprintf(app::sttt().opp_id, sizeof(app::sttt().opp_id), "%s", p.id);
+  std::snprintf(app::sttt().opp_name, sizeof(app::sttt().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::StttInvite;
   fill_msg_ids(m, p.id);
@@ -474,7 +499,7 @@ void sttt_play_cell(lv_event_t * e) {
   const int packed = (int)(intptr_t)lv_event_get_user_data(e);
   const int board = packed / 9;
   const int cell = packed % 9;
-  app::StttGame & g = app::desk().sttt;
+  app::StttGame & g = app::sttt();
   if (!g.active || g.waiting || g.over || g.turn != g.mark) return;
   if (!games::sttt::play(g.boards, g.meta, g.next_board, board, cell, g.mark)) return;
   proto::Msg m;
@@ -494,7 +519,7 @@ void sttt_play_cell(lv_event_t * e) {
 }
 
 void fill_sttt_play(lv_obj_t * parent) {
-  app::StttGame & g = app::desk().sttt;
+  app::StttGame & g = app::sttt();
   const bool my_turn = !g.over && !g.waiting && g.turn == g.mark;
   const char win = games::sttt::winner(g.meta);
   const bool forced = games::sttt::forced(g.meta, g.next_board);
@@ -609,7 +634,7 @@ void fill_sttt_play(lv_obj_t * parent) {
   if (g.over && !g.result_dismissed) {
     const int outcome = !win ? -1 : (win == g.mark ? 1 : 0);
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
-      app::desk().sttt.result_dismissed = true;
+      app::sttt().result_dismissed = true;
       go_sttt();
     }, "Super TTT", g.opp_name);
   }
@@ -710,95 +735,87 @@ lv_obj_t * game_sttt_build() {
   app::Desk & d = app::desk();
   lv_obj_t * scr = make_screen();
 
-  const bool playing = d.sttt.active && !d.sttt.waiting && !d.sttt_invite.active;
+  const bool playing = app::sttt().active && !app::sttt().waiting && !app::invite_active(app::GameKind::Sttt);
   lv_obj_t * top = nullptr;
   if (playing) {
-    const bool my_turn = !d.sttt.over && d.sttt.turn == d.sttt.mark;
-    const bool forced = games::sttt::forced(d.sttt.meta, d.sttt.next_board);
+    const bool my_turn = !app::sttt().over && app::sttt().turn == app::sttt().mark;
+    const bool forced = games::sttt::forced(app::sttt().meta, app::sttt().next_board);
     const char * status;
-    if (d.sttt.over && !d.sttt.result_dismissed) status = "Game over";
-    else if (d.sttt.over) status = "Play again?";
+    if (app::sttt().over && !app::sttt().result_dismissed) status = "Game over";
+    else if (app::sttt().over) status = "Play again?";
     else if (my_turn && forced) status = "Your turn: lit board";
     else if (my_turn) status = "Your turn: any board";
     else {
       static char wait[40];
-      lv_snprintf(wait, sizeof(wait), "Waiting on %s", d.sttt.opp_name);
+      lv_snprintf(wait, sizeof(wait), "Waiting on %s", app::sttt().opp_name);
       status = wait;
     }
-    top = make_sttt_play_topbar(scr, d.name, d.sttt.opp_name, d.sttt.mark, status);
+    top = make_sttt_play_topbar(scr, d.name, app::sttt().opp_name, app::sttt().mark, status);
   } else {
     char sub[40];
     top = make_topbar(scr, "SUPER TIC TAC TOE", d.name,
-                      game_vs_sub(sub, sizeof(sub), d.sttt.active, d.sttt.opp_name,
-                                  d.sttt_invite.active, d.sttt_invite.from_name));
+                      game_vs_sub(sub, sizeof(sub), app::sttt().active, app::sttt().opp_name,
+                                  app::invite_active(app::GameKind::Sttt), app::invite_ref(app::GameKind::Sttt).from_name));
   }
   (void)top;
 
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
-  if (d.sttt_invite.active) {
-    make_wait_block(body, "GAME INVITE", d.sttt_invite.from_name, "wants to play Super Tic Tac Toe");
+  if (app::invite_active(app::GameKind::Sttt)) {
+    make_wait_block(body, "GAME INVITE", app::invite_ref(app::GameKind::Sttt).from_name, "wants to play Super Tic Tac Toe");
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
       proto::Msg m;
       m.type = proto::MsgType::StttDecline;
-      fill_msg_ids(m, desk.sttt_invite.from_id);
+      fill_msg_ids(m, app::invite_ref(app::GameKind::Sttt).from_id);
       app::send(m);
-      desk.sttt_invite.active = false;
+      app::end_focused();
       go_games_folder();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = desk.sttt_invite;
-      desk.sttt_invite.active = false;
-      desk.sttt = {};
-      desk.sttt.active = true;
-      desk.sttt.mark = 'O';
-      desk.sttt.turn = 'X';
-      games::sttt::init(desk.sttt.boards, desk.sttt.meta, desk.sttt.next_board);
-      std::snprintf(desk.sttt.opp_id, sizeof(desk.sttt.opp_id), "%s", inv.from_id);
-      std::snprintf(desk.sttt.opp_name, sizeof(desk.sttt.opp_name), "%s", inv.from_name);
+      const auto inv = app::invite_ref(app::GameKind::Sttt);
+      app::accept_invite(app::GameKind::Sttt);
+      app::sttt() = {};
+      app::sttt().active = true;
+      app::sttt().mark = 'O';
+      app::sttt().turn = 'X';
+      games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
+      std::snprintf(app::sttt().opp_id, sizeof(app::sttt().opp_id), "%s", inv.from_id);
+      std::snprintf(app::sttt().opp_name, sizeof(app::sttt().opp_name), "%s", inv.from_name);
       proto::Msg m;
       m.type = proto::MsgType::StttAccept;
       fill_msg_ids(m, inv.from_id);
       app::send(m);
       go_sttt();
     });
-  } else if (d.sttt.active && d.sttt.waiting) {
-    make_wait_block(body, "CHALLENGE SENT", d.sttt.opp_name, "Waiting for them to accept...");
-    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
-      app::Desk & desk = app::desk();
-      proto::Msg m;
-      m.type = proto::MsgType::StttForfeit;
-      fill_msg_ids(m, desk.sttt.opp_id);
-      app::send(m);
-      desk.sttt.active = false;
-      go_sttt();
-    });
-  } else if (d.sttt.active) {
+  } else if (app::sttt().active && app::sttt().waiting) {
+    make_wait_block(body, "CHALLENGE SENT", app::sttt().opp_name, "Waiting for them to accept...");
+    dock_cancel_home(dock);
+  } else if (app::sttt().active) {
     /* Compact dock so the board can use more vertical space. */
     lv_obj_set_height(dock, kDockCompactH);
     lv_obj_set_style_pad_ver(dock, 6, 0);
     lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
 
     fill_sttt_play(body);
-    if (d.sttt.over) {
+    if (app::sttt().over) {
       dock_play_again_home(
           dock,
           [](lv_event_t * /*e*/) {
             app::Desk & desk = app::desk();
             app::Peer p;
-            std::snprintf(p.id, sizeof(p.id), "%s", desk.sttt.opp_id);
-            std::snprintf(p.name, sizeof(p.name), "%s", desk.sttt.opp_name);
-            desk.sttt = {};
-            desk.sttt.active = true;
-            desk.sttt.waiting = true;
-            desk.sttt.mark = 'X';
-            desk.sttt.turn = 'X';
-            games::sttt::init(desk.sttt.boards, desk.sttt.meta, desk.sttt.next_board);
-            std::snprintf(desk.sttt.opp_id, sizeof(desk.sttt.opp_id), "%s", p.id);
-            std::snprintf(desk.sttt.opp_name, sizeof(desk.sttt.opp_name), "%s", p.name);
+            std::snprintf(p.id, sizeof(p.id), "%s", app::sttt().opp_id);
+            std::snprintf(p.name, sizeof(p.name), "%s", app::sttt().opp_name);
+            app::sttt() = {};
+            app::sttt().active = true;
+            app::sttt().waiting = true;
+            app::sttt().mark = 'X';
+            app::sttt().turn = 'X';
+            games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
+            std::snprintf(app::sttt().opp_id, sizeof(app::sttt().opp_id), "%s", p.id);
+            std::snprintf(app::sttt().opp_name, sizeof(app::sttt().opp_name), "%s", p.name);
             proto::Msg m;
             m.type = proto::MsgType::StttInvite;
             fill_msg_ids(m, p.id);
@@ -806,22 +823,22 @@ lv_obj_t * game_sttt_build() {
             go_sttt();
           },
           [](lv_event_t * /*e*/) {
-            app::desk().sttt.active = false;
-            go_games_folder();
+            app::end_focused();
+            go_hub();
           });
       /* Shrink play-again dock buttons too. */
       const uint32_t n = lv_obj_get_child_count(dock);
       for (uint32_t i = 0; i < n; ++i) lv_obj_set_height(lv_obj_get_child(dock, i), 36);
     } else {
-      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
-app::Desk & desk = app::desk();
-          score_log::note("Super TTT", desk.sttt.opp_name, score_log::Outcome::ForfeitSelf);
+      dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
+        app::Desk & desk = app::desk();
+          score_log::note("Super TTT", app::sttt().opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::StttForfeit;
-          fill_msg_ids(m, desk.sttt.opp_id);
+          fill_msg_ids(m, app::sttt().opp_id);
           app::send(m);
-          desk.sttt.active = false;
-          go_games_folder();
+          app::end_focused();
+          go_hub();
       });
     }
   } else {
@@ -882,27 +899,28 @@ lv_grad_dsc_t * c4_rainbow() {
 void c4_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || app::busy() || d.c4.active || d.c4_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count) return;
   const app::Peer & p = d.peers[idx];
-  d.c4 = {};
-  d.c4.active = true;
-  d.c4.waiting = true;
-  d.c4.my_color = (int8_t)g_c4_pick_color;
-  d.c4.turn = d.c4.my_color;
-  games::c4::init(d.c4.board);
-  std::snprintf(d.c4.opp_id, sizeof(d.c4.opp_id), "%s", p.id);
-  std::snprintf(d.c4.opp_name, sizeof(d.c4.opp_name), "%s", p.name);
+  if (!begin_kind(app::GameKind::C4, p)) return;
+  app::c4() = {};
+  app::c4().active = true;
+  app::c4().waiting = true;
+  app::c4().my_color = (int8_t)g_c4_pick_color;
+  app::c4().turn = app::c4().my_color;
+  games::c4::init(app::c4().board);
+  std::snprintf(app::c4().opp_id, sizeof(app::c4().opp_id), "%s", p.id);
+  std::snprintf(app::c4().opp_name, sizeof(app::c4().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::C4Invite;
   fill_msg_ids(m, p.id);
-  m.color = d.c4.my_color;
+  m.color = app::c4().my_color;
   app::send(m);
   go_c4();
 }
 
 void c4_drop(lv_event_t * e) {
   const int col = (int)(intptr_t)lv_event_get_user_data(e);
-  app::C4Game & g = app::desk().c4;
+  app::C4Game & g = app::c4();
   if (!g.active || g.waiting || g.over || g.turn != g.my_color) return;
   const int row = games::c4::drop(g.board, col, g.my_color);
   if (row < 0) return;
@@ -988,7 +1006,7 @@ void c4_paint_frame(lv_obj_t * canvas) {
 }
 
 void fill_c4_play(lv_obj_t * parent) {
-  app::C4Game & g = app::desk().c4;
+  app::C4Game & g = app::c4();
   const bool my_turn = !g.over && !g.waiting && g.turn == g.my_color;
   const int w = games::c4::winner(g.board);
   if (g.over && !g.result_dismissed) make_status(parent, "Game over");
@@ -1047,8 +1065,8 @@ void fill_c4_play(lv_obj_t * parent) {
           lv_obj_set_style_translate_y(static_cast<lv_obj_t *>(obj), v, 0);
         });
         lv_anim_set_completed_cb(&a, [](lv_anim_t * /*a*/) {
-          app::desk().c4.last_r = -1;
-          app::desk().c4.last_c = -1;
+          app::c4().last_r = -1;
+          app::c4().last_c = -1;
         });
         lv_anim_start(&a);
       }
@@ -1086,7 +1104,7 @@ void fill_c4_play(lv_obj_t * parent) {
   if (g.over && !g.result_dismissed) {
     const int outcome = (w == games::c4::kColorCount) ? -1 : (w == g.my_color ? 1 : 0);
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
-      app::desk().c4.result_dismissed = true;
+      app::c4().result_dismissed = true;
       go_c4();
     }, "Connect Four", g.opp_name);
   }
@@ -1097,71 +1115,63 @@ lv_obj_t * game_c4_build() {
   lv_obj_t * scr = make_screen();
   char sub[40];
   make_topbar(scr, "CONNECT FOUR", d.name,
-              game_vs_sub(sub, sizeof(sub), d.c4.active, d.c4.opp_name, d.c4_invite.active,
-                          d.c4_invite.from_name));
+              game_vs_sub(sub, sizeof(sub), app::c4().active, app::c4().opp_name, app::invite_active(app::GameKind::C4),
+                          app::invite_ref(app::GameKind::C4).from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
-  if (d.c4_invite.active) {
-    make_wait_block(body, "GAME INVITE", d.c4_invite.from_name, "wants to play Connect Four");
+  if (app::invite_active(app::GameKind::C4)) {
+    make_wait_block(body, "GAME INVITE", app::invite_ref(app::GameKind::C4).from_name, "wants to play Connect Four");
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
       proto::Msg m;
       m.type = proto::MsgType::C4Decline;
-      fill_msg_ids(m, desk.c4_invite.from_id);
+      fill_msg_ids(m, app::invite_ref(app::GameKind::C4).from_id);
       app::send(m);
-      desk.c4_invite.active = false;
+      app::end_focused();
       go_games_folder();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = desk.c4_invite;
-      desk.c4_invite.active = false;
-      desk.c4 = {};
-      desk.c4.active = true;
-      desk.c4.opp_color = inv.color >= 0 ? inv.color : 0;
-      desk.c4.my_color = desk.c4.opp_color == 0 ? 1 : 0;
-      desk.c4.turn = desk.c4.opp_color; /* challenger goes first with their color */
-      games::c4::init(desk.c4.board);
-      std::snprintf(desk.c4.opp_id, sizeof(desk.c4.opp_id), "%s", inv.from_id);
-      std::snprintf(desk.c4.opp_name, sizeof(desk.c4.opp_name), "%s", inv.from_name);
+      const auto inv = app::invite_ref(app::GameKind::C4);
+      app::accept_invite(app::GameKind::C4);
+      app::c4() = {};
+      app::c4().active = true;
+      app::c4().opp_color = inv.color >= 0 ? inv.color : 0;
+      app::c4().my_color = app::c4().opp_color == 0 ? 1 : 0;
+      app::c4().turn = app::c4().opp_color; /* challenger goes first with their color */
+      games::c4::init(app::c4().board);
+      std::snprintf(app::c4().opp_id, sizeof(app::c4().opp_id), "%s", inv.from_id);
+      std::snprintf(app::c4().opp_name, sizeof(app::c4().opp_name), "%s", inv.from_name);
       proto::Msg m;
       m.type = proto::MsgType::C4Accept;
       fill_msg_ids(m, inv.from_id);
-      m.color = desk.c4.my_color;
+      m.color = app::c4().my_color;
       app::send(m);
       go_c4();
     });
-  } else if (d.c4.active && d.c4.waiting) {
-    make_wait_block(body, "CHALLENGE SENT", d.c4.opp_name, "Waiting for them to accept...");
-    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
-      app::Desk & desk = app::desk();
-      proto::Msg m;
-      m.type = proto::MsgType::C4Forfeit;
-      fill_msg_ids(m, desk.c4.opp_id);
-      app::send(m);
-      desk.c4.active = false;
-      go_c4();
-    });
-  } else if (d.c4.active) {
+  } else if (app::c4().active && app::c4().waiting) {
+    make_wait_block(body, "CHALLENGE SENT", app::c4().opp_name, "Waiting for them to accept...");
+    dock_cancel_home(dock);
+  } else if (app::c4().active) {
     fill_c4_play(body);
-    if (d.c4.over) {
+    if (app::c4().over) {
       dock_play_again_home(
           dock,
           [](lv_event_t * /*e*/) {
             app::Desk & desk = app::desk();
-            const int8_t color = desk.c4.my_color;
+            const int8_t color = app::c4().my_color;
             char oid[proto::kMaxId], oname[proto::kMaxName];
-            std::snprintf(oid, sizeof(oid), "%s", desk.c4.opp_id);
-            std::snprintf(oname, sizeof(oname), "%s", desk.c4.opp_name);
-            desk.c4 = {};
-            desk.c4.active = true;
-            desk.c4.waiting = true;
-            desk.c4.my_color = color;
-            desk.c4.turn = color;
-            games::c4::init(desk.c4.board);
-            std::snprintf(desk.c4.opp_id, sizeof(desk.c4.opp_id), "%s", oid);
-            std::snprintf(desk.c4.opp_name, sizeof(desk.c4.opp_name), "%s", oname);
+            std::snprintf(oid, sizeof(oid), "%s", app::c4().opp_id);
+            std::snprintf(oname, sizeof(oname), "%s", app::c4().opp_name);
+            app::c4() = {};
+            app::c4().active = true;
+            app::c4().waiting = true;
+            app::c4().my_color = color;
+            app::c4().turn = color;
+            games::c4::init(app::c4().board);
+            std::snprintf(app::c4().opp_id, sizeof(app::c4().opp_id), "%s", oid);
+            std::snprintf(app::c4().opp_name, sizeof(app::c4().opp_name), "%s", oname);
             proto::Msg m;
             m.type = proto::MsgType::C4Invite;
             fill_msg_ids(m, oid);
@@ -1170,19 +1180,19 @@ lv_obj_t * game_c4_build() {
             go_c4();
           },
           [](lv_event_t * /*e*/) {
-            app::desk().c4.active = false;
-            go_games_folder();
+            app::end_focused();
+            go_hub();
           });
     } else {
-      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
-app::Desk & desk = app::desk();
-          score_log::note("Connect Four", desk.c4.opp_name, score_log::Outcome::ForfeitSelf);
+      dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
+        app::Desk & desk = app::desk();
+          score_log::note("Connect Four", app::c4().opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::C4Forfeit;
-          fill_msg_ids(m, desk.c4.opp_id);
+          fill_msg_ids(m, app::c4().opp_id);
           app::send(m);
-          desk.c4.active = false;
-          go_games_folder();
+          app::end_focused();
+          go_hub();
       });
     }
   } else {
@@ -1222,14 +1232,15 @@ app::Desk & desk = app::desk();
 void bs_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || app::busy() || d.bs.active || d.bs_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count) return;
   const app::Peer & p = d.peers[idx];
-  d.bs = {};
-  d.bs.active = true;
-  d.bs.waiting = true;
-  d.bs.i_am_first = true;
-  std::snprintf(d.bs.opp_id, sizeof(d.bs.opp_id), "%s", p.id);
-  std::snprintf(d.bs.opp_name, sizeof(d.bs.opp_name), "%s", p.name);
+  if (!begin_kind(app::GameKind::Bs, p)) return;
+  app::bs() = {};
+  app::bs().active = true;
+  app::bs().waiting = true;
+  app::bs().i_am_first = true;
+  std::snprintf(app::bs().opp_id, sizeof(app::bs().opp_id), "%s", p.id);
+  std::snprintf(app::bs().opp_name, sizeof(app::bs().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::BsInvite;
   fill_msg_ids(m, p.id);
@@ -1305,7 +1316,7 @@ bool ship_seg_at(const games::bs::Fleet & f, int x, int y, int * ship_out, int *
 void bs_setup_tap(lv_event_t * e) {
   const int packed = (int)(intptr_t)lv_event_get_user_data(e);
   const int x = packed % 10, y = packed / 10;
-  app::BsGame & g = app::desk().bs;
+  app::BsGame & g = app::bs();
   if (!g.setup || g.me_ready) return;
 
   const int existing = games::bs::ship_at(g.fleet, x, y);
@@ -1383,7 +1394,7 @@ void bs_setup_tap(lv_event_t * e) {
 void bs_fire_cell(lv_event_t * e) {
   const int packed = (int)(intptr_t)lv_event_get_user_data(e);
   const int x = packed % 10, y = packed / 10;
-  app::BsGame & g = app::desk().bs;
+  app::BsGame & g = app::bs();
   if (g.setup || !g.my_turn || g.over || g.tracking[y][x]) return;
   proto::Msg m;
   m.type = proto::MsgType::BsFire;
@@ -1397,8 +1408,9 @@ void bs_fire_cell(lv_event_t * e) {
 }
 
 void fill_bs_grid(lv_obj_t * parent, bool offense) {
-  app::BsGame & g = app::desk().bs;
-  constexpr int kCell = 28, kGap = 2;
+  app::BsGame & g = app::bs();
+  /* Fits with compact Offense/Defense tabs + status above the dock. */
+  constexpr int kCell = 28, kGap = 1;
   lv_obj_t * board = lv_obj_create(parent);
   lv_obj_remove_style_all(board);
   lv_obj_set_size(board, 10 * kCell + 9 * kGap, 10 * kCell + 9 * kGap);
@@ -1484,58 +1496,52 @@ lv_obj_t * game_bs_build() {
   lv_obj_t * scr = make_screen();
   char sub[40];
   make_topbar(scr, "BATTLESHIP", d.name,
-              game_vs_sub(sub, sizeof(sub), d.bs.active, d.bs.opp_name, d.bs_invite.active,
-                          d.bs_invite.from_name));
+              game_vs_sub(sub, sizeof(sub), app::bs().active, app::bs().opp_name, app::invite_active(app::GameKind::Bs),
+                          app::invite_ref(app::GameKind::Bs).from_name));
   lv_obj_t * body = make_body(scr, true);
+  lv_obj_set_style_pad_row(body, 4, 0);
+  lv_obj_set_style_pad_bottom(body, 4, 0);
   lv_obj_t * dock = make_dock(scr);
 
-  if (d.bs_invite.active) {
-    make_wait_block(body, "GAME INVITE", d.bs_invite.from_name, "wants to play Battleship");
+  if (app::invite_active(app::GameKind::Bs)) {
+    make_wait_block(body, "GAME INVITE", app::invite_ref(app::GameKind::Bs).from_name, "wants to play Battleship");
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
       proto::Msg m;
       m.type = proto::MsgType::BsDecline;
-      fill_msg_ids(m, desk.bs_invite.from_id);
+      fill_msg_ids(m, app::invite_ref(app::GameKind::Bs).from_id);
       app::send(m);
-      desk.bs_invite.active = false;
+      app::end_focused();
       go_games_folder();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = desk.bs_invite;
-      desk.bs_invite.active = false;
-      desk.bs = {};
-      desk.bs.active = true;
-      desk.bs.setup = true;
-      desk.bs.i_am_first = false;
-      games::bs::clear_fleet(desk.bs.fleet);
-      std::snprintf(desk.bs.opp_id, sizeof(desk.bs.opp_id), "%s", inv.from_id);
-      std::snprintf(desk.bs.opp_name, sizeof(desk.bs.opp_name), "%s", inv.from_name);
-      std::snprintf(desk.bs.last_msg, sizeof(desk.bs.last_msg), "Place your fleet");
+      const auto inv = app::invite_ref(app::GameKind::Bs);
+      app::accept_invite(app::GameKind::Bs);
+      app::bs() = {};
+      app::bs().active = true;
+      app::bs().setup = true;
+      app::bs().i_am_first = false;
+      games::bs::clear_fleet(app::bs().fleet);
+      std::snprintf(app::bs().opp_id, sizeof(app::bs().opp_id), "%s", inv.from_id);
+      std::snprintf(app::bs().opp_name, sizeof(app::bs().opp_name), "%s", inv.from_name);
+      std::snprintf(app::bs().last_msg, sizeof(app::bs().last_msg), "Place your fleet");
       proto::Msg m;
       m.type = proto::MsgType::BsAccept;
       fill_msg_ids(m, inv.from_id);
       app::send(m);
       go_battleship();
     });
-  } else if (d.bs.active && d.bs.waiting) {
-    make_wait_block(body, "CHALLENGE SENT", d.bs.opp_name, "Waiting for them to accept...");
-    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
-      app::Desk & desk = app::desk();
-      proto::Msg m;
-      m.type = proto::MsgType::BsForfeit;
-      fill_msg_ids(m, desk.bs.opp_id);
-      app::send(m);
-      desk.bs.active = false;
-      go_battleship();
-    });
-  } else if (d.bs.active && d.bs.setup) {
-    const int next = games::bs::next_ship_index(d.bs.fleet);
-    if (d.bs.me_ready) {
-      make_status(body, d.bs.last_msg[0] ? d.bs.last_msg : "Waiting for opponent fleet...");
+  } else if (app::bs().active && app::bs().waiting) {
+    make_wait_block(body, "CHALLENGE SENT", app::bs().opp_name, "Waiting for them to accept...");
+    dock_cancel_home(dock);
+  } else if (app::bs().active && app::bs().setup) {
+    const int next = games::bs::next_ship_index(app::bs().fleet);
+    if (app::bs().me_ready) {
+      make_status(body, app::bs().last_msg[0] ? app::bs().last_msg : "Waiting for opponent fleet...");
     } else if (next < games::bs::kShipCount) {
       char buf[72];
-      if (d.bs.anchor_x >= 0) {
+      if (app::bs().anchor_x >= 0) {
         lv_snprintf(buf, sizeof(buf), "Tap a highlighted square to place %s (%d)",
                     games::bs::ship_specs()[next].name, games::bs::ship_specs()[next].len);
       } else {
@@ -1547,10 +1553,10 @@ lv_obj_t * game_bs_build() {
       make_status(body, "Fleet set - Ready, or tap a ship to remove");
     }
     fill_bs_grid(body, false);
-    if (!d.bs.me_ready) {
-      if (d.bs.selected_ship >= 0) {
+    if (!app::bs().me_ready) {
+      if (app::bs().selected_ship >= 0) {
         dock_btn(dock, "Remove", false, true, [](lv_event_t * /*e*/) {
-          app::BsGame & g = app::desk().bs;
+          app::BsGame & g = app::bs();
           if (g.selected_ship >= 0) {
             games::bs::remove_ship(g.fleet, g.selected_ship);
             g.selected_ship = -1;
@@ -1559,15 +1565,15 @@ lv_obj_t * game_bs_build() {
         });
       }
       dock_btn(dock, "Random", false, false, [](lv_event_t * /*e*/) {
-        app::BsGame & g = app::desk().bs;
+        app::BsGame & g = app::bs();
         games::bs::random_fleet(g.fleet);
         g.anchor_x = g.anchor_y = -1;
         g.selected_ship = -1;
         go_battleship();
       });
-      if (games::bs::placed_count(d.bs.fleet) == games::bs::kShipCount) {
+      if (games::bs::placed_count(app::bs().fleet) == games::bs::kShipCount) {
         dock_btn(dock, "Ready", true, false, [](lv_event_t * /*e*/) {
-          app::BsGame & g = app::desk().bs;
+          app::BsGame & g = app::bs();
           g.me_ready = true;
           std::snprintf(g.last_msg, sizeof(g.last_msg), "Waiting for opponent fleet...");
           proto::Msg m;
@@ -1585,66 +1591,73 @@ lv_obj_t * game_bs_build() {
         });
       }
     }
-    dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+    dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
 app::Desk & desk = app::desk();
-        score_log::note("Battleship", desk.bs.opp_name, score_log::Outcome::ForfeitSelf);
+        score_log::note("Battleship", app::bs().opp_name, score_log::Outcome::ForfeitSelf);
         proto::Msg m;
         m.type = proto::MsgType::BsForfeit;
-        fill_msg_ids(m, desk.bs.opp_id);
+        fill_msg_ids(m, app::bs().opp_id);
         app::send(m);
-        desk.bs.active = false;
-        go_games_folder();
+        app::end_focused();
+        go_hub();
       });
-  } else if (d.bs.active) {
-    make_status(body, d.bs.over ? (d.bs.result_dismissed ? "Play again?" : "Game over")
-                                : (d.bs.last_msg[0] ? d.bs.last_msg
-                                                    : (d.bs.my_turn ? "Your turn" : "Enemy turn")));
+  } else if (app::bs().active) {
+    make_status(body, app::bs().over ? (app::bs().result_dismissed ? "Play again?" : "Game over")
+                                : (app::bs().last_msg[0] ? app::bs().last_msg
+                                                    : (app::bs().my_turn ? "Your turn" : "Enemy turn")));
     lv_obj_t * tabs = lv_obj_create(body);
     lv_obj_remove_style_all(tabs);
     lv_obj_set_width(tabs, lv_pct(100));
-    lv_obj_set_height(tabs, 36);
+    lv_obj_set_height(tabs, 28);
     lv_obj_set_flex_flow(tabs, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(tabs, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(tabs, 8, 0);
+    lv_obj_remove_flag(tabs, LV_OBJ_FLAG_SCROLLABLE);
     auto tab = [&](const char * label, int mode) {
       lv_obj_t * b = lv_button_create(tabs);
       lv_obj_set_flex_grow(b, 1);
-      lv_obj_set_style_bg_color(b, d.bs.mode == mode ? theme::gold() : theme::panel(), 0);
+      lv_obj_set_height(b, 28);
+      lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_pad_all(b, 0, 0);
+      lv_obj_set_style_pad_ver(b, 0, 0);
+      lv_obj_set_style_bg_color(b, app::bs().mode == mode ? theme::gold() : theme::panel(), 0);
       lv_obj_set_style_shadow_width(b, 0, 0);
       lv_obj_t * l = lv_label_create(b);
       lv_label_set_text(l, label);
-      lv_obj_set_style_text_color(l, d.bs.mode == mode ? lv_color_hex(0x1a1200) : theme::ink(), 0);
+      lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_color(l, app::bs().mode == mode ? lv_color_hex(0x1a1200) : theme::ink(), 0);
       lv_obj_center(l);
       lv_obj_add_event_cb(
           b,
           [](lv_event_t * e) {
-            app::desk().bs.mode = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+            app::bs().mode = (uint8_t)(intptr_t)lv_event_get_user_data(e);
             go_battleship();
           },
           LV_EVENT_CLICKED, (void *)(intptr_t)mode);
     };
     tab("Offense", 0);
     tab("Defense", 1);
-    fill_bs_grid(body, d.bs.mode == 0);
-    if (d.bs.over && !d.bs.result_dismissed) {
-      attach_result_overlay(body, d.bs.i_won ? 1 : 0, [](lv_event_t * /*e*/) {
-        app::desk().bs.result_dismissed = true;
+    fill_bs_grid(body, app::bs().mode == 0);
+    if (app::bs().over && !app::bs().result_dismissed) {
+      attach_result_overlay(body, app::bs().i_won ? 1 : 0, [](lv_event_t * /*e*/) {
+        app::bs().result_dismissed = true;
         go_battleship();
-      }, "Battleship", d.bs.opp_name);
+      }, "Battleship", app::bs().opp_name);
     }
-    if (d.bs.over) {
+    if (app::bs().over) {
       dock_play_again_home(
           dock,
           [](lv_event_t * /*e*/) {
             app::Desk & desk = app::desk();
             char oid[proto::kMaxId], oname[proto::kMaxName];
-            std::snprintf(oid, sizeof(oid), "%s", desk.bs.opp_id);
-            std::snprintf(oname, sizeof(oname), "%s", desk.bs.opp_name);
-            desk.bs = {};
-            desk.bs.active = true;
-            desk.bs.waiting = true;
-            desk.bs.i_am_first = true;
-            std::snprintf(desk.bs.opp_id, sizeof(desk.bs.opp_id), "%s", oid);
-            std::snprintf(desk.bs.opp_name, sizeof(desk.bs.opp_name), "%s", oname);
+            std::snprintf(oid, sizeof(oid), "%s", app::bs().opp_id);
+            std::snprintf(oname, sizeof(oname), "%s", app::bs().opp_name);
+            app::bs() = {};
+            app::bs().active = true;
+            app::bs().waiting = true;
+            app::bs().i_am_first = true;
+            std::snprintf(app::bs().opp_id, sizeof(app::bs().opp_id), "%s", oid);
+            std::snprintf(app::bs().opp_name, sizeof(app::bs().opp_name), "%s", oname);
             proto::Msg m;
             m.type = proto::MsgType::BsInvite;
             fill_msg_ids(m, oid);
@@ -1652,19 +1665,19 @@ app::Desk & desk = app::desk();
             go_battleship();
           },
           [](lv_event_t * /*e*/) {
-            app::desk().bs.active = false;
-            go_games_folder();
+            app::end_focused();
+            go_hub();
           });
     } else {
-      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
-app::Desk & desk = app::desk();
-          score_log::note("Battleship", desk.bs.opp_name, score_log::Outcome::ForfeitSelf);
+      dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
+        app::Desk & desk = app::desk();
+          score_log::note("Battleship", app::bs().opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::BsForfeit;
-          fill_msg_ids(m, desk.bs.opp_id);
+          fill_msg_ids(m, app::bs().opp_id);
           app::send(m);
-          desk.bs.active = false;
-          go_games_folder();
+          app::end_focused();
+          go_hub();
       });
     }
   } else {
@@ -1679,16 +1692,17 @@ app::Desk & desk = app::desk();
 void ck_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || app::busy() || d.ck.active || d.ck_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count) return;
   const app::Peer & p = d.peers[idx];
-  d.ck = {};
-  d.ck.active = true;
-  d.ck.waiting = true;
-  d.ck.side = 'r';
-  d.ck.turn = 'r';
-  games::ck::init(d.ck.board);
-  std::snprintf(d.ck.opp_id, sizeof(d.ck.opp_id), "%s", p.id);
-  std::snprintf(d.ck.opp_name, sizeof(d.ck.opp_name), "%s", p.name);
+  if (!begin_kind(app::GameKind::Ck, p)) return;
+  app::ck() = {};
+  app::ck().active = true;
+  app::ck().waiting = true;
+  app::ck().side = 'r';
+  app::ck().turn = 'r';
+  games::ck::init(app::ck().board);
+  std::snprintf(app::ck().opp_id, sizeof(app::ck().opp_id), "%s", p.id);
+  std::snprintf(app::ck().opp_name, sizeof(app::ck().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::CkInvite;
   fill_msg_ids(m, p.id);
@@ -1699,7 +1713,7 @@ void ck_challenge(lv_event_t * e) {
 void ck_tap(lv_event_t * e) {
   const int packed = (int)(intptr_t)lv_event_get_user_data(e);
   int vx = packed % 8, vy = packed / 8;
-  app::CkGame & g = app::desk().ck;
+  app::CkGame & g = app::ck();
   if (!g.active || g.waiting || g.over || g.turn != g.side) return;
 
   /* view transform: black sees board flipped so own pieces at bottom */
@@ -1772,7 +1786,7 @@ void ck_tap(lv_event_t * e) {
 }
 
 void fill_ck_play(lv_obj_t * parent) {
-  app::CkGame & g = app::desk().ck;
+  app::CkGame & g = app::ck();
   const bool my_turn = !g.over && !g.waiting && g.turn == g.side;
   if (g.over && !g.result_dismissed) make_status(parent, "Game over");
   else if (g.over) make_status(parent, "Play again?");
@@ -1853,7 +1867,7 @@ void fill_ck_play(lv_obj_t * parent) {
       if (games::ck::legal_moves(g.board, g.turn, -1, -1, any, 64) == 0) i_won = (g.turn != g.side);
     }
     attach_result_overlay(parent, i_won ? 1 : 0, [](lv_event_t * /*e*/) {
-      app::desk().ck.result_dismissed = true;
+      app::ck().result_dismissed = true;
       go_checkers();
     }, "Checkers", g.opp_name);
   }
@@ -1864,68 +1878,60 @@ lv_obj_t * game_ck_build() {
   lv_obj_t * scr = make_screen();
   char sub[40];
   make_topbar(scr, "CHECKERS", d.name,
-              game_vs_sub(sub, sizeof(sub), d.ck.active, d.ck.opp_name, d.ck_invite.active,
-                          d.ck_invite.from_name));
+              game_vs_sub(sub, sizeof(sub), app::ck().active, app::ck().opp_name, app::invite_active(app::GameKind::Ck),
+                          app::invite_ref(app::GameKind::Ck).from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
-  if (d.ck_invite.active) {
-    make_wait_block(body, "GAME INVITE", d.ck_invite.from_name, "wants to play Checkers");
+  if (app::invite_active(app::GameKind::Ck)) {
+    make_wait_block(body, "GAME INVITE", app::invite_ref(app::GameKind::Ck).from_name, "wants to play Checkers");
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
       proto::Msg m;
       m.type = proto::MsgType::CkDecline;
-      fill_msg_ids(m, desk.ck_invite.from_id);
+      fill_msg_ids(m, app::invite_ref(app::GameKind::Ck).from_id);
       app::send(m);
-      desk.ck_invite.active = false;
+      app::end_focused();
       go_games_folder();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = desk.ck_invite;
-      desk.ck_invite.active = false;
-      desk.ck = {};
-      desk.ck.active = true;
-      desk.ck.side = 'b';
-      desk.ck.turn = 'r';
-      games::ck::init(desk.ck.board);
-      std::snprintf(desk.ck.opp_id, sizeof(desk.ck.opp_id), "%s", inv.from_id);
-      std::snprintf(desk.ck.opp_name, sizeof(desk.ck.opp_name), "%s", inv.from_name);
+      const auto inv = app::invite_ref(app::GameKind::Ck);
+      app::accept_invite(app::GameKind::Ck);
+      app::ck() = {};
+      app::ck().active = true;
+      app::ck().side = 'b';
+      app::ck().turn = 'r';
+      games::ck::init(app::ck().board);
+      std::snprintf(app::ck().opp_id, sizeof(app::ck().opp_id), "%s", inv.from_id);
+      std::snprintf(app::ck().opp_name, sizeof(app::ck().opp_name), "%s", inv.from_name);
       proto::Msg m;
       m.type = proto::MsgType::CkAccept;
       fill_msg_ids(m, inv.from_id);
       app::send(m);
       go_checkers();
     });
-  } else if (d.ck.active && d.ck.waiting) {
-    make_wait_block(body, "CHALLENGE SENT", d.ck.opp_name, "Waiting for them to accept...");
-    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
-      app::Desk & desk = app::desk();
-      proto::Msg m;
-      m.type = proto::MsgType::CkForfeit;
-      fill_msg_ids(m, desk.ck.opp_id);
-      app::send(m);
-      desk.ck.active = false;
-      go_checkers();
-    });
-  } else if (d.ck.active) {
+  } else if (app::ck().active && app::ck().waiting) {
+    make_wait_block(body, "CHALLENGE SENT", app::ck().opp_name, "Waiting for them to accept...");
+    dock_cancel_home(dock);
+  } else if (app::ck().active) {
     fill_ck_play(body);
-    if (d.ck.over) {
+    if (app::ck().over) {
       dock_play_again_home(
           dock,
           [](lv_event_t * /*e*/) {
             app::Desk & desk = app::desk();
             char oid[proto::kMaxId], oname[proto::kMaxName];
-            std::snprintf(oid, sizeof(oid), "%s", desk.ck.opp_id);
-            std::snprintf(oname, sizeof(oname), "%s", desk.ck.opp_name);
-            desk.ck = {};
-            desk.ck.active = true;
-            desk.ck.waiting = true;
-            desk.ck.side = 'r';
-            desk.ck.turn = 'r';
-            games::ck::init(desk.ck.board);
-            std::snprintf(desk.ck.opp_id, sizeof(desk.ck.opp_id), "%s", oid);
-            std::snprintf(desk.ck.opp_name, sizeof(desk.ck.opp_name), "%s", oname);
+            std::snprintf(oid, sizeof(oid), "%s", app::ck().opp_id);
+            std::snprintf(oname, sizeof(oname), "%s", app::ck().opp_name);
+            app::ck() = {};
+            app::ck().active = true;
+            app::ck().waiting = true;
+            app::ck().side = 'r';
+            app::ck().turn = 'r';
+            games::ck::init(app::ck().board);
+            std::snprintf(app::ck().opp_id, sizeof(app::ck().opp_id), "%s", oid);
+            std::snprintf(app::ck().opp_name, sizeof(app::ck().opp_name), "%s", oname);
             proto::Msg m;
             m.type = proto::MsgType::CkInvite;
             fill_msg_ids(m, oid);
@@ -1933,19 +1939,19 @@ lv_obj_t * game_ck_build() {
             go_checkers();
           },
           [](lv_event_t * /*e*/) {
-            app::desk().ck.active = false;
-            go_games_folder();
+            app::end_focused();
+            go_hub();
           });
     } else {
-      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
-app::Desk & desk = app::desk();
-          score_log::note("Checkers", desk.ck.opp_name, score_log::Outcome::ForfeitSelf);
+      dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
+        app::Desk & desk = app::desk();
+          score_log::note("Checkers", app::ck().opp_name, score_log::Outcome::ForfeitSelf);
           proto::Msg m;
           m.type = proto::MsgType::CkForfeit;
-          fill_msg_ids(m, desk.ck.opp_id);
+          fill_msg_ids(m, app::ck().opp_id);
           app::send(m);
-          desk.ck.active = false;
-          go_games_folder();
+          app::end_focused();
+          go_hub();
       });
     }
   } else {
@@ -2001,7 +2007,7 @@ struct MemResolveLocal {
 
 void mem_resolve_local(void * ud) {
   auto * r = static_cast<MemResolveLocal *>(ud);
-  app::MemGame & g = app::desk().mem;
+  app::MemGame & g = app::mem();
   if (g.active) {
     const bool match = g.deck[r->a] == g.deck[r->b];
     if (match) {
@@ -2029,27 +2035,28 @@ void mem_resolve_local(void * ud) {
 void mem_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || app::busy() || d.mem.active || d.mem_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count) return;
   const app::Peer & p = d.peers[idx];
-  d.mem = {};
-  d.mem.active = true;
-  d.mem.waiting = true;
-  d.mem.seed = (uint32_t)std::rand();
-  d.mem.my_turn = true;
-  games::mem::build_deck(d.mem.seed, d.mem.deck);
-  std::snprintf(d.mem.opp_id, sizeof(d.mem.opp_id), "%s", p.id);
-  std::snprintf(d.mem.opp_name, sizeof(d.mem.opp_name), "%s", p.name);
+  if (!begin_kind(app::GameKind::Mem, p)) return;
+  app::mem() = {};
+  app::mem().active = true;
+  app::mem().waiting = true;
+  app::mem().seed = (uint32_t)std::rand();
+  app::mem().my_turn = true;
+  games::mem::build_deck(app::mem().seed, app::mem().deck);
+  std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", p.id);
+  std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::MemInvite;
   fill_msg_ids(m, p.id);
-  m.seed = d.mem.seed;
+  m.seed = app::mem().seed;
   app::send(m);
   go_memory();
 }
 
 void mem_flip(lv_event_t * e) {
   const int card = (int)(intptr_t)lv_event_get_user_data(e);
-  app::MemGame & g = app::desk().mem;
+  app::MemGame & g = app::mem();
   if (!g.active || g.waiting || g.over || !g.my_turn || g.lock) return;
   if (card < 0 || card >= 16 || g.matched[card]) return;
   if (g.local_flip == card) return;
@@ -2075,7 +2082,7 @@ void mem_flip(lv_event_t * e) {
 }
 
 void fill_mem_play(lv_obj_t * parent) {
-  app::MemGame & g = app::desk().mem;
+  app::MemGame & g = app::mem();
 
   lv_obj_set_style_pad_row(parent, 2, 0);
   lv_obj_set_style_pad_ver(parent, 0, 0);
@@ -2155,7 +2162,7 @@ void fill_mem_play(lv_obj_t * parent) {
   if (g.over && !g.result_dismissed) {
     const int outcome = g.my_score == g.opp_score ? -1 : (g.my_score > g.opp_score ? 1 : 0);
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
-      app::desk().mem.result_dismissed = true;
+      app::mem().result_dismissed = true;
       go_memory();
     }, "Memory", g.opp_name);
   }
@@ -2166,94 +2173,86 @@ lv_obj_t * game_mem_build() {
   lv_obj_t * scr = make_screen();
   char sub[40];
   make_topbar(scr, "MEMORY", d.name,
-              game_vs_sub(sub, sizeof(sub), d.mem.active, d.mem.opp_name, d.mem_invite.active,
-                          d.mem_invite.from_name));
+              game_vs_sub(sub, sizeof(sub), app::mem().active, app::mem().opp_name, app::invite_active(app::GameKind::Mem),
+                          app::invite_ref(app::GameKind::Mem).from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
-  if (d.mem_invite.active) {
-    make_wait_block(body, "GAME INVITE", d.mem_invite.from_name, "wants to match pairs");
+  if (app::invite_active(app::GameKind::Mem)) {
+    make_wait_block(body, "GAME INVITE", app::invite_ref(app::GameKind::Mem).from_name, "wants to match pairs");
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
       proto::Msg m;
       m.type = proto::MsgType::MemDecline;
-      fill_msg_ids(m, desk.mem_invite.from_id);
+      fill_msg_ids(m, app::invite_ref(app::GameKind::Mem).from_id);
       app::send(m);
-      desk.mem_invite.active = false;
+      app::end_focused();
       go_games_folder();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = desk.mem_invite;
-      desk.mem_invite.active = false;
-      desk.mem = {};
-      desk.mem.active = true;
-      desk.mem.seed = inv.seed;
-      desk.mem.my_turn = false;
-      games::mem::build_deck(desk.mem.seed, desk.mem.deck);
-      std::snprintf(desk.mem.opp_id, sizeof(desk.mem.opp_id), "%s", inv.from_id);
-      std::snprintf(desk.mem.opp_name, sizeof(desk.mem.opp_name), "%s", inv.from_name);
+      const auto inv = app::invite_ref(app::GameKind::Mem);
+      app::accept_invite(app::GameKind::Mem);
+      app::mem() = {};
+      app::mem().active = true;
+      app::mem().seed = inv.seed;
+      app::mem().my_turn = false;
+      games::mem::build_deck(app::mem().seed, app::mem().deck);
+      std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", inv.from_id);
+      std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", inv.from_name);
       proto::Msg m;
       m.type = proto::MsgType::MemAccept;
       fill_msg_ids(m, inv.from_id);
       app::send(m);
       go_memory();
     });
-  } else if (d.mem.active && d.mem.waiting) {
-    make_wait_block(body, "CHALLENGE SENT", d.mem.opp_name, "Waiting for them to accept...");
-    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
-      app::Desk & desk = app::desk();
-      proto::Msg m;
-      m.type = proto::MsgType::MemForfeit;
-      fill_msg_ids(m, desk.mem.opp_id);
-      app::send(m);
-      desk.mem.active = false;
-      go_memory();
-    });
-  } else if (d.mem.active) {
+  } else if (app::mem().active && app::mem().waiting) {
+    make_wait_block(body, "CHALLENGE SENT", app::mem().opp_name, "Waiting for them to accept...");
+    dock_cancel_home(dock);
+  } else if (app::mem().active) {
     lv_obj_set_height(dock, kDockCompactH);
     lv_obj_set_style_pad_ver(dock, 4, 0);
     lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
     lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     fill_mem_play(body);
-    if (d.mem.over) {
+    if (app::mem().over) {
       dock_play_again_home(
           dock,
           [](lv_event_t * /*e*/) {
             app::Desk & desk = app::desk();
             char oid[proto::kMaxId], oname[proto::kMaxName];
-            std::snprintf(oid, sizeof(oid), "%s", desk.mem.opp_id);
-            std::snprintf(oname, sizeof(oname), "%s", desk.mem.opp_name);
-            desk.mem = {};
-            desk.mem.active = true;
-            desk.mem.waiting = true;
-            desk.mem.seed = (uint32_t)std::rand();
-            desk.mem.my_turn = true;
-            games::mem::build_deck(desk.mem.seed, desk.mem.deck);
-            std::snprintf(desk.mem.opp_id, sizeof(desk.mem.opp_id), "%s", oid);
-            std::snprintf(desk.mem.opp_name, sizeof(desk.mem.opp_name), "%s", oname);
+            std::snprintf(oid, sizeof(oid), "%s", app::mem().opp_id);
+            std::snprintf(oname, sizeof(oname), "%s", app::mem().opp_name);
+            app::mem() = {};
+            app::mem().active = true;
+            app::mem().waiting = true;
+            app::mem().seed = (uint32_t)std::rand();
+            app::mem().my_turn = true;
+            games::mem::build_deck(app::mem().seed, app::mem().deck);
+            std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", oid);
+            std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", oname);
             proto::Msg m;
             m.type = proto::MsgType::MemInvite;
             fill_msg_ids(m, oid);
-            m.seed = desk.mem.seed;
+            m.seed = app::mem().seed;
             app::send(m);
             go_memory();
           },
           [](lv_event_t * /*e*/) {
-            app::desk().mem.active = false;
-            go_games_folder();
+            app::end_focused();
+            go_hub();
           });
     } else {
-      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+      dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
         app::Desk & desk = app::desk();
-        score_log::note("Memory", desk.mem.opp_name, score_log::Outcome::ForfeitSelf);
+        score_log::note("Memory", app::mem().opp_name, score_log::Outcome::ForfeitSelf);
         proto::Msg m;
         m.type = proto::MsgType::MemForfeit;
-        fill_msg_ids(m, desk.mem.opp_id);
+        fill_msg_ids(m, app::mem().opp_id);
         app::send(m);
-        desk.mem.active = false;
-        go_games_folder();
+        app::end_focused();
+        go_hub();
       });
     }
   } else {
@@ -2266,7 +2265,7 @@ lv_obj_t * game_mem_build() {
 /* ================= REVERSI ================= */
 
 void rv_send_pass() {
-  app::RvGame & g = app::desk().rv;
+  app::RvGame & g = app::rv();
   proto::Msg m;
   m.type = proto::MsgType::RvMove;
   fill_msg_ids(m, g.opp_id);
@@ -2285,16 +2284,17 @@ void rv_send_pass() {
 void rv_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || app::busy() || d.rv.active || d.rv_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count) return;
   const app::Peer & p = d.peers[idx];
-  d.rv = {};
-  d.rv.active = true;
-  d.rv.waiting = true;
-  d.rv.my_color = games::rv::kBlack;
-  d.rv.turn = games::rv::kBlack;
-  games::rv::init(d.rv.board);
-  std::snprintf(d.rv.opp_id, sizeof(d.rv.opp_id), "%s", p.id);
-  std::snprintf(d.rv.opp_name, sizeof(d.rv.opp_name), "%s", p.name);
+  if (!begin_kind(app::GameKind::Rv, p)) return;
+  app::rv() = {};
+  app::rv().active = true;
+  app::rv().waiting = true;
+  app::rv().my_color = games::rv::kBlack;
+  app::rv().turn = games::rv::kBlack;
+  games::rv::init(app::rv().board);
+  std::snprintf(app::rv().opp_id, sizeof(app::rv().opp_id), "%s", p.id);
+  std::snprintf(app::rv().opp_name, sizeof(app::rv().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::RvInvite;
   fill_msg_ids(m, p.id);
@@ -2306,7 +2306,7 @@ void rv_play_cell(lv_event_t * e) {
   const int packed = (int)(intptr_t)lv_event_get_user_data(e);
   const int r = packed / games::rv::kN;
   const int c = packed % games::rv::kN;
-  app::RvGame & g = app::desk().rv;
+  app::RvGame & g = app::rv();
   if (!g.active || g.waiting || g.over || g.turn != g.my_color) return;
   if (!games::rv::apply(g.board, r, c, g.my_color)) return;
   proto::Msg m;
@@ -2332,7 +2332,7 @@ void rv_play_cell(lv_event_t * e) {
 }
 
 void fill_rv_play(lv_obj_t * parent) {
-  app::RvGame & g = app::desk().rv;
+  app::RvGame & g = app::rv();
   const bool my_turn = !g.over && !g.waiting && g.turn == g.my_color;
   const bool can_move = games::rv::any_move(g.board, g.my_color);
 
@@ -2426,7 +2426,7 @@ void fill_rv_play(lv_obj_t * parent) {
     const int8_t w = games::rv::check_over(g.board);
     const int outcome = (w < 0) ? -1 : (w == g.my_color ? 1 : 0);
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
-      app::desk().rv.result_dismissed = true;
+      app::rv().result_dismissed = true;
       go_reversi();
     }, "Reversi", g.opp_name);
   }
@@ -2437,74 +2437,66 @@ lv_obj_t * game_rv_build() {
   lv_obj_t * scr = make_screen();
   char sub[40];
   make_topbar(scr, "REVERSI", d.name,
-              game_vs_sub(sub, sizeof(sub), d.rv.active, d.rv.opp_name, d.rv_invite.active,
-                          d.rv_invite.from_name));
+              game_vs_sub(sub, sizeof(sub), app::rv().active, app::rv().opp_name, app::invite_active(app::GameKind::Rv),
+                          app::invite_ref(app::GameKind::Rv).from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
-  if (d.rv_invite.active) {
-    make_wait_block(body, "GAME INVITE", d.rv_invite.from_name, "wants to play Reversi");
+  if (app::invite_active(app::GameKind::Rv)) {
+    make_wait_block(body, "GAME INVITE", app::invite_ref(app::GameKind::Rv).from_name, "wants to play Reversi");
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
       proto::Msg m;
       m.type = proto::MsgType::RvDecline;
-      fill_msg_ids(m, desk.rv_invite.from_id);
+      fill_msg_ids(m, app::invite_ref(app::GameKind::Rv).from_id);
       app::send(m);
-      desk.rv_invite.active = false;
+      app::end_focused();
       go_games_folder();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = desk.rv_invite;
-      desk.rv_invite.active = false;
-      desk.rv = {};
-      desk.rv.active = true;
-      desk.rv.my_color = games::rv::kWhite;
-      desk.rv.turn = games::rv::kBlack;
-      games::rv::init(desk.rv.board);
-      std::snprintf(desk.rv.opp_id, sizeof(desk.rv.opp_id), "%s", inv.from_id);
-      std::snprintf(desk.rv.opp_name, sizeof(desk.rv.opp_name), "%s", inv.from_name);
+      const auto inv = app::invite_ref(app::GameKind::Rv);
+      app::accept_invite(app::GameKind::Rv);
+      app::rv() = {};
+      app::rv().active = true;
+      app::rv().my_color = games::rv::kWhite;
+      app::rv().turn = games::rv::kBlack;
+      games::rv::init(app::rv().board);
+      std::snprintf(app::rv().opp_id, sizeof(app::rv().opp_id), "%s", inv.from_id);
+      std::snprintf(app::rv().opp_name, sizeof(app::rv().opp_name), "%s", inv.from_name);
       proto::Msg m;
       m.type = proto::MsgType::RvAccept;
       fill_msg_ids(m, inv.from_id);
       app::send(m);
       go_reversi();
     });
-  } else if (d.rv.active && d.rv.waiting) {
-    make_wait_block(body, "CHALLENGE SENT", d.rv.opp_name, "Waiting for them to accept...");
-    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
-      app::Desk & desk = app::desk();
-      proto::Msg m;
-      m.type = proto::MsgType::RvForfeit;
-      fill_msg_ids(m, desk.rv.opp_id);
-      app::send(m);
-      desk.rv.active = false;
-      go_reversi();
-    });
-  } else if (d.rv.active) {
+  } else if (app::rv().active && app::rv().waiting) {
+    make_wait_block(body, "CHALLENGE SENT", app::rv().opp_name, "Waiting for them to accept...");
+    dock_cancel_home(dock);
+  } else if (app::rv().active) {
     lv_obj_set_height(dock, kDockCompactH);
     lv_obj_set_style_pad_ver(dock, 4, 0);
     lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
     lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     fill_rv_play(body);
-    if (d.rv.over) {
+    if (app::rv().over) {
       dock_play_again_home(
           dock,
           [](lv_event_t * /*e*/) {
             app::Desk & desk = app::desk();
-            const int8_t color = desk.rv.my_color;
+            const int8_t color = app::rv().my_color;
             char oid[proto::kMaxId], oname[proto::kMaxName];
-            std::snprintf(oid, sizeof(oid), "%s", desk.rv.opp_id);
-            std::snprintf(oname, sizeof(oname), "%s", desk.rv.opp_name);
-            desk.rv = {};
-            desk.rv.active = true;
-            desk.rv.waiting = true;
-            desk.rv.my_color = color;
-            desk.rv.turn = games::rv::kBlack;
-            games::rv::init(desk.rv.board);
-            std::snprintf(desk.rv.opp_id, sizeof(desk.rv.opp_id), "%s", oid);
-            std::snprintf(desk.rv.opp_name, sizeof(desk.rv.opp_name), "%s", oname);
+            std::snprintf(oid, sizeof(oid), "%s", app::rv().opp_id);
+            std::snprintf(oname, sizeof(oname), "%s", app::rv().opp_name);
+            app::rv() = {};
+            app::rv().active = true;
+            app::rv().waiting = true;
+            app::rv().my_color = color;
+            app::rv().turn = games::rv::kBlack;
+            games::rv::init(app::rv().board);
+            std::snprintf(app::rv().opp_id, sizeof(app::rv().opp_id), "%s", oid);
+            std::snprintf(app::rv().opp_name, sizeof(app::rv().opp_name), "%s", oname);
             proto::Msg m;
             m.type = proto::MsgType::RvInvite;
             fill_msg_ids(m, oid);
@@ -2512,19 +2504,19 @@ lv_obj_t * game_rv_build() {
             go_reversi();
           },
           [](lv_event_t * /*e*/) {
-            app::desk().rv.active = false;
+            app::end_focused();
             go_hub();
           });
     } else {
-      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+      dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
         app::Desk & desk = app::desk();
-        score_log::note("Reversi", desk.rv.opp_name, score_log::Outcome::ForfeitSelf);
+        score_log::note("Reversi", app::rv().opp_name, score_log::Outcome::ForfeitSelf);
         proto::Msg m;
         m.type = proto::MsgType::RvForfeit;
-        fill_msg_ids(m, desk.rv.opp_id);
+        fill_msg_ids(m, app::rv().opp_id);
         app::send(m);
-        desk.rv.active = false;
-        go_games_folder();
+        app::end_focused();
+        go_hub();
       });
     }
   } else {
@@ -2539,16 +2531,17 @@ lv_obj_t * game_rv_build() {
 void db_challenge(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
-  if (idx < 0 || idx >= d.peer_count || app::busy() || d.db.active || d.db_invite.active) return;
+  if (idx < 0 || idx >= d.peer_count) return;
   const app::Peer & p = d.peers[idx];
-  d.db = {};
-  d.db.active = true;
-  d.db.waiting = true;
-  d.db.my_side = games::db::kP1;
-  d.db.turn = games::db::kP1;
-  games::db::init(d.db.state);
-  std::snprintf(d.db.opp_id, sizeof(d.db.opp_id), "%s", p.id);
-  std::snprintf(d.db.opp_name, sizeof(d.db.opp_name), "%s", p.name);
+  if (!begin_kind(app::GameKind::Db, p)) return;
+  app::db() = {};
+  app::db().active = true;
+  app::db().waiting = true;
+  app::db().my_side = games::db::kP1;
+  app::db().turn = games::db::kP1;
+  games::db::init(app::db().state);
+  std::snprintf(app::db().opp_id, sizeof(app::db().opp_id), "%s", p.id);
+  std::snprintf(app::db().opp_name, sizeof(app::db().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::DbInvite;
   fill_msg_ids(m, p.id);
@@ -2561,7 +2554,7 @@ void db_play_edge(lv_event_t * e) {
   const int is_vert = (packed >> 16) & 1;
   const int r = (packed >> 8) & 0xff;
   const int c = packed & 0xff;
-  app::DbGame & g = app::desk().db;
+  app::DbGame & g = app::db();
   if (!g.active || g.waiting || g.over || g.turn != g.my_side) return;
   const int claimed = games::db::claim(g.state, is_vert, r, c, g.my_side);
   if (claimed < 0) return;
@@ -2582,7 +2575,7 @@ void db_play_edge(lv_event_t * e) {
 }
 
 void fill_db_play(lv_obj_t * parent) {
-  app::DbGame & g = app::desk().db;
+  app::DbGame & g = app::db();
   const bool my_turn = !g.over && !g.waiting && g.turn == g.my_side;
   const int my_score = g.my_side == games::db::kP1 ? g.state.score1 : g.state.score2;
   const int opp_score = g.my_side == games::db::kP1 ? g.state.score2 : g.state.score1;
@@ -2711,7 +2704,7 @@ void fill_db_play(lv_obj_t * parent) {
     const int8_t w = games::db::winner(g.state);
     const int outcome = (w < 0) ? -1 : (w == g.my_side ? 1 : 0);
     attach_result_overlay(parent, outcome, [](lv_event_t * /*e*/) {
-      app::desk().db.result_dismissed = true;
+      app::db().result_dismissed = true;
       go_dots();
     }, "Dots & Boxes", g.opp_name);
   }
@@ -2722,74 +2715,66 @@ lv_obj_t * game_db_build() {
   lv_obj_t * scr = make_screen();
   char sub[40];
   make_topbar(scr, "DOTS & BOXES", d.name,
-              game_vs_sub(sub, sizeof(sub), d.db.active, d.db.opp_name, d.db_invite.active,
-                          d.db_invite.from_name));
+              game_vs_sub(sub, sizeof(sub), app::db().active, app::db().opp_name, app::invite_active(app::GameKind::Db),
+                          app::invite_ref(app::GameKind::Db).from_name));
   lv_obj_t * body = make_body(scr, true);
   lv_obj_t * dock = make_dock(scr);
 
-  if (d.db_invite.active) {
-    make_wait_block(body, "GAME INVITE", d.db_invite.from_name, "wants to play Dots & Boxes");
+  if (app::invite_active(app::GameKind::Db)) {
+    make_wait_block(body, "GAME INVITE", app::invite_ref(app::GameKind::Db).from_name, "wants to play Dots & Boxes");
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
       proto::Msg m;
       m.type = proto::MsgType::DbDecline;
-      fill_msg_ids(m, desk.db_invite.from_id);
+      fill_msg_ids(m, app::invite_ref(app::GameKind::Db).from_id);
       app::send(m);
-      desk.db_invite.active = false;
+      app::end_focused();
       go_games_folder();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = desk.db_invite;
-      desk.db_invite.active = false;
-      desk.db = {};
-      desk.db.active = true;
-      desk.db.my_side = games::db::kP2;
-      desk.db.turn = games::db::kP1;
-      games::db::init(desk.db.state);
-      std::snprintf(desk.db.opp_id, sizeof(desk.db.opp_id), "%s", inv.from_id);
-      std::snprintf(desk.db.opp_name, sizeof(desk.db.opp_name), "%s", inv.from_name);
+      const auto inv = app::invite_ref(app::GameKind::Db);
+      app::accept_invite(app::GameKind::Db);
+      app::db() = {};
+      app::db().active = true;
+      app::db().my_side = games::db::kP2;
+      app::db().turn = games::db::kP1;
+      games::db::init(app::db().state);
+      std::snprintf(app::db().opp_id, sizeof(app::db().opp_id), "%s", inv.from_id);
+      std::snprintf(app::db().opp_name, sizeof(app::db().opp_name), "%s", inv.from_name);
       proto::Msg m;
       m.type = proto::MsgType::DbAccept;
       fill_msg_ids(m, inv.from_id);
       app::send(m);
       go_dots();
     });
-  } else if (d.db.active && d.db.waiting) {
-    make_wait_block(body, "CHALLENGE SENT", d.db.opp_name, "Waiting for them to accept...");
-    dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
-      app::Desk & desk = app::desk();
-      proto::Msg m;
-      m.type = proto::MsgType::DbForfeit;
-      fill_msg_ids(m, desk.db.opp_id);
-      app::send(m);
-      desk.db.active = false;
-      go_dots();
-    });
-  } else if (d.db.active) {
+  } else if (app::db().active && app::db().waiting) {
+    make_wait_block(body, "CHALLENGE SENT", app::db().opp_name, "Waiting for them to accept...");
+    dock_cancel_home(dock);
+  } else if (app::db().active) {
     lv_obj_set_height(dock, kDockCompactH);
     lv_obj_set_style_pad_ver(dock, 4, 0);
     lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
     lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     fill_db_play(body);
-    if (d.db.over) {
+    if (app::db().over) {
       dock_play_again_home(
           dock,
           [](lv_event_t * /*e*/) {
             app::Desk & desk = app::desk();
-            const int8_t side = desk.db.my_side;
+            const int8_t side = app::db().my_side;
             char oid[proto::kMaxId], oname[proto::kMaxName];
-            std::snprintf(oid, sizeof(oid), "%s", desk.db.opp_id);
-            std::snprintf(oname, sizeof(oname), "%s", desk.db.opp_name);
-            desk.db = {};
-            desk.db.active = true;
-            desk.db.waiting = true;
-            desk.db.my_side = side;
-            desk.db.turn = games::db::kP1;
-            games::db::init(desk.db.state);
-            std::snprintf(desk.db.opp_id, sizeof(desk.db.opp_id), "%s", oid);
-            std::snprintf(desk.db.opp_name, sizeof(desk.db.opp_name), "%s", oname);
+            std::snprintf(oid, sizeof(oid), "%s", app::db().opp_id);
+            std::snprintf(oname, sizeof(oname), "%s", app::db().opp_name);
+            app::db() = {};
+            app::db().active = true;
+            app::db().waiting = true;
+            app::db().my_side = side;
+            app::db().turn = games::db::kP1;
+            games::db::init(app::db().state);
+            std::snprintf(app::db().opp_id, sizeof(app::db().opp_id), "%s", oid);
+            std::snprintf(app::db().opp_name, sizeof(app::db().opp_name), "%s", oname);
             proto::Msg m;
             m.type = proto::MsgType::DbInvite;
             fill_msg_ids(m, oid);
@@ -2797,19 +2782,19 @@ lv_obj_t * game_db_build() {
             go_dots();
           },
           [](lv_event_t * /*e*/) {
-            app::desk().db.active = false;
+            app::end_focused();
             go_hub();
           });
     } else {
-      dock_forfeit_btn(dock, [](lv_event_t * /*ev*/) {
+      dock_forfeit_home(dock, [](lv_event_t * /*ev*/) {
         app::Desk & desk = app::desk();
-        score_log::note("Dots & Boxes", desk.db.opp_name, score_log::Outcome::ForfeitSelf);
+        score_log::note("Dots & Boxes", app::db().opp_name, score_log::Outcome::ForfeitSelf);
         proto::Msg m;
         m.type = proto::MsgType::DbForfeit;
-        fill_msg_ids(m, desk.db.opp_id);
+        fill_msg_ids(m, app::db().opp_id);
         app::send(m);
-        desk.db.active = false;
-        go_games_folder();
+        app::end_focused();
+        go_hub();
       });
     }
   } else {
@@ -2832,10 +2817,11 @@ lv_obj_t * games_folder_screen() {
   lv_obj_set_flex_grow(grid, 1);
   lv_obj_set_layout(grid, LV_LAYOUT_GRID);
   static lv_coord_t cols[] = {LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_FR(1), LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t rows[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t rows[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT,
+                              LV_GRID_TEMPLATE_LAST};
   lv_obj_set_grid_dsc_array(grid, cols, rows);
   lv_obj_set_style_pad_row(grid, 12, 0);
-  lv_obj_remove_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
 
   struct Item {
     AppIcon icon;
@@ -2843,17 +2829,51 @@ lv_obj_t * games_folder_screen() {
     lv_event_cb_t cb;
   };
   const Item items[] = {
-      {AppIcon::Ttt, "Tic Tac Toe", [](lv_event_t * /*e*/) { go_ttt(); }},
-      {AppIcon::Sttt, "Super TTT", [](lv_event_t * /*e*/) { go_sttt(); }},
-      {AppIcon::C4, "Connect Four", [](lv_event_t * /*e*/) { go_c4(); }},
-      {AppIcon::Battleship, "Battleship", [](lv_event_t * /*e*/) { go_battleship(); }},
-      {AppIcon::Checkers, "Checkers", [](lv_event_t * /*e*/) { go_checkers(); }},
-      {AppIcon::Memory, "Memory", [](lv_event_t * /*e*/) { go_memory(); }},
-      {AppIcon::Reversi, "Reversi", [](lv_event_t * /*e*/) { go_reversi(); }},
-      {AppIcon::Dots, "Dots & Boxes", [](lv_event_t * /*e*/) { go_dots(); }},
+      {AppIcon::Ttt, "Tic Tac Toe",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_ttt();
+       }},
+      {AppIcon::Sttt, "Super TTT",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_sttt();
+       }},
+      {AppIcon::C4, "Connect Four",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_c4();
+       }},
+      {AppIcon::Battleship, "Battleship",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_battleship();
+       }},
+      {AppIcon::Checkers, "Checkers",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_checkers();
+       }},
+      {AppIcon::Memory, "Memory",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_memory();
+       }},
+      {AppIcon::Reversi, "Reversi",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_reversi();
+       }},
+      {AppIcon::Dots, "Dots & Boxes",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_dots();
+       }},
+      {AppIcon::G2048, "2048 (1P)", [](lv_event_t * /*e*/) { go_g2048(); }},
       {AppIcon::Scoreboard, "Scoreboard", [](lv_event_t * /*e*/) { go_scoreboard(); }},
   };
-  for (int i = 0; i < 9; ++i) {
+  constexpr int kGameCount = (int)(sizeof(items) / sizeof(items[0]));
+  for (int i = 0; i < kGameCount; ++i) {
     lv_obj_t * icon = make_app_icon(grid, items[i].icon, items[i].label, items[i].cb);
     lv_obj_set_grid_cell(icon, LV_GRID_ALIGN_CENTER, i % 3, 1, LV_GRID_ALIGN_START, i / 3, 1);
   }
@@ -2873,164 +2893,303 @@ lv_obj_t * game_rv_screen() { return game_rv_build(); }
 lv_obj_t * game_db_screen() { return game_db_build(); }
 
 void games_debug_show(const char * game, const char * panel) {
-  app::Desk & d = app::desk();
   auto seed_peer = [&](auto & g) {
     std::snprintf(g.opp_id, sizeof(g.opp_id), "mac-will");
     std::snprintf(g.opp_name, sizeof(g.opp_name), "Will");
   };
+  auto prep = [&](app::GameKind kind) -> bool {
+    app::clear_all_games();
+    if (!app::begin_match(kind, "mac-will")) return false;
+    return true;
+  };
 
   if (game && !std::strcmp(game, "ttt")) {
-    d.ttt = {};
-    d.ttt.active = true;
-    d.ttt.waiting = panel && !std::strcmp(panel, "wait");
-    d.ttt.mark = 'X';
-    d.ttt.turn = 'X';
-    seed_peer(d.ttt);
+    if (!prep(app::GameKind::Ttt)) return;
+    app::ttt() = {};
+    app::ttt().active = true;
+    app::ttt().waiting = panel && !std::strcmp(panel, "wait");
+    app::ttt().mark = 'X';
+    app::ttt().turn = 'X';
+    seed_peer(app::ttt());
     if (panel && !std::strcmp(panel, "play")) {
-      d.ttt.board[0] = 'X';
-      d.ttt.board[4] = 'O';
+      app::ttt().board[0] = 'X';
+      app::ttt().board[4] = 'O';
     } else if (panel && !std::strcmp(panel, "win")) {
-      d.ttt.board[0] = d.ttt.board[1] = d.ttt.board[2] = 'X';
-      d.ttt.board[3] = d.ttt.board[4] = 'O';
-      d.ttt.over = true;
-      d.ttt.result_dismissed = false;
+      app::ttt().board[0] = app::ttt().board[1] = app::ttt().board[2] = 'X';
+      app::ttt().board[3] = app::ttt().board[4] = 'O';
+      app::ttt().over = true;
+      app::ttt().result_dismissed = false;
     } else if (panel && !std::strcmp(panel, "lose")) {
-      d.ttt.board[0] = d.ttt.board[1] = d.ttt.board[2] = 'O';
-      d.ttt.board[3] = d.ttt.board[4] = 'X';
-      d.ttt.over = true;
-      d.ttt.result_dismissed = false;
+      app::ttt().board[0] = app::ttt().board[1] = app::ttt().board[2] = 'O';
+      app::ttt().board[3] = app::ttt().board[4] = 'X';
+      app::ttt().over = true;
+      app::ttt().result_dismissed = false;
     }
     go_ttt();
   } else if (game && !std::strcmp(game, "sttt")) {
-    d.sttt = {};
-    d.sttt.active = true;
-    d.sttt.waiting = panel && !std::strcmp(panel, "wait");
-    d.sttt.mark = 'X';
-    d.sttt.turn = 'X';
-    games::sttt::init(d.sttt.boards, d.sttt.meta, d.sttt.next_board);
-    seed_peer(d.sttt);
+    if (!prep(app::GameKind::Sttt)) return;
+    app::sttt() = {};
+    app::sttt().active = true;
+    app::sttt().waiting = panel && !std::strcmp(panel, "wait");
+    app::sttt().mark = 'X';
+    app::sttt().turn = 'X';
+    games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
+    seed_peer(app::sttt());
     if (panel && !std::strcmp(panel, "play")) {
-      d.sttt.boards[0][0] = 'X';
-      d.sttt.boards[0][4] = 'O';
-      d.sttt.boards[4][4] = 'X';
-      d.sttt.next_board = 4;
+      app::sttt().boards[0][0] = 'X';
+      app::sttt().boards[0][4] = 'O';
+      app::sttt().boards[4][4] = 'X';
+      app::sttt().next_board = 4;
     }
     go_sttt();
   } else if (game && !std::strcmp(game, "c4")) {
-    d.c4 = {};
-    d.c4.active = true;
-    d.c4.waiting = panel && !std::strcmp(panel, "wait");
-    d.c4.my_color = 0;
-    d.c4.opp_color = 1;
-    d.c4.turn = 0;
-    games::c4::init(d.c4.board);
-    seed_peer(d.c4);
+    if (!prep(app::GameKind::C4)) return;
+    app::c4() = {};
+    app::c4().active = true;
+    app::c4().waiting = panel && !std::strcmp(panel, "wait");
+    app::c4().my_color = 0;
+    app::c4().opp_color = 1;
+    app::c4().turn = 0;
+    games::c4::init(app::c4().board);
+    seed_peer(app::c4());
     if (panel && !std::strcmp(panel, "win")) {
-      for (int r = 5; r >= 2; --r) d.c4.board[r][0] = 0;
-      d.c4.last_r = 2;
-      d.c4.last_c = 0;
-      d.c4.over = true;
-      d.c4.result_dismissed = false;
+      for (int r = 5; r >= 2; --r) app::c4().board[r][0] = 0;
+      app::c4().last_r = 2;
+      app::c4().last_c = 0;
+      app::c4().over = true;
+      app::c4().result_dismissed = false;
     }
     go_c4();
   } else if (game && !std::strcmp(game, "bs")) {
-    d.bs = {};
-    d.bs.active = true;
-    d.bs.setup = !(panel && (!std::strcmp(panel, "play") || !std::strcmp(panel, "defense") ||
+    if (!prep(app::GameKind::Bs)) return;
+    app::bs() = {};
+    app::bs().active = true;
+    app::bs().setup = !(panel && (!std::strcmp(panel, "play") || !std::strcmp(panel, "defense") ||
                              !std::strcmp(panel, "win")));
-    d.bs.my_turn = true;
-    d.bs.mode = (panel && !std::strcmp(panel, "defense")) ? 1 : 0;
-    if (d.bs.setup) {
-      games::bs::clear_fleet(d.bs.fleet);
+    app::bs().my_turn = true;
+    app::bs().mode = (panel && !std::strcmp(panel, "defense")) ? 1 : 0;
+    if (app::bs().setup) {
+      games::bs::clear_fleet(app::bs().fleet);
       /* Two ships down; anchor set for next (Cruiser) so ghost placements show. */
-      games::bs::place_ship(d.bs.fleet, 0, 0, 0, true);  /* Carrier */
-      games::bs::place_ship(d.bs.fleet, 1, 0, 2, true);  /* Battleship */
-      d.bs.anchor_x = 4;
-      d.bs.anchor_y = 5;
-      std::snprintf(d.bs.last_msg, sizeof(d.bs.last_msg), "Tap a highlighted square to place Cruiser (3)");
+      games::bs::place_ship(app::bs().fleet, 0, 0, 0, true);  /* Carrier */
+      games::bs::place_ship(app::bs().fleet, 1, 0, 2, true);  /* Battleship */
+      app::bs().anchor_x = 4;
+      app::bs().anchor_y = 5;
+      std::snprintf(app::bs().last_msg, sizeof(app::bs().last_msg), "Tap a highlighted square to place Cruiser (3)");
     } else {
-      games::bs::random_fleet(d.bs.fleet);
-      std::snprintf(d.bs.last_msg, sizeof(d.bs.last_msg), "Your turn - tap to fire!");
+      games::bs::random_fleet(app::bs().fleet);
+      std::snprintf(app::bs().last_msg, sizeof(app::bs().last_msg), "Your turn - tap to fire!");
     }
     if (panel && !std::strcmp(panel, "win")) {
-      d.bs.over = true;
-      d.bs.i_won = true;
-      d.bs.result_dismissed = false;
-      d.bs.setup = false;
+      app::bs().over = true;
+      app::bs().i_won = true;
+      app::bs().result_dismissed = false;
+      app::bs().setup = false;
     }
-    seed_peer(d.bs);
+    seed_peer(app::bs());
     go_battleship();
   } else if (game && !std::strcmp(game, "ck")) {
-    d.ck = {};
-    d.ck.active = true;
-    d.ck.side = 'r';
-    d.ck.turn = 'r';
-    games::ck::init(d.ck.board);
-    seed_peer(d.ck);
+    if (!prep(app::GameKind::Ck)) return;
+    app::ck() = {};
+    app::ck().active = true;
+    app::ck().side = 'r';
+    app::ck().turn = 'r';
+    games::ck::init(app::ck().board);
+    seed_peer(app::ck());
     if (panel && !std::strcmp(panel, "play")) {
       /* Mid-game: a few men advanced / traded. */
-      d.ck.board[5][2] = 0;
-      d.ck.board[4][3] = 'r';
-      d.ck.board[5][4] = 0;
-      d.ck.board[3][4] = 'r';
-      d.ck.board[2][1] = 0;
-      d.ck.board[3][2] = 'b';
-      d.ck.board[2][5] = 0;
-      d.ck.board[1][2] = 0; /* traded */
-      d.ck.sel_x = 3;
-      d.ck.sel_y = 4;
+      app::ck().board[5][2] = 0;
+      app::ck().board[4][3] = 'r';
+      app::ck().board[5][4] = 0;
+      app::ck().board[3][4] = 'r';
+      app::ck().board[2][1] = 0;
+      app::ck().board[3][2] = 'b';
+      app::ck().board[2][5] = 0;
+      app::ck().board[1][2] = 0; /* traded */
+      app::ck().sel_x = 3;
+      app::ck().sel_y = 4;
     }
     if (panel && !std::strcmp(panel, "win")) {
       /* Clear opponent pieces so red wins. */
       for (int y = 0; y < games::ck::kSize; ++y)
         for (int x = 0; x < games::ck::kSize; ++x)
-          if (d.ck.board[y][x] == 'b' || d.ck.board[y][x] == 'B') d.ck.board[y][x] = 0;
-      d.ck.over = true;
-      d.ck.result_dismissed = false;
+          if (app::ck().board[y][x] == 'b' || app::ck().board[y][x] == 'B') app::ck().board[y][x] = 0;
+      app::ck().over = true;
+      app::ck().result_dismissed = false;
     }
     go_checkers();
   } else if (game && !std::strcmp(game, "mem")) {
-    d.mem = {};
-    d.mem.active = true;
-    d.mem.seed = 42;
-    d.mem.my_turn = true;
-    games::mem::build_deck(d.mem.seed, d.mem.deck);
-    seed_peer(d.mem);
+    if (!prep(app::GameKind::Mem)) return;
+    app::mem() = {};
+    app::mem().active = true;
+    app::mem().seed = 42;
+    app::mem().my_turn = true;
+    games::mem::build_deck(app::mem().seed, app::mem().deck);
+    seed_peer(app::mem());
     if (panel && !std::strcmp(panel, "play")) {
       /* Face a full row so asset decode is visible in screenshots. */
-      for (int i = 0; i < 4; ++i) d.mem.matched[i] = true;
+      for (int i = 0; i < 4; ++i) app::mem().matched[i] = true;
     }
     go_memory();
   } else if (game && !std::strcmp(game, "rv")) {
-    d.rv = {};
-    d.rv.active = true;
-    d.rv.my_color = games::rv::kBlack;
-    d.rv.turn = games::rv::kBlack;
-    games::rv::init(d.rv.board);
-    seed_peer(d.rv);
+    if (!prep(app::GameKind::Rv)) return;
+    app::rv() = {};
+    app::rv().active = true;
+    app::rv().my_color = games::rv::kBlack;
+    app::rv().turn = games::rv::kBlack;
+    games::rv::init(app::rv().board);
+    seed_peer(app::rv());
     if (panel && !std::strcmp(panel, "win")) {
-      d.rv.over = true;
-      d.rv.result_dismissed = false;
+      app::rv().over = true;
+      app::rv().result_dismissed = false;
     }
     go_reversi();
   } else if (game && !std::strcmp(game, "db")) {
-    d.db = {};
-    d.db.active = true;
-    d.db.my_side = games::db::kP1;
-    d.db.turn = games::db::kP1;
-    games::db::init(d.db.state);
-    seed_peer(d.db);
+    if (!prep(app::GameKind::Db)) return;
+    app::db() = {};
+    app::db().active = true;
+    app::db().my_side = games::db::kP1;
+    app::db().turn = games::db::kP1;
+    games::db::init(app::db().state);
+    seed_peer(app::db());
     /* Seed a few edges so player-colored lines show in screenshots. */
-    games::db::claim(d.db.state, 0, 0, 0, games::db::kP1);
-    games::db::claim(d.db.state, 1, 0, 0, games::db::kP2);
-    games::db::claim(d.db.state, 0, 1, 0, games::db::kP2);
-    games::db::claim(d.db.state, 0, 0, 1, games::db::kP1);
-    games::db::claim(d.db.state, 1, 1, 1, games::db::kP1);
+    games::db::claim(app::db().state, 0, 0, 0, games::db::kP1);
+    games::db::claim(app::db().state, 1, 0, 0, games::db::kP2);
+    games::db::claim(app::db().state, 0, 1, 0, games::db::kP2);
+    games::db::claim(app::db().state, 0, 0, 1, games::db::kP1);
+    games::db::claim(app::db().state, 1, 1, 1, games::db::kP1);
     if (panel && !std::strcmp(panel, "win")) {
-      d.db.over = true;
-      d.db.result_dismissed = false;
+      app::db().over = true;
+      app::db().result_dismissed = false;
     }
     go_dots();
+  }
+}
+
+bool accept_incoming_slot(int idx) {
+  app::GameSlot * s = app::slot_at(idx);
+  if (!s || !s->invite_pending || !s->invite.active) return false;
+  app::set_focus(idx);
+  const app::GameKind kind = s->kind;
+  const app::Invite inv = s->invite; /* copy before accept_invite clears it */
+
+  auto fill = [](proto::Msg & m, const char * to) {
+    std::snprintf(m.from_id, sizeof(m.from_id), "%s", app::desk().id);
+    std::snprintf(m.from_name, sizeof(m.from_name), "%s", app::desk().name);
+    if (to) std::snprintf(m.to_id, sizeof(m.to_id), "%s", to);
+  };
+
+  app::accept_invite(kind);
+  proto::Msg m{};
+
+  switch (kind) {
+    case app::GameKind::Ttt:
+      app::ttt() = {};
+      app::ttt().active = true;
+      app::ttt().mark = 'O';
+      app::ttt().turn = 'X';
+      std::snprintf(app::ttt().opp_id, sizeof(app::ttt().opp_id), "%s", inv.from_id);
+      std::snprintf(app::ttt().opp_name, sizeof(app::ttt().opp_name), "%s", inv.from_name);
+      m.type = proto::MsgType::TttAccept;
+      fill(m, inv.from_id);
+      app::send(m);
+      go_ttt();
+      return true;
+    case app::GameKind::Sttt:
+      app::sttt() = {};
+      app::sttt().active = true;
+      app::sttt().mark = 'O';
+      app::sttt().turn = 'X';
+      games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
+      std::snprintf(app::sttt().opp_id, sizeof(app::sttt().opp_id), "%s", inv.from_id);
+      std::snprintf(app::sttt().opp_name, sizeof(app::sttt().opp_name), "%s", inv.from_name);
+      m.type = proto::MsgType::StttAccept;
+      fill(m, inv.from_id);
+      app::send(m);
+      go_sttt();
+      return true;
+    case app::GameKind::C4:
+      app::c4() = {};
+      app::c4().active = true;
+      app::c4().opp_color = inv.color >= 0 ? inv.color : 0;
+      app::c4().my_color = app::c4().opp_color == 0 ? 1 : 0;
+      app::c4().turn = app::c4().opp_color;
+      games::c4::init(app::c4().board);
+      std::snprintf(app::c4().opp_id, sizeof(app::c4().opp_id), "%s", inv.from_id);
+      std::snprintf(app::c4().opp_name, sizeof(app::c4().opp_name), "%s", inv.from_name);
+      m.type = proto::MsgType::C4Accept;
+      fill(m, inv.from_id);
+      m.color = app::c4().my_color;
+      app::send(m);
+      go_c4();
+      return true;
+    case app::GameKind::Bs:
+      app::bs() = {};
+      app::bs().active = true;
+      app::bs().setup = true;
+      app::bs().i_am_first = false;
+      games::bs::clear_fleet(app::bs().fleet);
+      std::snprintf(app::bs().opp_id, sizeof(app::bs().opp_id), "%s", inv.from_id);
+      std::snprintf(app::bs().opp_name, sizeof(app::bs().opp_name), "%s", inv.from_name);
+      std::snprintf(app::bs().last_msg, sizeof(app::bs().last_msg), "Place your fleet");
+      m.type = proto::MsgType::BsAccept;
+      fill(m, inv.from_id);
+      app::send(m);
+      go_battleship();
+      return true;
+    case app::GameKind::Ck:
+      app::ck() = {};
+      app::ck().active = true;
+      app::ck().side = 'b';
+      app::ck().turn = 'r';
+      games::ck::init(app::ck().board);
+      std::snprintf(app::ck().opp_id, sizeof(app::ck().opp_id), "%s", inv.from_id);
+      std::snprintf(app::ck().opp_name, sizeof(app::ck().opp_name), "%s", inv.from_name);
+      m.type = proto::MsgType::CkAccept;
+      fill(m, inv.from_id);
+      app::send(m);
+      go_checkers();
+      return true;
+    case app::GameKind::Mem:
+      app::mem() = {};
+      app::mem().active = true;
+      app::mem().seed = inv.seed;
+      app::mem().my_turn = false;
+      games::mem::build_deck(app::mem().seed, app::mem().deck);
+      std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", inv.from_id);
+      std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", inv.from_name);
+      m.type = proto::MsgType::MemAccept;
+      fill(m, inv.from_id);
+      app::send(m);
+      go_memory();
+      return true;
+    case app::GameKind::Rv:
+      app::rv() = {};
+      app::rv().active = true;
+      app::rv().my_color = games::rv::kWhite;
+      app::rv().turn = games::rv::kBlack;
+      games::rv::init(app::rv().board);
+      std::snprintf(app::rv().opp_id, sizeof(app::rv().opp_id), "%s", inv.from_id);
+      std::snprintf(app::rv().opp_name, sizeof(app::rv().opp_name), "%s", inv.from_name);
+      m.type = proto::MsgType::RvAccept;
+      fill(m, inv.from_id);
+      app::send(m);
+      go_reversi();
+      return true;
+    case app::GameKind::Db:
+      app::db() = {};
+      app::db().active = true;
+      app::db().my_side = games::db::kP2;
+      app::db().turn = games::db::kP1;
+      games::db::init(app::db().state);
+      std::snprintf(app::db().opp_id, sizeof(app::db().opp_id), "%s", inv.from_id);
+      std::snprintf(app::db().opp_name, sizeof(app::db().opp_name), "%s", inv.from_name);
+      m.type = proto::MsgType::DbAccept;
+      fill(m, inv.from_id);
+      app::send(m);
+      go_dots();
+      return true;
+    default: return false;
   }
 }
 

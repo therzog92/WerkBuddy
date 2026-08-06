@@ -79,6 +79,9 @@ bool load(app::Desk & d) {
       std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", val);
     } else if (!std::strcmp(key, "wifi_connected")) {
       d.wifi_connected = std::atoi(val) != 0;
+    } else if (!std::strcmp(key, "hs_2048")) {
+      d.high_score_2048 = std::atoi(val);
+      if (d.high_score_2048 < 0) d.high_score_2048 = 0;
     } else if (!std::strncmp(key, "emoji", 5)) {
       const int i = std::atoi(key + 5);
       if (i >= 0 && i < app::kEmojiSlots) std::snprintf(d.emojis[i], sizeof(d.emojis[i]), "%s", val);
@@ -123,6 +126,7 @@ void save(const app::Desk & d) {
   put_int(f, "clock_offset_ms", d.clock_offset_ms);
   put(f, "wifi_ssid", d.wifi_ssid);
   put_int(f, "wifi_connected", d.wifi_connected ? 1 : 0);
+  put_int(f, "hs_2048", d.high_score_2048);
   for (int i = 0; i < app::kEmojiSlots; ++i) {
     char key[16];
     std::snprintf(key, sizeof(key), "emoji%d", i);

@@ -5,6 +5,8 @@
 #include "ui/brightness.h"
 #include "ui/scr_doodle.h"
 #include "ui/scr_games.h"
+#include "ui/scr_active_games.h"
+#include "ui/scr_g2048.h"
 #include "ui/scr_hub.h"
 #include "ui/scr_idle.h"
 #include "ui/scr_page_history.h"
@@ -79,6 +81,7 @@ void go_outgoing() { load(pager_outgoing_screen(), Screen::Outgoing); }
 void go_incoming() { load(pager_incoming_screen(), Screen::Incoming); }
 
 void go_games_folder() { load(games_folder_screen(), Screen::GamesFolder); }
+void go_active_games() { load(active_games_screen(), Screen::ActiveGames); }
 void go_utils_folder() { load(utils_folder_screen(), Screen::UtilsFolder); }
 void go_ttt() { load(game_ttt_screen(), Screen::Ttt); }
 void go_sttt() { load(game_sttt_screen(), Screen::Sttt); }
@@ -89,6 +92,7 @@ void go_memory() { load(game_mem_screen(), Screen::Mem); }
 void go_reversi() { load(game_rv_screen(), Screen::Rv); }
 void go_dots() { load(game_db_screen(), Screen::Db); }
 void go_scoreboard() { load(scoreboard_screen(), Screen::Scoreboard); }
+void go_g2048() { load(game_g2048_screen(), Screen::G2048); }
 
 void go_doodle() { load(doodle_screen(), Screen::Doodle); }
 void go_settings() { load(settings_screen(), Screen::Settings); }
@@ -126,6 +130,7 @@ void wake_from_idle() {
     case Screen::Settings: go_settings(); break;
     case Screen::Setup: go_setup(); break;
     case Screen::GamesFolder: go_games_folder(); break;
+    case Screen::ActiveGames: go_active_games(); break;
     case Screen::UtilsFolder: go_utils_folder(); break;
     case Screen::Ttt: go_ttt(); break;
     case Screen::Sttt: go_sttt(); break;
@@ -136,6 +141,7 @@ void wake_from_idle() {
     case Screen::Rv: go_reversi(); break;
     case Screen::Db: go_dots(); break;
     case Screen::Scoreboard: go_scoreboard(); break;
+    case Screen::G2048: go_g2048(); break;
     case Screen::Doodle: go_doodle(); break;
     case Screen::Timer: go_timer(); break;
     case Screen::Checklist: go_checklist(); break;
@@ -157,39 +163,9 @@ void sync_ui() {
     go_outgoing();
     return;
   }
-  if (d.ttt_invite.active || d.ttt.active) {
-    go_ttt();
-    return;
-  }
-  if (d.sttt_invite.active || d.sttt.active) {
-    go_sttt();
-    return;
-  }
-  if (d.c4_invite.active || d.c4.active) {
-    go_c4();
-    return;
-  }
-  if (d.bs_invite.active || d.bs.active) {
-    go_battleship();
-    return;
-  }
-  if (d.ck_invite.active || d.ck.active) {
-    go_checkers();
-    return;
-  }
-  if (d.mem_invite.active || d.mem.active) {
-    go_memory();
-    return;
-  }
-  if (d.rv_invite.active || d.rv.active) {
-    go_reversi();
-    return;
-  }
-  if (d.db_invite.active || d.db.active) {
-    go_dots();
-    return;
-  }
-  go_hub();
+  /* Call ended — leave pager rings only. Do not yank games/settings/etc. to hub. */
+  const Screen cur = current_screen();
+  if (cur == Screen::Incoming || cur == Screen::Outgoing || cur == Screen::Idle) go_hub();
 }
 
 void idle_init() { lv_timer_create(idle_tick, 500, nullptr); }

@@ -14,6 +14,7 @@ enum class Screen {
   Outgoing,
   Incoming,
   GamesFolder,
+  ActiveGames,
   UtilsFolder,
   Ttt,
   Sttt,
@@ -24,6 +25,7 @@ enum class Screen {
   Rv,
   Db,
   Scoreboard,
+  G2048,
   Doodle,
   Settings,
   Keyboard,
@@ -49,6 +51,7 @@ void go_outgoing();
 void go_incoming();
 
 void go_games_folder();
+void go_active_games();
 void go_utils_folder();
 void go_ttt();
 void go_sttt();
@@ -59,6 +62,7 @@ void go_memory();
 void go_reversi();
 void go_dots();
 void go_scoreboard();
+void go_g2048();
 
 void go_doodle();
 void go_settings();

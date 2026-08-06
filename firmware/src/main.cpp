@@ -2,10 +2,12 @@
 
 #include "lvgl/lvgl.h"
 
+#include "app/active_games.h"
 #include "app/app.h"
 #include "app/checklist.h"
 #include "app/desk_timer.h"
 #include "app/page_log.h"
+#include "sim/driver.h"
 #include "sim/screenshot.h"
 #include "ui/brightness.h"
 #include "ui/nav.h"
@@ -50,6 +52,8 @@ int main() {
   if (wheel) lv_indev_set_display(wheel, disp);
   lv_indev_t * kb = lv_sdl_keyboard_create();
   if (kb) lv_indev_set_display(kb, disp);
+
+  wp::sim::driver_init(disp);
 
   wp::app::init();
   wp::desk_timer::init();
@@ -109,6 +113,73 @@ int main() {
       go_page_history();
     }
     else if (is("gamesfolder") || is("games")) go_games_folder();
+    else if (is("active-games") || is("active") || is("hub-active")) {
+      using namespace wp::app;
+      clear_all_games();
+      /* Pending Invites: incoming + outgoing wait */
+      {
+        const int idx = alloc_slot(GameKind::C4);
+        if (idx >= 0) {
+          GameSlot * s = slot_at(idx);
+          s->invite_pending = true;
+          s->invite.active = true;
+          std::snprintf(s->invite.from_id, sizeof(s->invite.from_id), "mac-will");
+          std::snprintf(s->invite.from_name, sizeof(s->invite.from_name), "Will");
+          s->invite.color = 0;
+        }
+      }
+      if (begin_match(GameKind::Sttt, "mac-alex")) {
+        sttt() = {};
+        sttt().active = true;
+        sttt().waiting = true;
+        sttt().mark = 'X';
+        std::snprintf(sttt().opp_id, sizeof(sttt().opp_id), "mac-alex");
+        std::snprintf(sttt().opp_name, sizeof(sttt().opp_name), "Alex");
+      }
+      /* Your Turn */
+      if (begin_match(GameKind::Ttt, "mac-will")) {
+        ttt() = {};
+        ttt().active = true;
+        ttt().mark = 'X';
+        ttt().turn = 'X';
+        ttt().board[0] = 'X';
+        ttt().board[4] = 'O';
+        std::snprintf(ttt().opp_id, sizeof(ttt().opp_id), "mac-will");
+        std::snprintf(ttt().opp_name, sizeof(ttt().opp_name), "Will");
+        note_turn_start(focus_index());
+      }
+      if (begin_match(GameKind::C4, "mac-alex")) {
+        c4() = {};
+        c4().active = true;
+        c4().my_color = 0;
+        c4().turn = 0;
+        std::snprintf(c4().opp_id, sizeof(c4().opp_id), "mac-alex");
+        std::snprintf(c4().opp_name, sizeof(c4().opp_name), "Alex");
+        note_turn_start(focus_index());
+      }
+      /* Active Games (their turn / in play) */
+      if (begin_match(GameKind::Ttt, "mac-alex")) {
+        ttt() = {};
+        ttt().active = true;
+        ttt().mark = 'O';
+        ttt().turn = 'X';
+        ttt().board[1] = 'X';
+        std::snprintf(ttt().opp_id, sizeof(ttt().opp_id), "mac-alex");
+        std::snprintf(ttt().opp_name, sizeof(ttt().opp_name), "Alex");
+        note_turn_start(focus_index());
+      }
+      if (begin_match(GameKind::Rv, "mac-will")) {
+        rv() = {};
+        rv().active = true;
+        rv().my_color = 0;
+        rv().turn = 1;
+        std::snprintf(rv().opp_id, sizeof(rv().opp_id), "mac-will");
+        std::snprintf(rv().opp_name, sizeof(rv().opp_name), "Will");
+        note_turn_start(focus_index());
+      }
+      if (is("hub-active")) go_hub();
+      else go_active_games();
+    }
     else if (is("ttt")) go_ttt();
     else if (is("ttt-play")) games_debug_show("ttt", "play");
     else if (is("ttt-win")) games_debug_show("ttt", "win");
@@ -133,6 +204,7 @@ int main() {
     else if (is("dots") || is("db")) go_dots();
     else if (is("db-play")) games_debug_show("db", "play");
     else if (is("scoreboard")) go_scoreboard();
+    else if (is("2048") || is("g2048")) go_g2048();
     else if (is("utilsfolder") || is("utils")) go_utils_folder();
     else if (is("timer")) go_timer();
     else if (is("checklist")) {
@@ -177,7 +249,10 @@ int main() {
   lv_timer_create(f12_poll_cb, 50, nullptr);
   wp::sim::maybe_auto_shot_and_quit();
 
-  std::printf("WerkBuddy PC sim ready. Click apps. F12 = save preview.png\n");
+  if (wp::sim::driver_enabled())
+    std::printf("WerkBuddy PC sim ready (DRIVE). TCP 127.0.0.1:9471 — tap/swipe/shot/screen/quit\n");
+  else
+    std::printf("WerkBuddy PC sim ready. Click apps. F12 = save preview.png\n");
 
   while (true) {
     lv_timer_handler();

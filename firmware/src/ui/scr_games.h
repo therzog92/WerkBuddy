@@ -18,5 +18,8 @@ lv_obj_t * game_db_screen();
 /** Sim/QA helper: load a game screen and force a panel ("play" | "wait" | "invite"). */
 void games_debug_show(const char * game, const char * panel);
 
+/** Accept an incoming invite slot from Active Games (focuses, sends Accept, opens board). */
+bool accept_incoming_slot(int idx);
+
 }  // namespace ui
 }  // namespace wp

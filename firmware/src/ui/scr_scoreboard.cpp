@@ -99,13 +99,14 @@ lv_obj_t * scoreboard_screen() {
   }
 
   lv_obj_t * dock = make_dock(scr);
+  /* Back left — Clear used to own the left half and eat Back taps / open confirm. */
+  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_games_folder(); });
   dock_btn(dock, "Clear", false, true, [](lv_event_t * /*e*/) {
     show_confirm("Clear all scoreboard history?", "Clear", true, [](lv_event_t * /*ev*/) {
       score_log::clear();
       go_scoreboard();
     });
   });
-  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_games_folder(); });
   return scr;
 }
 

@@ -82,12 +82,35 @@ void save_preview_png() {
   }
 }
 
+void save_named_png(const char * name) {
+  if (!name || !name[0]) {
+    save_preview_png();
+    return;
+  }
+  namespace fs = std::filesystem;
+  fs::path dir = fs::current_path() / ".." / "sim-out";
+  if (fs::path(fs::current_path()).filename() != "build") {
+    dir = fs::current_path() / "sim-out";
+  }
+  fs::create_directories(dir);
+  std::string file = name;
+  if (file.size() < 4 || file.substr(file.size() - 4) != ".png") file += ".png";
+  const fs::path path = dir / file;
+  if (!save_via_sdl(path.lexically_normal().string().c_str())) {
+    std::fprintf(stderr, "[sim] screenshot failed\n");
+  }
+}
+
 void maybe_auto_shot_and_quit() {
   const char * shot = std::getenv("WERKPAGER_SHOT");
   if (shot && shot[0] == '1') {
     /* Incoming rings need ~800ms to show staggered pulses. */
     lv_timer_create(auto_shot_cb, 900, nullptr);
   }
+}
+
+void maybe_run_gallery_and_quit() {
+  /* Reserved — use WERKPAGER_SCREEN jumps + drive for galleries. */
 }
 
 }  // namespace sim

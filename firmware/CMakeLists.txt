@@ -19,6 +19,7 @@ add_subdirectory(third_party/lvgl)
 add_executable(werkpager_sim
   src/main.cpp
   src/app/app.cpp
+  src/app/active_games.cpp
   src/app/storage.cpp
   src/app/background.cpp
   src/app/desk_timer.cpp
@@ -35,9 +36,11 @@ add_executable(werkpager_sim
   src/ui/brightness.cpp
   src/ui/nav.cpp
   src/ui/scr_hub.cpp
+  src/ui/scr_active_games.cpp
   src/ui/scr_pager.cpp
   src/ui/scr_page_history.cpp
   src/ui/scr_games.cpp
+  src/ui/scr_g2048.cpp
   src/ui/scr_scoreboard.cpp
   src/ui/scr_doodle.cpp
   src/ui/scr_settings.cpp
@@ -47,6 +50,8 @@ add_executable(werkpager_sim
   src/ui/scr_timer.cpp
   src/ui/scr_utils.cpp
   src/sim/screenshot.cpp
+  src/sim/driver.cpp
+  src/sim/playthrough.cpp
 )
 
 target_include_directories(werkpager_sim PRIVATE
@@ -65,7 +70,7 @@ target_link_libraries(werkpager_sim PRIVATE lvgl ${SDL2_LIBRARIES})
 target_link_options(werkpager_sim PRIVATE ${SDL2_LDFLAGS_OTHER})
 
 if(WIN32)
-  target_link_libraries(werkpager_sim PRIVATE mingw32)
+  target_link_libraries(werkpager_sim PRIVATE mingw32 ws2_32)
 endif()
 
 add_custom_command(TARGET werkpager_sim POST_BUILD

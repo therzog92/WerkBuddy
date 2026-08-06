@@ -23,6 +23,7 @@ enum class AppIcon {
   Reversi,
   Dots,
   Scoreboard,
+  G2048,
 };
 
 /** 72×72 rounded glyph with drawn icon (matches web app-glyph look). */

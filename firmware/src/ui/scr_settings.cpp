@@ -747,6 +747,7 @@ lv_obj_t * settings_screen() {
   lv_obj_t * scr = make_screen();
   make_topbar(scr, "SETTINGS", d.name);
   lv_obj_t * body = make_body(scr, true);
+  lv_obj_set_style_pad_bottom(body, 12, 0);
   make_tagline(body, "Settings");
 
   add_section(body, "My name");

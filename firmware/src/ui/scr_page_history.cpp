@@ -109,11 +109,12 @@ lv_obj_t * page_history_screen() {
   }
 
   lv_obj_t * dock = make_dock(scr);
+  /* Back on the left — Clear used to occupy the left half and eat Home/Back taps. */
+  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_werk(); });
   dock_btn(dock, "Clear", false, true, [](lv_event_t * /*e*/) {
     page_log::clear();
     go_page_history();
   });
-  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_werk(); });
   return scr;
 }
 

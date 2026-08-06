@@ -97,9 +97,9 @@ Requires MSYS2 MinGW + SDL2 (`C:\msys64\mingw64`). **F12** (or `-Shot`) saves `f
 
 | Area | Features |
 |------|----------|
-| **Home** | WerkPager, Games, Utilities, Doodle, Settings |
+| **Home** | WerkPager, Games, Utilities, Doodle, Settings; Active Games strip + Your Turn |
 | **WerkPager** | Peer list, emoji + canned compose, call / Shantay / Sashay, page history |
-| **Games** | Tic Tac Toe, Super TTT, Connect Four, Battleship, Checkers, Memory, Reversi, Dots & Boxes, Scoreboard |
+| **Games** | Tic Tac Toe, Super TTT, Connect Four, Battleship, Checkers, Memory, Reversi, Dots & Boxes, **2048** (solo + high score), Scoreboard; up to 24 concurrent multiplayer (one type per peer); Forfeit + Home |
 | **Utilities** | Timer, Checklist, Calculator |
 | **Doodle** | Peer draw, colors, eraser, S/M/L strokes, chunked stroke sync |
 | **Settings** | Name, themes, brightness, background, timeout, idle, date & time, emojis, canned, peers, factory reset |
@@ -112,7 +112,9 @@ Notable UX already baked in:
 - Forfeit always confirms
 - Checkers: each player sees their pieces at the bottom
 - Memory: shared seed + art under `firmware/assets/memory/`
-- Mid-game exit is **Forfeit** only (no multi-game resume in v1)
+- Mid-game **Home** leaves the match active; **Forfeit** still confirms
+- Background moves toast when you’re not on that board; idle does not clear games
+- 24h turn auto-forfeit on monotonic uptime (pauses while powered off)
 
 ---
 
