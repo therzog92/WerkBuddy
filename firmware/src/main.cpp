@@ -3,7 +3,9 @@
 #include "lvgl/lvgl.h"
 
 #include "app/app.h"
+#include "app/checklist.h"
 #include "app/desk_timer.h"
+#include "app/page_log.h"
 #include "sim/screenshot.h"
 #include "ui/brightness.h"
 #include "ui/nav.h"
@@ -97,7 +99,15 @@ int main() {
       std::snprintf(d.incoming.message, sizeof(d.incoming.message), "Lipsync for your life");
       go_incoming();
     }
-    else if (is("page-history") || is("history")) go_page_history();
+    else if (is("page-history") || is("history")) {
+      wp::page_log::clear();
+      wp::page_log::add(wp::page_log::Dir::Out, "Will", "👑", "Got a sec?");
+      wp::page_log::add(wp::page_log::Dir::In, "Will", "💅", "Lipsync for your life");
+      wp::page_log::add(wp::page_log::Dir::Out, "Alex", "☕", "Coffee run?");
+      wp::page_log::add(wp::page_log::Dir::In, "Alex", "👀", "Coming down");
+      wp::page_log::add(wp::page_log::Dir::Out, "Will", "✨", "You busy?");
+      go_page_history();
+    }
     else if (is("gamesfolder") || is("games")) go_games_folder();
     else if (is("ttt")) go_ttt();
     else if (is("ttt-play")) games_debug_show("ttt", "play");
@@ -125,7 +135,17 @@ int main() {
     else if (is("scoreboard")) go_scoreboard();
     else if (is("utilsfolder") || is("utils")) go_utils_folder();
     else if (is("timer")) go_timer();
-    else if (is("checklist")) go_checklist();
+    else if (is("checklist")) {
+      wp::checklist::clear_all();
+      wp::checklist::add("Standup notes");
+      wp::checklist::add("Ping Will about lunch");
+      wp::checklist::add("Flash board firmware");
+      wp::checklist::add("Order USB-C cables");
+      wp::checklist::add("Test ESP-NOW range");
+      wp::checklist::toggle(0);
+      wp::checklist::toggle(2);
+      go_checklist();
+    }
     else if (is("calculator") || is("calc")) go_calculator();
     else if (is("doodle")) go_doodle();
     else if (is("doodle-draw")) doodle_debug_show_draw();

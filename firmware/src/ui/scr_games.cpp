@@ -2941,7 +2941,13 @@ void games_debug_show(const char * game, const char * panel) {
     d.bs.my_turn = true;
     d.bs.mode = (panel && !std::strcmp(panel, "defense")) ? 1 : 0;
     if (d.bs.setup) {
-      std::snprintf(d.bs.last_msg, sizeof(d.bs.last_msg), "Place your fleet");
+      games::bs::clear_fleet(d.bs.fleet);
+      /* Two ships down; anchor set for next (Cruiser) so ghost placements show. */
+      games::bs::place_ship(d.bs.fleet, 0, 0, 0, true);  /* Carrier */
+      games::bs::place_ship(d.bs.fleet, 1, 0, 2, true);  /* Battleship */
+      d.bs.anchor_x = 4;
+      d.bs.anchor_y = 5;
+      std::snprintf(d.bs.last_msg, sizeof(d.bs.last_msg), "Tap a highlighted square to place Cruiser (3)");
     } else {
       games::bs::random_fleet(d.bs.fleet);
       std::snprintf(d.bs.last_msg, sizeof(d.bs.last_msg), "Your turn - tap to fire!");
@@ -2961,6 +2967,19 @@ void games_debug_show(const char * game, const char * panel) {
     d.ck.turn = 'r';
     games::ck::init(d.ck.board);
     seed_peer(d.ck);
+    if (panel && !std::strcmp(panel, "play")) {
+      /* Mid-game: a few men advanced / traded. */
+      d.ck.board[5][2] = 0;
+      d.ck.board[4][3] = 'r';
+      d.ck.board[5][4] = 0;
+      d.ck.board[3][4] = 'r';
+      d.ck.board[2][1] = 0;
+      d.ck.board[3][2] = 'b';
+      d.ck.board[2][5] = 0;
+      d.ck.board[1][2] = 0; /* traded */
+      d.ck.sel_x = 3;
+      d.ck.sel_y = 4;
+    }
     if (panel && !std::strcmp(panel, "win")) {
       /* Clear opponent pieces so red wins. */
       for (int y = 0; y < games::ck::kSize; ++y)
