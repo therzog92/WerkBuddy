@@ -59,8 +59,8 @@ void on_peer(lv_event_t * e) {
   go_compose(d.peers[idx]);
 }
 
-void on_demo_ring(lv_event_t * /*e*/) {
-  /* QA helper: fake an incoming call (web btnSimIncoming) */
+void on_demo_ring() {
+  /* QA helper: fake an incoming call (was Demo dock; now topbar easter egg). */
   proto::Msg m;
   m.type = proto::MsgType::Call;
   std::snprintf(m.from_id, sizeof(m.from_id), "mac-sim");
@@ -68,6 +68,64 @@ void on_demo_ring(lv_event_t * /*e*/) {
   std::snprintf(m.emoji, sizeof(m.emoji), "👑");
   std::snprintf(m.message, sizeof(m.message), "Lipsync for your life");
   app::handle_msg(m);
+}
+
+/** Easter egg: WERKPAGER title, then name, three times quickly → demo incoming. */
+constexpr uint32_t kDemoEggGapMs = 900;
+constexpr int kDemoEggNeed = 6; /* title,name × 3 */
+int g_demo_egg_step = 0;
+uint32_t g_demo_egg_last = 0;
+
+void demo_egg_tap(int which) {
+  /* which: 0 = title, 1 = name */
+  const uint32_t now = lv_tick_get();
+  if (g_demo_egg_step > 0 && now - g_demo_egg_last > kDemoEggGapMs) g_demo_egg_step = 0;
+  const int expect = (g_demo_egg_step % 2 == 0) ? 0 : 1;
+  if (which != expect) {
+    g_demo_egg_step = (which == 0) ? 1 : 0;
+    g_demo_egg_last = now;
+    return;
+  }
+  ++g_demo_egg_step;
+  g_demo_egg_last = now;
+  if (g_demo_egg_step >= kDemoEggNeed) {
+    g_demo_egg_step = 0;
+    on_demo_ring();
+  }
+}
+
+void wire_demo_egg(lv_obj_t * topbar) {
+  if (!topbar) return;
+  lv_obj_t * left = static_cast<lv_obj_t *>(lv_obj_get_user_data(topbar));
+  lv_obj_t * brand = nullptr;
+  lv_obj_t * me = nullptr;
+  if (left) {
+    const uint32_t n = lv_obj_get_child_count(left);
+    for (uint32_t i = 0; i < n; ++i) {
+      lv_obj_t * c = lv_obj_get_child(left, i);
+      if (reinterpret_cast<intptr_t>(lv_obj_get_user_data(c)) == 1) brand = c;
+    }
+  }
+  const uint32_t tn = lv_obj_get_child_count(topbar);
+  for (uint32_t i = 0; i < tn; ++i) {
+    lv_obj_t * c = lv_obj_get_child(topbar, i);
+    if (reinterpret_cast<intptr_t>(lv_obj_get_user_data(c)) != 3) continue;
+    if (lv_obj_get_child_count(c) > 0) me = lv_obj_get_child(c, 0);
+    break;
+  }
+  auto bind = [](lv_obj_t * obj, int which) {
+    if (!obj) return;
+    lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(obj, 8);
+    lv_obj_add_event_cb(
+        obj,
+        [](lv_event_t * e) {
+          demo_egg_tap((int)(intptr_t)lv_event_get_user_data(e));
+        },
+        LV_EVENT_CLICKED, (void *)(intptr_t)which);
+  };
+  bind(brand, 0);
+  bind(me, 1);
 }
 
 void refresh_compose_styles() {
@@ -355,21 +413,40 @@ void anim_emoji_pop(void * obj, int32_t v) {
 lv_obj_t * pager_werk_screen() {
   const app::Desk & d = app::desk();
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, "WERKPAGER", d.name);
+  lv_obj_t * top = make_topbar(scr, "WERKPAGER", d.name);
+  wire_demo_egg(top);
+  g_demo_egg_step = 0;
   lv_obj_t * body = make_body(scr, true);
-  make_tagline(body, "Who are we bothering?");
+
+  lv_obj_t * tag = lv_label_create(body);
+  lv_label_set_text(tag, "Who are we bothering?");
+  lv_obj_set_style_text_color(tag, theme::ink(), 0);
+  lv_obj_set_style_text_font(tag, &lv_font_montserrat_20, 0);
+  lv_obj_set_width(tag, lv_pct(100));
 
   if (d.peer_count == 0) {
     make_tagline(body, "No peers saved yet. Scan or add from Settings.");
   }
+
+  /* With ≤3 peers, each row is ~1/3 of the scroll body's content height. */
+  const int body_h = WP_VER_RES - kTopbarH - kDockH;
+  const int content_h = body_h - 6 - 16; /* make_body pad_top / pad_bottom */
+  const int tag_reserve = 28 + 8;        /* tagline + pad_row */
+  const int row_h = (content_h - tag_reserve) / 3;
+  const bool tall_rows = d.peer_count > 0 && d.peer_count <= 3;
+
   for (int i = 0; i < d.peer_count; ++i) {
-    make_peer_btn(body, d.peers[i].name, nullptr, on_peer, (void *)(intptr_t)i);
+    lv_obj_t * btn = make_peer_btn(body, d.peers[i].name, nullptr, on_peer, (void *)(intptr_t)i);
+    if (!tall_rows) continue;
+    lv_obj_set_height(btn, row_h);
+    lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t * name = lv_obj_get_child(btn, 0);
+    if (name) lv_obj_set_style_text_font(name, &lv_font_montserrat_36, 0);
   }
 
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Home", false, false, on_home);
   dock_btn(dock, "History", false, false, [](lv_event_t * /*e*/) { go_page_history(); });
-  dock_btn(dock, "Demo", false, false, on_demo_ring);
   return scr;
 }
 
@@ -400,7 +477,7 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
   }
 
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, "WERK ROOM", d.name);
+  make_topbar(scr, "WerkRoom", d.name);
   lv_obj_t * body = make_body(scr, true);
 
   char heading[48];
@@ -610,7 +687,8 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_remove_style_all(stage);
   lv_obj_set_size(stage, kStage, kStage);
   lv_obj_set_style_bg_opa(stage, LV_OPA_TRANSP, 0);
-  lv_obj_align(stage, LV_ALIGN_TOP_MID, 0, (WP_VER_RES * 42) / 100 - kStage / 2);
+  /* Nudge rings down so the caller name sits nearer the pulse center. */
+  lv_obj_align(stage, LV_ALIGN_TOP_MID, 0, (WP_VER_RES * 42) / 100 - kStage / 2 + 22);
   lv_obj_remove_flag(stage, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(stage, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -683,14 +761,15 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(body, 8, 0);
-  lv_obj_set_style_pad_top(body, 28, 0);
-  lv_obj_set_style_pad_bottom(body, 80, 0); /* leave room for overlay buttons + captions */
+  /* Bias content upward so the name sits in the pulse center. */
+  lv_obj_set_style_pad_top(body, 8, 0);
+  lv_obj_set_style_pad_bottom(body, 110, 0); /* dock bar + captions */
   lv_obj_remove_flag(body, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_move_foreground(body);
 
   lv_obj_t * eye = lv_label_create(body);
-  lv_label_set_text(eye, "INCOMING WERK");
+  lv_label_set_text(eye, "INCOMING");
   lv_obj_set_style_text_color(eye, lv_color_hex(0xffffff), 0);
   lv_obj_set_style_text_font(eye, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_letter_space(eye, 4, 0);
@@ -735,22 +814,16 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_set_style_text_font(msg, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
 
-  lv_obj_t * hint = lv_label_create(body);
-  lv_label_set_text(hint, "Shantay you stay... or sashay away");
-  lv_obj_set_style_text_color(hint, lv_color_hex(0xffffff), 0);
-  lv_obj_set_style_text_opa(hint, LV_OPA_70, 0);
-  lv_obj_set_style_text_font(hint, font_body_italic(14), 0);
-  lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
-
-  /* Transparent action row over the call wash — no opaque dock strip. */
-  constexpr lv_coord_t kIncomingDockH = 72;
+  /* Soft bar so actions read clearly while the call wash still shows through. */
+  constexpr lv_coord_t kIncomingDockH = 84;
   lv_obj_t * dock = lv_obj_create(scr);
   lv_obj_remove_style_all(dock);
   lv_obj_set_size(dock, WP_HOR_RES, kIncomingDockH);
   lv_obj_align(dock, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_set_style_bg_opa(dock, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_bg_color(dock, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(dock, LV_OPA_40, 0);
   lv_obj_set_style_pad_hor(dock, 12, 0);
-  lv_obj_set_style_pad_ver(dock, 4, 0);
+  lv_obj_set_style_pad_ver(dock, 8, 0);
   lv_obj_set_flex_flow(dock, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(dock, 8, 0);
@@ -758,7 +831,7 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_move_foreground(dock);
 
-  auto make_action = [&](const char * label, const char * sub, bool primary, bool danger,
+  auto make_action = [&](const char * label, const char * sub, lv_color_t bg, lv_color_t fg,
                          lv_event_cb_t cb) {
     lv_obj_t * col = lv_obj_create(dock);
     lv_obj_remove_style_all(col);
@@ -769,30 +842,28 @@ lv_obj_t * pager_incoming_screen() {
     lv_obj_set_style_pad_row(col, 2, 0);
     lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t * btn = dock_btn(col, label, primary, danger, cb);
+    lv_obj_t * btn = dock_btn(col, label, false, false, cb);
     lv_obj_set_width(btn, lv_pct(100));
     lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_height(btn, 48);
-    if (primary) lv_obj_set_style_bg_color(btn, lv_color_hex(0xf0c24b), 0);
-    if (danger) {
-      lv_obj_set_style_bg_color(btn, lv_color_hex(0xff6b8a), 0);
-      const uint32_t cnt = lv_obj_get_child_count(btn);
-      for (uint32_t i = 0; i < cnt; ++i) {
-        lv_obj_t * ch = lv_obj_get_child(btn, i);
-        if (lv_obj_check_type(ch, &lv_label_class))
-          lv_obj_set_style_text_color(ch, lv_color_hex(0x2a0610), 0);
-      }
+    lv_obj_set_style_bg_color(btn, bg, 0);
+    const uint32_t cnt = lv_obj_get_child_count(btn);
+    for (uint32_t i = 0; i < cnt; ++i) {
+      lv_obj_t * ch = lv_obj_get_child(btn, i);
+      if (lv_obj_check_type(ch, &lv_label_class)) lv_obj_set_style_text_color(ch, fg, 0);
     }
 
     lv_obj_t * cap = lv_label_create(col);
     lv_label_set_text(cap, sub);
     lv_obj_set_style_text_color(cap, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_opa(cap, LV_OPA_70, 0);
-    lv_obj_set_style_text_font(cap, font_body_italic(12), 0);
+    lv_obj_set_style_text_font(cap, font_body_italic(14), 0);
   };
 
-  make_action("Shantay", "(acknowledge)", true, false, on_shantay);
-  make_action("Sashay away", "(ignore)", false, true, on_sashay);
+  make_action("Shantay", "(acknowledge)", lv_color_hex(0x3dd68c), lv_color_hex(0x0a1a10),
+              on_shantay);
+  make_action("Sashay away", "(ignore)", lv_color_hex(0xff8a9a), lv_color_hex(0x2a0610),
+              on_sashay);
 
   return scr;
 }

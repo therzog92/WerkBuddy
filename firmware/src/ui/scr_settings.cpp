@@ -74,6 +74,39 @@ lv_obj_t * chip(lv_obj_t * row, const char * label, bool selected, lv_event_cb_t
   return b;
 }
 
+/** Compact chip for dense rows (e.g. Wi‑Fi Change / Forget beside status). */
+lv_obj_t * chip_sm(lv_obj_t * row, const char * label, bool selected, lv_event_cb_t cb, void * ud) {
+  lv_obj_t * b = chip(row, label, selected, cb, ud);
+  lv_obj_set_height(b, 26);
+  lv_obj_set_style_pad_hor(b, 8, 0);
+  lv_obj_t * l = lv_obj_get_child(b, 0);
+  if (l) lv_obj_set_style_text_font(l, &lv_font_montserrat_12, 0);
+  return b;
+}
+
+void settings_scroll_cue_update(lv_event_t * e) {
+  lv_obj_t * body = (lv_obj_t *)lv_event_get_target(e);
+  lv_obj_t * cue = (lv_obj_t *)lv_event_get_user_data(e);
+  if (!body || !cue) return;
+  if (lv_obj_get_scroll_bottom(body) <= 12) lv_obj_add_flag(cue, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_remove_flag(cue, LV_OBJ_FLAG_HIDDEN);
+}
+
+lv_obj_t * g_settings_body = nullptr;
+int32_t g_settings_restore_scroll_y = -1;
+
+void settings_remember_scroll() {
+  if (g_settings_body) g_settings_restore_scroll_y = lv_obj_get_scroll_y(g_settings_body);
+}
+
+void settings_apply_scroll_restore(lv_obj_t * body) {
+  if (!body || g_settings_restore_scroll_y < 0) return;
+  const int32_t y = g_settings_restore_scroll_y;
+  g_settings_restore_scroll_y = -1;
+  lv_obj_update_layout(body);
+  lv_obj_scroll_to_y(body, y, LV_ANIM_OFF);
+}
+
 void osk_refresh() {
   if (!g_osk_value) return;
   char shown[72];
@@ -161,7 +194,7 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
 
   lv_obj_t * scr = make_screen();
   const char * bar =
-      canned_index == -2   ? "WERK ROOM"
+      canned_index == -2   ? "WerkRoom"
       : canned_index == -5 ? "CHECKLIST"
       : canned_index == -6 ? "FACTORY RESET"
       : canned_index == -7 ? "SETUP"
@@ -748,32 +781,45 @@ lv_obj_t * settings_screen() {
   lv_obj_t * scr = make_screen();
   make_topbar(scr, "SETTINGS", d.name);
   lv_obj_t * body = make_body(scr, true);
-  lv_obj_set_style_pad_bottom(body, 12, 0);
+  g_settings_body = body;
+  lv_obj_add_event_cb(
+      body,
+      [](lv_event_t * e) {
+        if (g_settings_body == lv_event_get_target(e)) g_settings_body = nullptr;
+      },
+      LV_EVENT_DELETE, nullptr);
+  lv_obj_set_style_pad_bottom(body, 20, 0);
+  lv_obj_set_style_pad_row(body, 6, 0);
 
   lv_obj_t * ver = lv_label_create(body);
   char ver_lbl[40];
   lv_snprintf(ver_lbl, sizeof(ver_lbl), "Release %s", app::firmware_version());
   lv_label_set_text(ver, ver_lbl);
   lv_obj_set_style_text_color(ver, theme::muted(), 0);
-  lv_obj_set_style_text_font(ver, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(ver, &lv_font_montserrat_12, 0);
   lv_obj_set_width(ver, lv_pct(100));
 
   add_section(body, "My name");
   lv_obj_t * name = lv_button_create(body);
   lv_obj_set_width(name, lv_pct(100));
-  lv_obj_set_height(name, 44);
-  style_peer_like(name);
+  lv_obj_set_height(name, 32);
+  lv_obj_set_style_radius(name, 12, 0);
+  lv_obj_set_style_bg_color(name, theme::gold(), 0);
+  lv_obj_set_style_bg_opa(name, LV_OPA_COVER, 0);
+  lv_obj_set_style_shadow_width(name, 0, 0);
+  lv_obj_set_style_pad_hor(name, 12, 0);
   lv_obj_t * nl = lv_label_create(name);
   lv_label_set_text(nl, d.name);
   lv_obj_set_style_text_color(nl, lv_color_hex(0x1a0a12), 0);
-  lv_obj_center(nl);
+  lv_obj_set_style_text_font(nl, &lv_font_montserrat_14, 0);
+  lv_obj_align(nl, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_add_event_cb(name, [](lv_event_t * /*e*/) { go_keyboard_name(); }, LV_EVENT_CLICKED, nullptr);
 
   add_section(body, "Theme");
   lv_obj_t * themes = lv_obj_create(body);
   lv_obj_remove_style_all(themes);
   lv_obj_set_width(themes, lv_pct(100));
-  lv_obj_set_height(themes, 40);
+  lv_obj_set_height(themes, 36);
   lv_obj_set_flex_flow(themes, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_column(themes, 6, 0);
   lv_obj_set_scroll_dir(themes, LV_DIR_HOR);
@@ -807,12 +853,103 @@ lv_obj_t * settings_screen() {
         LV_EVENT_CLICKED, (void *)(intptr_t)i);
   }
 
+  add_section(body, "Background");
+  {
+    lv_obj_t * status = lv_label_create(body);
+    if (background::has()) {
+      lv_label_set_text(status, "Custom image set");
+      lv_obj_set_style_text_color(status, theme::mint(), 0);
+    } else {
+      char st[48];
+      lv_snprintf(st, sizeof(st), "Scene: %s", background::preset_name(background::preset()));
+      lv_label_set_text(status, st);
+      lv_obj_set_style_text_color(status, theme::muted(), 0);
+    }
+    lv_obj_set_style_text_font(status, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(status, lv_pct(100));
+
+    /* Built-in gradient scenes (used when no photo). */
+    lv_obj_t * scenes = lv_obj_create(body);
+    lv_obj_remove_style_all(scenes);
+    lv_obj_set_width(scenes, lv_pct(100));
+    lv_obj_set_height(scenes, 40);
+    lv_obj_set_flex_flow(scenes, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(scenes, 6, 0);
+    lv_obj_remove_flag(scenes, LV_OBJ_FLAG_SCROLLABLE);
+
+    for (int i = 0; i < (int)background::Preset::Count; ++i) {
+      const auto p = static_cast<background::Preset>(i);
+      lv_obj_t * s = lv_button_create(scenes);
+      lv_obj_set_size(s, 36, 36);
+      lv_obj_set_style_radius(s, 10, 0);
+      lv_obj_set_style_shadow_width(s, 0, 0);
+      lv_obj_set_style_border_width(s, background::preset() == p && !background::has() ? 2 : 0, 0);
+      lv_obj_set_style_border_color(s, theme::ink(), 0);
+      uint32_t top = 0, bot = 0;
+      if (p == background::Preset::Theme) {
+        theme::Id prev = theme::current();
+        theme::set(static_cast<theme::Id>(d.theme));
+        top = lv_color_to_u32(theme::grad_top());
+        bot = lv_color_to_u32(theme::grad_bot());
+        theme::set(prev);
+      } else {
+        background::preset_colors(p, &top, &bot);
+      }
+      lv_obj_set_style_bg_color(s, lv_color_hex(top), 0);
+      lv_obj_set_style_bg_grad_color(s, lv_color_hex(bot), 0);
+      lv_obj_set_style_bg_grad_dir(s, LV_GRAD_DIR_VER, 0);
+      lv_obj_add_event_cb(
+          s,
+          [](lv_event_t * e) {
+            const int id = (int)(intptr_t)lv_event_get_user_data(e);
+            if (background::has()) background::clear();
+            background::set_preset(static_cast<background::Preset>(id));
+            toast(background::preset_name(static_cast<background::Preset>(id)));
+            go_settings();
+          },
+          LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+
+    lv_obj_t * bg_row = lv_obj_create(body);
+    lv_obj_remove_style_all(bg_row);
+    lv_obj_set_width(bg_row, lv_pct(100));
+    lv_obj_set_height(bg_row, 34);
+    lv_obj_set_flex_flow(bg_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(bg_row, 6, 0);
+    lv_obj_remove_flag(bg_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    chip(bg_row, background::has() ? "Change photo" : "Upload photo from phone", false,
+         [](lv_event_t * /*e*/) {
+           char url[192], local[192], qr[256];
+           if (!background::upload_session(url, sizeof(url), local, sizeof(local), qr, sizeof(qr))) {
+             toast("Start run-bg-upload.ps1 first");
+             return;
+           }
+           if (!app::desk().wifi_ssid[0]) {
+             toast("Save a Wi-Fi network first");
+             return;
+           }
+           go_bg_upload();
+         },
+         nullptr);
+    if (background::has()) {
+      chip(bg_row, "Remove", false,
+           [](lv_event_t * /*e*/) {
+             background::clear();
+             app::save();
+             toast("Background removed");
+             go_settings();
+           },
+           nullptr);
+    }
+  }
+
   add_section(body, "Brightness");
   {
     lv_obj_t * row = lv_obj_create(body);
     lv_obj_remove_style_all(row);
     lv_obj_set_width(row, lv_pct(100));
-    lv_obj_set_height(row, 44);
+    lv_obj_set_height(row, 36);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(row, 10, 0);
@@ -845,100 +982,18 @@ lv_obj_t * settings_screen() {
     lv_obj_set_style_text_font(hi, &lv_font_montserrat_12, 0);
   }
 
-  add_section(body, "Background");
+  add_section(body, "Wi-Fi (optional)");
   {
-    lv_obj_t * status = lv_label_create(body);
-    if (background::has()) {
-      lv_label_set_text(status, "Custom image set");
-      lv_obj_set_style_text_color(status, theme::mint(), 0);
-    } else {
-      char st[48];
-      lv_snprintf(st, sizeof(st), "Scene: %s", background::preset_name(background::preset()));
-      lv_label_set_text(status, st);
-      lv_obj_set_style_text_color(status, theme::muted(), 0);
-    }
-    lv_obj_set_style_text_font(status, &lv_font_montserrat_14, 0);
-    lv_obj_set_width(status, lv_pct(100));
+    lv_obj_t * wifi_status = lv_obj_create(body);
+    lv_obj_remove_style_all(wifi_status);
+    lv_obj_set_width(wifi_status, lv_pct(100));
+    lv_obj_set_height(wifi_status, 30);
+    lv_obj_set_flex_flow(wifi_status, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(wifi_status, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(wifi_status, 6, 0);
+    lv_obj_remove_flag(wifi_status, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* Built-in gradient scenes (used when no photo). */
-    lv_obj_t * scenes = lv_obj_create(body);
-    lv_obj_remove_style_all(scenes);
-    lv_obj_set_width(scenes, lv_pct(100));
-    lv_obj_set_height(scenes, 44);
-    lv_obj_set_flex_flow(scenes, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(scenes, 6, 0);
-    lv_obj_remove_flag(scenes, LV_OBJ_FLAG_SCROLLABLE);
-
-    for (int i = 0; i < (int)background::Preset::Count; ++i) {
-      const auto p = static_cast<background::Preset>(i);
-      lv_obj_t * s = lv_button_create(scenes);
-      lv_obj_set_size(s, 40, 40);
-      lv_obj_set_style_radius(s, 12, 0);
-      lv_obj_set_style_shadow_width(s, 0, 0);
-      lv_obj_set_style_border_width(s, background::preset() == p && !background::has() ? 2 : 0, 0);
-      lv_obj_set_style_border_color(s, theme::ink(), 0);
-      uint32_t top = 0, bot = 0;
-      if (p == background::Preset::Theme) {
-        theme::Id prev = theme::current();
-        theme::set(static_cast<theme::Id>(d.theme));
-        top = lv_color_to_u32(theme::grad_top());
-        bot = lv_color_to_u32(theme::grad_bot());
-        theme::set(prev);
-      } else {
-        background::preset_colors(p, &top, &bot);
-      }
-      lv_obj_set_style_bg_color(s, lv_color_hex(top), 0);
-      lv_obj_set_style_bg_grad_color(s, lv_color_hex(bot), 0);
-      lv_obj_set_style_bg_grad_dir(s, LV_GRAD_DIR_VER, 0);
-      lv_obj_add_event_cb(
-          s,
-          [](lv_event_t * e) {
-            const int id = (int)(intptr_t)lv_event_get_user_data(e);
-            if (background::has()) background::clear();
-            background::set_preset(static_cast<background::Preset>(id));
-            toast(background::preset_name(static_cast<background::Preset>(id)));
-            go_settings();
-          },
-          LV_EVENT_CLICKED, (void *)(intptr_t)i);
-    }
-
-    lv_obj_t * bg_row = lv_obj_create(body);
-    lv_obj_remove_style_all(bg_row);
-    lv_obj_set_width(bg_row, lv_pct(100));
-    lv_obj_set_height(bg_row, 40);
-    lv_obj_set_flex_flow(bg_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(bg_row, 6, 0);
-    lv_obj_remove_flag(bg_row, LV_OBJ_FLAG_SCROLLABLE);
-
-    chip(bg_row, background::has() ? "Change photo" : "Add from phone", false,
-         [](lv_event_t * /*e*/) {
-           char url[192], local[192], qr[256];
-           if (!background::upload_session(url, sizeof(url), local, sizeof(local), qr, sizeof(qr))) {
-             toast("Start run-bg-upload.ps1 first");
-             return;
-           }
-           if (!app::desk().wifi_ssid[0]) {
-             toast("Save a Wi-Fi network first");
-             return;
-           }
-           go_bg_upload();
-         },
-         nullptr);
-    if (background::has()) {
-      chip(bg_row, "Remove", false,
-           [](lv_event_t * /*e*/) {
-             background::clear();
-             app::save();
-             toast("Background removed");
-             go_settings();
-           },
-           nullptr);
-    }
-  }
-
-  add_section(body, "WiFi (optional) - clock sync & OTA updates");
-  {
-    lv_obj_t * status = lv_label_create(body);
+    lv_obj_t * status = lv_label_create(wifi_status);
     if (d.wifi_ssid[0]) {
       char st[56];
       if (d.wifi_connected)
@@ -952,41 +1007,35 @@ lv_obj_t * settings_screen() {
       lv_obj_set_style_text_color(status, theme::muted(), 0);
     }
     lv_obj_set_style_text_font(status, &lv_font_montserrat_14, 0);
-    lv_obj_set_width(status, lv_pct(100));
+    lv_label_set_long_mode(status, LV_LABEL_LONG_DOT);
+    lv_obj_set_flex_grow(status, 1);
+
+    if (d.wifi_ssid[0]) {
+      chip_sm(wifi_status, "Change", false, [](lv_event_t * /*e*/) { go_wifi_scan(); }, nullptr);
+      chip_sm(wifi_status, "Forget", false,
+              [](lv_event_t * /*e*/) {
+                app::desk().wifi_connected = false;
+                app::desk().wifi_ssid[0] = '\0';
+                app::save();
+                toast("Wi-Fi forgotten");
+                go_settings();
+              },
+              nullptr);
+    } else {
+      chip_sm(wifi_status, "Scan", false, [](lv_event_t * /*e*/) { go_wifi_scan(); }, nullptr);
+    }
 
     lv_obj_t * policy = lv_label_create(body);
-    lv_label_set_text(policy, "Not always on. Joins only for Sync time & Updates, then drops.");
+    lv_label_set_text(policy, "Joins only for Sync time & Updates, then drops.");
     lv_obj_set_style_text_color(policy, theme::muted(), 0);
     lv_obj_set_style_text_font(policy, &lv_font_montserrat_12, 0);
     lv_obj_set_width(policy, lv_pct(100));
     lv_label_set_long_mode(policy, LV_LABEL_LONG_WRAP);
 
-    lv_obj_t * wifi_row = lv_obj_create(body);
-    lv_obj_remove_style_all(wifi_row);
-    lv_obj_set_width(wifi_row, lv_pct(100));
-    lv_obj_set_height(wifi_row, 40);
-    lv_obj_set_flex_flow(wifi_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(wifi_row, 6, 0);
-    lv_obj_remove_flag(wifi_row, LV_OBJ_FLAG_SCROLLABLE);
-
-    chip(wifi_row, d.wifi_ssid[0] ? "Change" : "Scan Wi-Fi", false,
-         [](lv_event_t * /*e*/) { go_wifi_scan(); }, nullptr);
-    if (d.wifi_ssid[0]) {
-      chip(wifi_row, "Forget", false,
-           [](lv_event_t * /*e*/) {
-             app::desk().wifi_connected = false;
-             app::desk().wifi_ssid[0] = '\0';
-             app::save();
-             toast("Wi-Fi forgotten");
-             go_settings();
-           },
-           nullptr);
-    }
-
     lv_obj_t * wifi_acts = lv_obj_create(body);
     lv_obj_remove_style_all(wifi_acts);
     lv_obj_set_width(wifi_acts, lv_pct(100));
-    lv_obj_set_height(wifi_acts, 40);
+    lv_obj_set_height(wifi_acts, 36);
     lv_obj_set_flex_flow(wifi_acts, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(wifi_acts, 6, 0);
     lv_obj_remove_flag(wifi_acts, LV_OBJ_FLAG_SCROLLABLE);
@@ -1002,7 +1051,7 @@ lv_obj_t * settings_screen() {
            app::desk().clock_offset_ms = 0;
            app::desk().wifi_connected = false;
            app::save();
-           toast("Time synced — Wi-Fi dropped");
+           toast("Time synced - Wi-Fi dropped");
            /* stay put — go_settings() would jump scroll to top */
          },
          nullptr);
@@ -1100,7 +1149,11 @@ lv_obj_t * settings_screen() {
     lv_obj_t * img = make_emoji_image(b, d.emojis[i], 32);
     lv_obj_center(img);
     lv_obj_add_event_cb(
-        b, [](lv_event_t * e) { go_emoji_picker((int)(intptr_t)lv_event_get_user_data(e)); },
+        b,
+        [](lv_event_t * e) {
+          settings_remember_scroll();
+          go_emoji_picker((int)(intptr_t)lv_event_get_user_data(e));
+        },
         LV_EVENT_CLICKED, (void *)(intptr_t)i);
   }
 
@@ -1204,9 +1257,29 @@ lv_obj_t * settings_screen() {
   lv_obj_add_event_cb(reset, [](lv_event_t * /*e*/) { go_keyboard_factory_reset(); }, LV_EVENT_CLICKED,
                       nullptr);
 
+  lv_obj_t * scroll_cue = lv_label_create(scr);
+  lv_label_set_text(scroll_cue, LV_SYMBOL_DOWN "  more");
+  lv_obj_set_style_text_color(scroll_cue, theme::muted(), 0);
+  lv_obj_set_style_text_font(scroll_cue, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_bg_color(scroll_cue, theme::grad_bot(), 0);
+  lv_obj_set_style_bg_opa(scroll_cue, LV_OPA_80, 0);
+  lv_obj_set_style_radius(scroll_cue, 10, 0);
+  lv_obj_set_style_pad_hor(scroll_cue, 10, 0);
+  lv_obj_set_style_pad_ver(scroll_cue, 3, 0);
+  lv_obj_align(scroll_cue, LV_ALIGN_BOTTOM_MID, 0, -(kDockH + 4));
+  lv_obj_add_flag(scroll_cue, LV_OBJ_FLAG_FLOATING);
+  lv_obj_remove_flag(scroll_cue, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(body, settings_scroll_cue_update, LV_EVENT_SCROLL, scroll_cue);
+  lv_obj_add_event_cb(body, settings_scroll_cue_update, LV_EVENT_SIZE_CHANGED, scroll_cue);
+  lv_obj_update_layout(body);
+  settings_apply_scroll_restore(body);
+  if (lv_obj_get_scroll_bottom(body) <= 12) lv_obj_add_flag(scroll_cue, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_remove_flag(scroll_cue, LV_OBJ_FLAG_HIDDEN);
+
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) { go_hub(); });
   dock_btn(dock, "Scan desks", true, false, on_scan);
+  lv_obj_move_foreground(scroll_cue);
   return scr;
 }
 
@@ -1354,6 +1427,8 @@ int g_ota_cache_n = 0;
 bool g_ota_cache_ok = false;
 char g_ota_cache_err[96] = {};
 bool g_ota_force_refresh = false;
+/** Set by selection redraw so we don't refetch GitHub on every tap. */
+bool g_ota_redraw_only = false;
 
 bool ota_ensure_cache() {
   if (g_ota_cache_ok && !g_ota_force_refresh) return true;
@@ -1372,6 +1447,7 @@ bool ota_ensure_cache() {
 }
 
 int g_ota_pending_idx = -1;
+int g_ota_selected_idx = -1;
 
 void ota_leave_disconnect() {
   app::desk().wifi_connected = false;
@@ -1384,6 +1460,7 @@ void ota_do_install(lv_event_t * /*e*/) {
   const sim::github_ota::Release & r = g_ota_cache[idx];
   /* Real desks: download .bin + flash OTA partition. Sim: adopt tag. */
   app::set_firmware_version(r.tag);
+  g_ota_selected_idx = -1;
   ota_leave_disconnect();
   if (r.has_bin)
     toast_fmt("Installed %s (sim)", r.tag);
@@ -1392,8 +1469,7 @@ void ota_do_install(lv_event_t * /*e*/) {
   go_hub();
 }
 
-void on_pick_release(lv_event_t * e) {
-  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+void ota_confirm_install(int idx) {
   if (idx < 0 || idx >= g_ota_cache_n) return;
   const sim::github_ota::Release & r = g_ota_cache[idx];
   const char * body = sim::github_ota::tag_body(r.tag);
@@ -1410,27 +1486,65 @@ void on_pick_release(lv_event_t * e) {
   });
 }
 
+void on_select_release(lv_event_t * e) {
+  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  if (idx < 0 || idx >= g_ota_cache_n) return;
+  if (idx == g_ota_selected_idx) return;
+  g_ota_selected_idx = idx;
+  g_ota_redraw_only = true;
+  go_ota_releases(); /* redraw selection from cache (no refetch) */
+}
+
+void on_ota_install_dock(lv_event_t * /*e*/) {
+  if (g_ota_selected_idx < 0 || g_ota_selected_idx >= g_ota_cache_n) {
+    toast("Pick a version first");
+    return;
+  }
+  ota_confirm_install(g_ota_selected_idx);
+}
+
 }  // namespace
 
 lv_obj_t * ota_releases_screen() {
+  /* Fresh list each visit from Settings; selection redraws reuse cache. */
+  const bool redraw = g_ota_redraw_only;
+  g_ota_redraw_only = false;
+  if (!redraw) {
+    g_ota_force_refresh = true;
+    g_ota_selected_idx = -1;
+  }
+
   lv_obj_t * scr = make_screen();
   make_topbar(scr, "SETTINGS", app::desk().name);
   lv_obj_t * body = make_body(scr, true);
-  make_tagline(body, "GitHub Releases");
+  lv_obj_set_style_pad_row(body, 6, 0);
 
-  lv_obj_t * cur = lv_label_create(body);
-  char cur_lbl[48];
-  lv_snprintf(cur_lbl, sizeof(cur_lbl), "Running %s", app::firmware_version());
-  lv_label_set_text(cur, cur_lbl);
-  lv_obj_set_style_text_color(cur, theme::muted(), 0);
-  lv_obj_set_style_text_font(cur, &lv_font_montserrat_12, 0);
-  lv_obj_set_width(cur, lv_pct(100));
+  lv_obj_t * title = lv_label_create(body);
+  {
+    char head[72];
+    const char * ver = app::firmware_version();
+    if (ver && ver[0] == 'v')
+      lv_snprintf(head, sizeof(head), "GitHub Releases | Installed: %s", ver);
+    else
+      lv_snprintf(head, sizeof(head), "GitHub Releases | Installed: v%s", ver ? ver : "?");
+    lv_label_set_text(title, head);
+  }
+  lv_obj_set_style_text_color(title, theme::muted(), 0);
+  lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+  lv_obj_set_width(title, lv_pct(100));
+  lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
 
   lv_obj_t * src = lv_label_create(body);
   lv_label_set_text(src, "therzog92/WerkBuddy");
   lv_obj_set_style_text_color(src, theme::muted(), 0);
   lv_obj_set_style_text_font(src, &lv_font_montserrat_12, 0);
   lv_obj_set_width(src, lv_pct(100));
+
+  lv_obj_t * gap = lv_obj_create(body);
+  lv_obj_remove_style_all(gap);
+  lv_obj_set_size(gap, lv_pct(100), 10);
+  lv_obj_remove_flag(gap, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(gap, LV_OBJ_FLAG_SCROLLABLE);
 
   if (!ota_ensure_cache()) {
     lv_obj_t * err = lv_label_create(body);
@@ -1442,6 +1556,18 @@ lv_obj_t * ota_releases_screen() {
     lv_obj_set_style_text_font(err, &lv_font_montserrat_12, 0);
     lv_obj_set_width(err, lv_pct(100));
   } else {
+    if (g_ota_selected_idx < 0 || g_ota_selected_idx >= g_ota_cache_n) {
+      g_ota_selected_idx = -1;
+      for (int i = 0; i < g_ota_cache_n; ++i) {
+        const char * body_tag = sim::github_ota::tag_body(g_ota_cache[i].tag);
+        if (std::strcmp(body_tag, app::firmware_version()) == 0) {
+          g_ota_selected_idx = i;
+          break;
+        }
+      }
+      if (g_ota_selected_idx < 0 && g_ota_cache_n > 0) g_ota_selected_idx = 0;
+    }
+
     lv_obj_t * hint = lv_label_create(body);
     lv_label_set_text(hint, "Pick any version to upgrade or downgrade.");
     lv_obj_set_style_text_color(hint, theme::muted(), 0);
@@ -1452,58 +1578,56 @@ lv_obj_t * ota_releases_screen() {
       const sim::github_ota::Release & r = g_ota_cache[i];
       const char * body_tag = sim::github_ota::tag_body(r.tag);
       const bool is_current = std::strcmp(body_tag, app::firmware_version()) == 0;
+      const bool is_sel = (i == g_ota_selected_idx);
 
       lv_obj_t * b = lv_button_create(body);
       lv_obj_set_width(b, lv_pct(100));
-      lv_obj_set_height(b, 52);
+      lv_obj_set_height(b, 44);
       lv_obj_set_style_radius(b, 12, 0);
       lv_obj_set_style_bg_color(b, theme::panel(), 0);
       lv_obj_set_style_shadow_width(b, 0, 0);
-      lv_obj_set_style_border_width(b, is_current ? 2 : 1, 0);
-      lv_obj_set_style_border_color(b, is_current ? theme::gold() : theme::border(), 0);
+      lv_obj_set_style_border_width(b, is_sel ? 2 : 1, 0);
+      lv_obj_set_style_border_color(b, is_sel ? theme::mint() : theme::border(), 0);
       lv_obj_set_style_pad_hor(b, 12, 0);
       lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
-      lv_obj_set_flex_align(b, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
-                           LV_FLEX_ALIGN_CENTER);
+      lv_obj_set_flex_align(b, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-      lv_obj_t * left = lv_obj_create(b);
-      lv_obj_remove_style_all(left);
-      lv_obj_set_size(left, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-      lv_obj_set_flex_flow(left, LV_FLEX_FLOW_COLUMN);
-      lv_obj_set_style_pad_row(left, 2, 0);
-      lv_obj_t * name = lv_label_create(left);
+      lv_obj_t * name = lv_label_create(b);
       lv_label_set_text(name, r.name[0] ? r.name : r.tag);
       lv_obj_set_style_text_color(name, theme::ink(), 0);
       lv_obj_set_style_text_font(name, &lv_font_montserrat_16, 0);
-      lv_obj_t * meta = lv_label_create(left);
-      if (is_current)
-        lv_label_set_text(meta, "current");
-      else if (i == 0)
-        lv_label_set_text(meta, r.has_bin ? "latest" : "latest (no bin)");
-      else
-        lv_label_set_text(meta, r.has_bin ? r.tag : "no .bin");
-      lv_obj_set_style_text_color(meta, is_current ? theme::gold() : theme::muted(), 0);
-      lv_obj_set_style_text_font(meta, &lv_font_montserrat_12, 0);
+      lv_obj_set_flex_grow(name, 1);
+      lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
 
-      lv_obj_t * action = lv_label_create(b);
-      lv_label_set_text(action, is_current ? "OK" : "Install");
-      lv_obj_set_style_text_color(action, is_current ? theme::muted() : theme::mint(), 0);
-      lv_obj_set_style_text_font(action, &lv_font_montserrat_14, 0);
+      const char * meta_txt = nullptr;
+      lv_color_t meta_col = theme::muted();
+      if (is_current) {
+        meta_txt = "current";
+        meta_col = theme::gold();
+      } else if (i == 0) {
+        meta_txt = r.has_bin ? "latest" : "latest (no bin)";
+      } else if (!r.has_bin) {
+        meta_txt = "no .bin";
+      }
+      if (meta_txt) {
+        lv_obj_t * meta = lv_label_create(b);
+        lv_label_set_text(meta, meta_txt);
+        lv_obj_set_style_text_color(meta, meta_col, 0);
+        lv_obj_set_style_text_font(meta, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_align(meta, LV_TEXT_ALIGN_RIGHT, 0);
+      }
 
-      lv_obj_add_event_cb(b, on_pick_release, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+      lv_obj_add_event_cb(b, on_select_release, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
   }
 
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) {
+    g_ota_selected_idx = -1;
     ota_leave_disconnect();
     go_settings();
   });
-  dock_btn(dock, "Refresh", true, false, [](lv_event_t * /*e*/) {
-    g_ota_force_refresh = true;
-    toast("Fetching releases…");
-    go_ota_releases();
-  });
+  dock_btn(dock, "Install", true, false, on_ota_install_dock);
   return scr;
 }
 
@@ -1511,6 +1635,49 @@ int g_emoji_picker_slot = 0; /* settings 0..n-1, or kEmojiPickerCompose */
 int g_emoji_picker_cat = 0;
 lv_obj_t * g_emoji_grid = nullptr;
 lv_obj_t * g_emoji_cat_btns[kEmojiCategoryCount] = {};
+char g_emoji_pending[proto::kMaxEmoji] = {};
+lv_obj_t * g_emoji_confirm_img = nullptr;
+
+void emoji_picker_refresh_confirm() {
+  if (!g_emoji_confirm_img) return;
+  if (g_emoji_pending[0]) {
+    lv_image_set_src(g_emoji_confirm_img, emoji_png_path(g_emoji_pending));
+    lv_obj_remove_flag(g_emoji_confirm_img, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(g_emoji_confirm_img, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void emoji_picker_confirm(lv_event_t * /*e*/) {
+  if (!g_emoji_pending[0]) {
+    toast("Pick an emoji first");
+    return;
+  }
+  if (g_emoji_picker_slot == kEmojiPickerCompose) {
+    compose_set_emoji(g_emoji_pending);
+    go_compose_refresh();
+    return;
+  }
+  if (g_emoji_picker_slot >= 0 && g_emoji_picker_slot < app::kEmojiSlots) {
+    std::snprintf(app::desk().emojis[g_emoji_picker_slot], sizeof(app::desk().emojis[0]), "%s",
+                  g_emoji_pending);
+    app::save();
+  }
+  go_settings();
+}
+
+void emoji_picker_style_selection() {
+  if (!g_emoji_grid) return;
+  if (g_emoji_picker_cat < 0 || g_emoji_picker_cat >= kEmojiCategoryCount) return;
+  const EmojiCategory & cat = kEmojiCategories[g_emoji_picker_cat];
+  const uint32_t n = lv_obj_get_child_count(g_emoji_grid);
+  for (uint32_t i = 0; i < n && (int)i < cat.count; ++i) {
+    lv_obj_t * b = lv_obj_get_child(g_emoji_grid, i);
+    const bool sel = g_emoji_pending[0] && std::strcmp(cat.emojis[i], g_emoji_pending) == 0;
+    lv_obj_set_style_border_width(b, sel ? 2 : 0, 0);
+    lv_obj_set_style_border_color(b, theme::gold(), 0);
+  }
+}
 
 void emoji_picker_fill_grid() {
   if (!g_emoji_grid) return;
@@ -1518,11 +1685,14 @@ void emoji_picker_fill_grid() {
   if (g_emoji_picker_cat < 0 || g_emoji_picker_cat >= kEmojiCategoryCount) g_emoji_picker_cat = 0;
   const EmojiCategory & cat = kEmojiCategories[g_emoji_picker_cat];
   for (int i = 0; i < cat.count; ++i) {
+    const bool sel = g_emoji_pending[0] && std::strcmp(cat.emojis[i], g_emoji_pending) == 0;
     lv_obj_t * b = lv_button_create(g_emoji_grid);
     lv_obj_set_size(b, 58, 48);
     lv_obj_set_style_bg_color(b, theme::panel(), 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_pad_all(b, 2, 0);
+    lv_obj_set_style_border_width(b, sel ? 2 : 0, 0);
+    lv_obj_set_style_border_color(b, theme::gold(), 0);
     lv_obj_t * img = make_emoji_image(b, cat.emojis[i], 34);
     lv_obj_center(img);
     /* pack category in high bits, index in low */
@@ -1536,18 +1706,9 @@ void emoji_picker_fill_grid() {
           if (ci < 0 || ci >= kEmojiCategoryCount) return;
           const EmojiCategory & cat = kEmojiCategories[ci];
           if (ei < 0 || ei >= cat.count) return;
-          const char * emo = cat.emojis[ei];
-          if (g_emoji_picker_slot == kEmojiPickerCompose) {
-            compose_set_emoji(emo);
-            go_compose_refresh();
-            return;
-          }
-          if (g_emoji_picker_slot >= 0 && g_emoji_picker_slot < app::kEmojiSlots) {
-            std::snprintf(app::desk().emojis[g_emoji_picker_slot],
-                          sizeof(app::desk().emojis[0]), "%s", emo);
-            app::save();
-          }
-          go_settings();
+          std::snprintf(g_emoji_pending, sizeof(g_emoji_pending), "%s", cat.emojis[ei]);
+          emoji_picker_refresh_confirm();
+          emoji_picker_style_selection();
         },
         LV_EVENT_CLICKED, (void *)ud);
   }
@@ -1592,10 +1753,19 @@ lv_obj_t * emoji_picker_screen(int slot) {
   g_emoji_picker_slot = compose_mode ? kEmojiPickerCompose : slot;
   g_emoji_picker_cat = 0;
   g_emoji_grid = nullptr;
+  g_emoji_confirm_img = nullptr;
   for (int i = 0; i < kEmojiCategoryCount; ++i) g_emoji_cat_btns[i] = nullptr;
 
+  g_emoji_pending[0] = '\0';
+  if (compose_mode) {
+    if (compose_emoji()[0])
+      std::snprintf(g_emoji_pending, sizeof(g_emoji_pending), "%s", compose_emoji());
+  } else if (app::desk().emojis[slot][0]) {
+    std::snprintf(g_emoji_pending, sizeof(g_emoji_pending), "%s", app::desk().emojis[slot]);
+  }
+
   lv_obj_t * scr = make_screen();
-  make_topbar(scr, compose_mode ? "WERK ROOM" : "SETTINGS", app::desk().name);
+  make_topbar(scr, compose_mode ? "WerkRoom" : "SETTINGS", app::desk().name);
   lv_obj_t * body = make_body(scr, true);
   make_tagline(body, compose_mode ? "Pick an emoji for this ping" : "Pick an emoji");
 
@@ -1663,6 +1833,28 @@ lv_obj_t * emoji_picker_screen(int slot) {
   } else {
     dock_btn(dock, "Cancel", false, false, [](lv_event_t * /*e*/) { go_settings(); });
   }
+
+  /* Confirm (emoji) — apply selection; tap alone no longer leaves the page. */
+  lv_obj_t * confirm = lv_button_create(dock);
+  lv_obj_set_height(confirm, 36);
+  lv_obj_set_flex_grow(confirm, 1);
+  lv_obj_set_style_radius(confirm, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_shadow_width(confirm, 0, 0);
+  lv_obj_set_style_border_width(confirm, 0, 0);
+  lv_obj_set_style_bg_color(confirm, theme::gold(), 0);
+  lv_obj_set_style_bg_opa(confirm, LV_OPA_COVER, 0);
+  lv_obj_set_style_pad_hor(confirm, 10, 0);
+  lv_obj_set_flex_flow(confirm, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(confirm, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(confirm, 6, 0);
+  lv_obj_t * conf_lbl = lv_label_create(confirm);
+  lv_label_set_text(conf_lbl, "Confirm");
+  lv_obj_set_style_text_color(conf_lbl, lv_color_hex(0x1a1224), 0);
+  lv_obj_set_style_text_font(conf_lbl, &lv_font_montserrat_14, 0);
+  g_emoji_confirm_img = make_emoji_image(confirm, g_emoji_pending[0] ? g_emoji_pending : "😀", 22);
+  emoji_picker_refresh_confirm();
+  lv_obj_add_event_cb(confirm, emoji_picker_confirm, LV_EVENT_CLICKED, nullptr);
+
   return scr;
 }
 
@@ -1711,7 +1903,7 @@ lv_obj_t * bg_upload_screen() {
   lv_obj_add_event_cb(scr, bg_upload_cleanup, LV_EVENT_DELETE, nullptr);
   make_topbar(scr, "BACKGROUND", app::desk().name);
   lv_obj_t * body = make_body(scr, true);
-  make_tagline(body, "Add from phone");
+  make_tagline(body, "Upload photo from phone");
 
   lv_obj_t * desk = lv_label_create(body);
   char desk_lbl[48];

@@ -295,6 +295,53 @@ void ttt_play_cell(lv_event_t * e) {
   go_ttt();
 }
 
+/** Geometric X / thick ring O — not font glyphs (O looked like "0"). X=hot, O=gold. */
+void ttt_draw_mark(lv_obj_t * parent, char mark, int size) {
+  const lv_color_t col = (mark == 'X') ? theme::hot() : theme::gold();
+  lv_obj_t * wrap = lv_obj_create(parent);
+  lv_obj_remove_style_all(wrap);
+  lv_obj_set_size(wrap, size, size);
+  lv_obj_center(wrap);
+  lv_obj_remove_flag(wrap, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(wrap, LV_OBJ_FLAG_SCROLLABLE);
+  if (mark == 'O') {
+    const int stroke = size >= 40 ? 7 : (size >= 24 ? 5 : 4);
+    lv_obj_t * ring = lv_obj_create(wrap);
+    lv_obj_remove_style_all(ring);
+    lv_obj_set_size(ring, size, size);
+    lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(ring, stroke, 0);
+    lv_obj_set_style_border_color(ring, col, 0);
+    lv_obj_set_style_border_opa(ring, LV_OPA_COVER, 0);
+    lv_obj_center(ring);
+    lv_obj_remove_flag(ring, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(ring, LV_OBJ_FLAG_SCROLLABLE);
+    return;
+  }
+  /* X: two rounded bars crossed via lines */
+  const int stroke = size >= 40 ? 8 : (size >= 24 ? 5 : 4);
+  const int inset = size / 6;
+  auto add_diag = [&](lv_coord_t x1, lv_coord_t y1, lv_coord_t x2, lv_coord_t y2) {
+    auto * pts = static_cast<lv_point_precise_t *>(lv_malloc(sizeof(lv_point_precise_t) * 2));
+    pts[0].x = x1;
+    pts[0].y = y1;
+    pts[1].x = x2;
+    pts[1].y = y2;
+    lv_obj_t * ln = lv_line_create(wrap);
+    lv_obj_set_size(ln, size, size);
+    lv_obj_set_pos(ln, 0, 0);
+    lv_line_set_points(ln, pts, 2);
+    lv_obj_set_style_line_width(ln, stroke, 0);
+    lv_obj_set_style_line_color(ln, col, 0);
+    lv_obj_set_style_line_rounded(ln, true, 0);
+    lv_obj_set_user_data(ln, pts);
+    lv_obj_remove_flag(ln, LV_OBJ_FLAG_CLICKABLE);
+  };
+  add_diag(inset, inset, size - inset, size - inset);
+  add_diag(size - inset, inset, inset, size - inset);
+}
+
 void fill_ttt_play(lv_obj_t * parent) {
   app::TttGame & g = app::ttt();
   const bool my_turn = !g.over && !g.waiting && g.turn == g.mark;
@@ -302,7 +349,7 @@ void fill_ttt_play(lv_obj_t * parent) {
   if (g.over && !g.result_dismissed) {
     make_status(parent, "Game over");
   } else if (my_turn) {
-    make_status(parent, "Your turn - serve!");
+    make_status(parent, "Your turn");
   } else if (g.over) {
     make_status(parent, "Play again?");
   } else {
@@ -326,17 +373,12 @@ void fill_ttt_play(lv_obj_t * parent) {
   lv_obj_remove_style_all(badge);
   lv_obj_set_size(badge, 28, 28);
   lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(badge, theme::hot(), 0);
-  lv_obj_set_style_bg_grad_color(badge, theme::gold(), 0);
-  lv_obj_set_style_bg_grad_dir(badge, LV_GRAD_DIR_HOR, 0);
+  lv_obj_set_style_bg_color(badge, theme::panel(), 0);
   lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(badge, 1, 0);
+  lv_obj_set_style_border_color(badge, theme::border(), 0);
   lv_obj_remove_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_t * bl = lv_label_create(badge);
-  char mk[2] = {g.mark, 0};
-  lv_label_set_text(bl, mk);
-  lv_obj_set_style_text_color(bl, lv_color_hex(0x1a0610), 0);
-  lv_obj_set_style_text_font(bl, &lv_font_montserrat_14, 0);
-  lv_obj_center(bl);
+  ttt_draw_mark(badge, g.mark, 18);
 
   lv_obj_t * board = lv_obj_create(parent);
   lv_obj_remove_style_all(board);
@@ -367,12 +409,7 @@ void fill_ttt_play(lv_obj_t * parent) {
     lv_obj_set_grid_cell(cell, LV_GRID_ALIGN_STRETCH, i % 3, 1, LV_GRID_ALIGN_STRETCH, i / 3, 1);
     lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
     if (g.board[i]) {
-      lv_obj_t * l = lv_label_create(cell);
-      char t[2] = {g.board[i], 0};
-      lv_label_set_text(l, t);
-      lv_obj_set_style_text_font(l, font_display(52), 0);
-      lv_obj_set_style_text_color(l, g.board[i] == 'X' ? theme::hot() : theme::mint(), 0);
-      lv_obj_center(l);
+      ttt_draw_mark(cell, g.board[i], 52);
     } else if (my_turn) {
       lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_add_event_cb(cell, ttt_play_cell, LV_EVENT_CLICKED, (void *)(intptr_t)i);
@@ -599,12 +636,7 @@ void fill_sttt_play(lv_obj_t * parent) {
       lv_obj_set_grid_cell(cell, LV_GRID_ALIGN_STRETCH, c % 3, 1, LV_GRID_ALIGN_STRETCH, c / 3, 1);
       lv_obj_remove_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
       if (g.boards[b][c]) {
-        lv_obj_t * l = lv_label_create(cell);
-        char t[2] = {g.boards[b][c], 0};
-        lv_label_set_text(l, t);
-        lv_obj_set_style_text_font(l, &lv_font_montserrat_16, 0);
-        lv_obj_set_style_text_color(l, g.boards[b][c] == 'X' ? theme::hot() : theme::mint(), 0);
-        lv_obj_center(l);
+        ttt_draw_mark(cell, g.boards[b][c], 26);
       } else if (my_turn && games::sttt::legal(g.boards, g.meta, g.next_board, b, c)) {
         lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(cell, sttt_play_cell, LV_EVENT_CLICKED,
@@ -621,12 +653,7 @@ void fill_sttt_play(lv_obj_t * parent) {
       lv_obj_set_style_bg_opa(ov, 70, 0);
       lv_obj_add_flag(ov, LV_OBJ_FLAG_FLOATING);
       lv_obj_remove_flag(ov, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_t * big = lv_label_create(ov);
-      char t[2] = {g.meta[b], 0};
-      lv_label_set_text(big, t);
-      lv_obj_set_style_text_font(big, font_display(40), 0);
-      lv_obj_set_style_text_color(big, g.meta[b] == 'X' ? theme::hot() : theme::mint(), 0);
-      lv_obj_center(big);
+      ttt_draw_mark(ov, g.meta[b], 56);
       lv_obj_move_foreground(ov);
     } else if (g.meta[b] == 'D') {
       lv_obj_set_style_border_opa(shell, LV_OPA_40, 0);
@@ -1411,8 +1438,24 @@ void bs_fire_cell(lv_event_t * e) {
 
 void fill_bs_grid(lv_obj_t * parent, bool offense) {
   app::BsGame & g = app::bs();
-  /* Fits with compact Offense/Defense tabs + status above the dock. */
-  constexpr int kCell = 28, kGap = 1;
+  /* Grow cells into leftover body space (status / Offense·Defense sit above). */
+  constexpr int kGap = 1;
+  lv_obj_update_layout(parent);
+  const int avail_w = (int)lv_obj_get_content_width(parent);
+  const int content_h = (int)lv_obj_get_content_height(parent);
+  const int pad_row = (int)lv_obj_get_style_pad_row(parent, LV_PART_MAIN);
+  int used = 0;
+  const uint32_t n = lv_obj_get_child_count(parent);
+  for (uint32_t i = 0; i < n; ++i) used += (int)lv_obj_get_height(lv_obj_get_child(parent, i));
+  if (n > 0) used += pad_row * (int)n; /* gaps between siblings + before board */
+  int avail_h = content_h - used - 2;
+  if (avail_h < 200) avail_h = 200;
+  int kCell = (avail_w - 9 * kGap) / 10;
+  const int cell_h = (avail_h - 9 * kGap) / 10;
+  if (cell_h < kCell) kCell = cell_h;
+  if (kCell < 28) kCell = 28;
+  if (kCell > 40) kCell = 40;
+
   lv_obj_t * board = lv_obj_create(parent);
   lv_obj_remove_style_all(board);
   lv_obj_set_size(board, 10 * kCell + 9 * kGap, 10 * kCell + 9 * kGap);
@@ -1501,8 +1544,10 @@ lv_obj_t * game_bs_build() {
               game_vs_sub(sub, sizeof(sub), app::bs().active, app::bs().opp_name, app::invite_active(app::GameKind::Bs),
                           app::invite_ref(app::GameKind::Bs).from_name));
   lv_obj_t * body = make_body(scr, true);
-  lv_obj_set_style_pad_row(body, 4, 0);
-  lv_obj_set_style_pad_bottom(body, 4, 0);
+  /* Pull status + tabs up so the 10×10 board can grow. */
+  lv_obj_set_style_pad_top(body, 0, 0);
+  lv_obj_set_style_pad_row(body, 2, 0);
+  lv_obj_set_style_pad_bottom(body, 2, 0);
   lv_obj_t * dock = make_dock(scr);
 
   if (app::invite_active(app::GameKind::Bs)) {
@@ -1610,7 +1655,7 @@ app::Desk & desk = app::desk();
     lv_obj_t * tabs = lv_obj_create(body);
     lv_obj_remove_style_all(tabs);
     lv_obj_set_width(tabs, lv_pct(100));
-    lv_obj_set_height(tabs, 28);
+    lv_obj_set_height(tabs, 24);
     lv_obj_set_flex_flow(tabs, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(tabs, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(tabs, 8, 0);
@@ -1618,7 +1663,7 @@ app::Desk & desk = app::desk();
     auto tab = [&](const char * label, int mode) {
       lv_obj_t * b = lv_button_create(tabs);
       lv_obj_set_flex_grow(b, 1);
-      lv_obj_set_height(b, 28);
+      lv_obj_set_height(b, 24);
       lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
       lv_obj_set_style_pad_all(b, 0, 0);
       lv_obj_set_style_pad_ver(b, 0, 0);
@@ -1799,7 +1844,26 @@ void fill_ck_play(lv_obj_t * parent) {
     make_status(parent, buf);
   }
 
-  constexpr int kCell = 40;
+  /* Grow squares into leftover body space under the status line. */
+  lv_obj_update_layout(parent);
+  const int avail_w = (int)lv_obj_get_content_width(parent);
+  const int content_h = (int)lv_obj_get_content_height(parent);
+  const int pad_row = (int)lv_obj_get_style_pad_row(parent, LV_PART_MAIN);
+  int used = 0;
+  const uint32_t n = lv_obj_get_child_count(parent);
+  for (uint32_t i = 0; i < n; ++i) used += (int)lv_obj_get_height(lv_obj_get_child(parent, i));
+  if (n > 0) used += pad_row * (int)n;
+  int avail_h = content_h - used - 2;
+  if (avail_h < 240) avail_h = 240;
+  int kCell = avail_w / 8;
+  const int cell_h = avail_h / 8;
+  if (cell_h < kCell) kCell = cell_h;
+  if (kCell < 40) kCell = 40;
+  if (kCell > 52) kCell = 52;
+  const int piece_sz = (kCell * 28) / 40;
+  const lv_font_t * king_font =
+      piece_sz >= 34 ? &lv_font_montserrat_14 : &lv_font_montserrat_12;
+
   /* High-contrast mauve board; mint + soft rose pieces (easy to read). */
   const lv_color_t sq_light = lv_color_mix(theme::ink(), theme::panel(), LV_OPA_30);
   const lv_color_t sq_dark = theme::bg0();
@@ -1839,7 +1903,7 @@ void fill_ck_play(lv_obj_t * parent) {
       if (p) {
         lv_obj_t * piece = lv_obj_create(cell);
         lv_obj_remove_style_all(piece);
-        lv_obj_set_size(piece, 28, 28);
+        lv_obj_set_size(piece, piece_sz, piece_sz);
         lv_obj_set_style_radius(piece, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_opa(piece, LV_OPA_COVER, 0);
         const bool red = games::ck::is_red(p);
@@ -1848,7 +1912,7 @@ void fill_ck_play(lv_obj_t * parent) {
           lv_obj_t * k = lv_label_create(piece);
           lv_label_set_text(k, "K");
           lv_obj_set_style_text_color(k, theme::bg0(), 0);
-          lv_obj_set_style_text_font(k, &lv_font_montserrat_12, 0);
+          lv_obj_set_style_text_font(k, king_font, 0);
           lv_obj_center(k);
         }
         lv_obj_center(piece);
@@ -1883,6 +1947,10 @@ lv_obj_t * game_ck_build() {
               game_vs_sub(sub, sizeof(sub), app::ck().active, app::ck().opp_name, app::invite_active(app::GameKind::Ck),
                           app::invite_ref(app::GameKind::Ck).from_name));
   lv_obj_t * body = make_body(scr, true);
+  /* Pull status up so the 8×8 board can grow. */
+  lv_obj_set_style_pad_top(body, 0, 0);
+  lv_obj_set_style_pad_row(body, 2, 0);
+  lv_obj_set_style_pad_bottom(body, 2, 0);
   lv_obj_t * dock = make_dock(scr);
 
   if (app::invite_active(app::GameKind::Ck)) {
@@ -2167,6 +2235,9 @@ void fill_mem_play(lv_obj_t * parent) {
   lv_obj_set_style_pad_ver(parent, 0, 0);
   lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
+  make_score_pill(parent, app::desk().name, g.my_score, theme::mint(), g.opp_name, g.opp_score,
+                  theme::hot());
+
   const char * status = "Your turn";
   char wait_buf[48];
   if (g.over && !g.result_dismissed) status = "Game over";
@@ -2178,10 +2249,24 @@ void fill_mem_play(lv_obj_t * parent) {
   }
   make_status(parent, status);
 
-  make_score_pill(parent, app::desk().name, g.my_score, theme::mint(), g.opp_name, g.opp_score,
-                  theme::hot());
+  /* Grow cards into leftover space under score + status. */
+  constexpr int kGap = 6;
+  lv_obj_update_layout(parent);
+  const int avail_w = (int)lv_obj_get_content_width(parent);
+  const int content_h = (int)lv_obj_get_content_height(parent);
+  const int pad_row = (int)lv_obj_get_style_pad_row(parent, LV_PART_MAIN);
+  int used = 0;
+  const uint32_t n = lv_obj_get_child_count(parent);
+  for (uint32_t i = 0; i < n; ++i) used += (int)lv_obj_get_height(lv_obj_get_child(parent, i));
+  if (n > 0) used += pad_row * (int)n;
+  int avail_h = content_h - used - 2;
+  if (avail_h < 280) avail_h = 280;
+  int kCard = (avail_w - 3 * kGap) / 4;
+  const int card_h = (avail_h - 3 * kGap) / 4;
+  if (card_h < kCard) kCard = card_h;
+  if (kCard < 72) kCard = 72;
+  if (kCard > 100) kCard = 100;
 
-  constexpr int kCard = 72, kGap = 8;
   lv_obj_t * board = lv_obj_create(parent);
   lv_obj_remove_style_all(board);
   lv_obj_set_size(board, 4 * kCard + 3 * kGap, 4 * kCard + 3 * kGap);
@@ -2225,7 +2310,7 @@ void fill_mem_play(lv_obj_t * parent) {
         lv_snprintf(t, sizeof(t), "%d", g.deck[i] + 1);
         lv_label_set_text(l, t);
         lv_obj_set_style_text_color(l, lv_color_hex(0x1a0610), 0);
-        lv_obj_set_style_text_font(l, font_display(28), 0);
+        lv_obj_set_style_text_font(l, font_display(kCard >= 88 ? 36 : 28), 0);
         lv_obj_center(l);
       }
       /* Matched: slight fade, but keep faces readable (was too dark at 140). */
@@ -2437,6 +2522,11 @@ void fill_rv_play(lv_obj_t * parent) {
   lv_obj_set_style_pad_ver(parent, 0, 0);
   lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
+  const char * black_name = (g.my_color == games::rv::kBlack) ? app::desk().name : g.opp_name;
+  const char * white_name = (g.my_color == games::rv::kWhite) ? app::desk().name : g.opp_name;
+  make_score_pill(parent, black_name, bl, lv_color_hex(0x1a1a1a), white_name, wh,
+                  lv_color_hex(0xffffff));
+
   const char * status = "Your turn";
   char wait_buf[48];
   if (g.over && !g.result_dismissed) status = "Game over";
@@ -2447,16 +2537,27 @@ void fill_rv_play(lv_obj_t * parent) {
   }
   make_status(parent, status);
 
-  const char * black_name = (g.my_color == games::rv::kBlack) ? app::desk().name : g.opp_name;
-  const char * white_name = (g.my_color == games::rv::kWhite) ? app::desk().name : g.opp_name;
-  make_score_pill(parent, black_name, bl, lv_color_hex(0x1a1a1a), white_name, wh,
-                  lv_color_hex(0xffffff));
-
-  /* status+pill ~46 under compact dock → cells ≤ 37 keep full board visible. */
-  constexpr int kCell = 37;
+  /* Grow cells into leftover space under score + status. */
   constexpr int kGap = 2;
-  constexpr int kPad = 4;
-  constexpr int kBoard = kPad * 2 + games::rv::kN * kCell + (games::rv::kN - 1) * kGap;
+  constexpr int kPad = 2;
+  constexpr int kN = games::rv::kN;
+  lv_obj_update_layout(parent);
+  const int avail_w = (int)lv_obj_get_content_width(parent);
+  const int content_h = (int)lv_obj_get_content_height(parent);
+  const int pad_row = (int)lv_obj_get_style_pad_row(parent, LV_PART_MAIN);
+  int used = 0;
+  const uint32_t nch = lv_obj_get_child_count(parent);
+  for (uint32_t i = 0; i < nch; ++i) used += (int)lv_obj_get_height(lv_obj_get_child(parent, i));
+  if (nch > 0) used += pad_row * (int)nch;
+  int avail_h = content_h - used;
+  if (avail_h < 280) avail_h = 280;
+  int kCell = (avail_w - kPad * 2 - (kN - 1) * kGap) / kN;
+  const int cell_h = (avail_h - kPad * 2 - (kN - 1) * kGap) / kN;
+  if (cell_h < kCell) kCell = cell_h;
+  if (kCell < 37) kCell = 37;
+  if (kCell > 52) kCell = 52;
+  const int kBoard = kPad * 2 + kN * kCell + (kN - 1) * kGap;
+  const int disc = kCell > 10 ? kCell - 8 : kCell - 4;
 
   lv_obj_t * board = lv_obj_create(parent);
   lv_obj_remove_style_all(board);
@@ -2466,15 +2567,21 @@ void fill_rv_play(lv_obj_t * parent) {
   lv_obj_set_style_bg_opa(board, LV_OPA_COVER, 0);
   lv_obj_set_style_pad_all(board, kPad, 0);
   lv_obj_set_layout(board, LV_LAYOUT_GRID);
-  static lv_coord_t cols[] = {kCell, kCell, kCell, kCell, kCell, kCell, kCell, kCell, LV_GRID_TEMPLATE_LAST};
-  static lv_coord_t rows[] = {kCell, kCell, kCell, kCell, kCell, kCell, kCell, kCell, LV_GRID_TEMPLATE_LAST};
+  static lv_coord_t cols[9];
+  static lv_coord_t rows[9];
+  for (int i = 0; i < kN; ++i) {
+    cols[i] = (lv_coord_t)kCell;
+    rows[i] = (lv_coord_t)kCell;
+  }
+  cols[kN] = LV_GRID_TEMPLATE_LAST;
+  rows[kN] = LV_GRID_TEMPLATE_LAST;
   lv_obj_set_grid_dsc_array(board, cols, rows);
   lv_obj_set_style_pad_row(board, kGap, 0);
   lv_obj_set_style_pad_column(board, kGap, 0);
   lv_obj_remove_flag(board, LV_OBJ_FLAG_SCROLLABLE);
 
-  for (int r = 0; r < games::rv::kN; ++r) {
-    for (int c = 0; c < games::rv::kN; ++c) {
+  for (int r = 0; r < kN; ++r) {
+    for (int c = 0; c < kN; ++c) {
       lv_obj_t * cell = lv_obj_create(board);
       lv_obj_remove_style_all(cell);
       lv_obj_set_style_radius(cell, 4, 0);
@@ -2485,22 +2592,22 @@ void fill_rv_play(lv_obj_t * parent) {
 
       const int8_t piece = g.board[r][c];
       if (piece == games::rv::kBlack || piece == games::rv::kWhite) {
-        lv_obj_t * disc = lv_obj_create(cell);
-        lv_obj_remove_style_all(disc);
-        lv_obj_set_size(disc, kCell - 8, kCell - 8);
-        lv_obj_set_style_radius(disc, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(disc, piece == games::rv::kBlack ? lv_color_hex(0x1a1a1a) : lv_color_hex(0xf2f2f2),
+        lv_obj_t * d = lv_obj_create(cell);
+        lv_obj_remove_style_all(d);
+        lv_obj_set_size(d, disc, disc);
+        lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(d, piece == games::rv::kBlack ? lv_color_hex(0x1a1a1a) : lv_color_hex(0xf2f2f2),
                                   0);
-        lv_obj_set_style_bg_opa(disc, LV_OPA_COVER, 0);
-        lv_obj_center(disc);
-        lv_obj_remove_flag(disc, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_remove_flag(disc, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+        lv_obj_center(d);
+        lv_obj_remove_flag(d, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(d, LV_OBJ_FLAG_SCROLLABLE);
       } else if (my_turn && games::rv::would_flip(g.board, r, c, g.my_color) > 0) {
         lv_obj_set_style_border_width(cell, 2, 0);
         lv_obj_set_style_border_color(cell, theme::gold(), 0);
         lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(cell, rv_play_cell, LV_EVENT_CLICKED,
-                            (void *)(intptr_t)(r * games::rv::kN + c));
+                            (void *)(intptr_t)(r * kN + c));
       }
     }
   }
@@ -2561,6 +2668,9 @@ lv_obj_t * game_rv_build() {
     lv_obj_set_style_pad_ver(dock, 4, 0);
     lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
+    lv_obj_set_style_pad_top(body, 0, 0);
+    lv_obj_set_style_pad_bottom(body, 2, 0);
+    lv_obj_set_style_pad_row(body, 2, 0);
     lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     fill_rv_play(body);
     if (app::rv().over) {
@@ -2664,8 +2774,11 @@ void fill_db_play(lv_obj_t * parent) {
   const int opp_score = g.my_side == games::db::kP1 ? g.state.score2 : g.state.score1;
 
   lv_obj_set_style_pad_row(parent, 2, 0);
-  lv_obj_set_style_pad_ver(parent, 2, 0);
+  lv_obj_set_style_pad_ver(parent, 0, 0);
   lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+  make_score_pill(parent, app::desk().name, my_score, theme::mint(), g.opp_name, opp_score,
+                  theme::hot());
 
   const char * status = "Your turn - tap a line";
   char wait_buf[48];
@@ -2676,9 +2789,6 @@ void fill_db_play(lv_obj_t * parent) {
     status = wait_buf;
   }
   make_status(parent, status);
-
-  make_score_pill(parent, app::desk().name, my_score, theme::mint(), g.opp_name, opp_score,
-                  theme::hot());
 
   auto owner_color = [&](int8_t owner) -> lv_color_t {
     if (owner == g.my_side) return theme::mint();
@@ -2692,9 +2802,21 @@ void fill_db_play(lv_obj_t * parent) {
   constexpr int kThickClaim = 8;
   constexpr int kThickEmpty = 3;
   constexpr int kOrigin = 4;
-  constexpr int kBoardInner = 310;
-  constexpr int kStep = (kBoardInner - kDot) / games::db::kBox;
-  constexpr int kBoard = kStep * games::db::kBox + kDot + kOrigin * 2;
+  lv_obj_update_layout(parent);
+  const int avail_w = (int)lv_obj_get_content_width(parent);
+  const int content_h = (int)lv_obj_get_content_height(parent);
+  const int pad_row = (int)lv_obj_get_style_pad_row(parent, LV_PART_MAIN);
+  int used = 0;
+  const uint32_t nch = lv_obj_get_child_count(parent);
+  for (uint32_t i = 0; i < nch; ++i) used += (int)lv_obj_get_height(lv_obj_get_child(parent, i));
+  if (nch > 0) used += pad_row * (int)nch;
+  int avail_h = content_h - used;
+  if (avail_h < 300) avail_h = 300;
+  int side = avail_w < avail_h ? avail_w : avail_h;
+  if (side < 318) side = 318; /* prior board size */
+  if (side > 420) side = 420;
+  const int kStep = (side - kDot - kOrigin * 2) / games::db::kBox;
+  const int kBoard = kStep * games::db::kBox + kDot + kOrigin * 2;
 
   lv_obj_t * board = lv_obj_create(parent);
   lv_obj_remove_style_all(board);
@@ -2839,6 +2961,9 @@ lv_obj_t * game_db_build() {
     lv_obj_set_style_pad_ver(dock, 4, 0);
     lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_height(body, WP_VER_RES - kTopbarH - kDockCompactH);
+    lv_obj_set_style_pad_top(body, 0, 0);
+    lv_obj_set_style_pad_bottom(body, 2, 0);
+    lv_obj_set_style_pad_row(body, 2, 0);
     lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
     fill_db_play(body);
     if (app::db().over) {

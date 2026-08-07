@@ -15,7 +15,7 @@ namespace wp {
 namespace ui {
 namespace {
 
-constexpr int kCanvasW = 360;
+constexpr int kCanvasW = 420; /* body content ~452 after pad */
 constexpr int kCanvasH = 280;
 constexpr int kQ = 120;
 
@@ -253,15 +253,16 @@ void rebuild_tools() {
   for (int i = 0; i < 8; ++i) {
     lv_obj_t * sw = lv_obj_create(g_tools);
     lv_obj_remove_style_all(sw);
-    lv_obj_set_size(sw, 24, 24);
+    lv_obj_set_size(sw, 32, 32);
     lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(sw, lv_color_hex(kColors[i]), 0);
     lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
     if (!g_erase && g_color == i) {
-      lv_obj_set_style_border_width(sw, 2, 0);
+      lv_obj_set_style_border_width(sw, 3, 0);
       lv_obj_set_style_border_color(sw, theme::gold(), 0);
     }
     lv_obj_add_flag(sw, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(sw, 4);
     lv_obj_add_event_cb(
         sw,
         [](lv_event_t * e) {
@@ -273,16 +274,17 @@ void rebuild_tools() {
   }
 
   lv_obj_t * eras = lv_button_create(g_tools);
-  lv_obj_set_size(eras, 36, 28);
-  lv_obj_set_style_radius(eras, 8, 0);
+  lv_obj_set_size(eras, 40, 32);
+  lv_obj_set_style_radius(eras, 10, 0);
   lv_obj_set_style_bg_color(eras, g_erase ? theme::gold() : theme::panel(), 0);
   lv_obj_set_style_shadow_width(eras, 0, 0);
   lv_obj_set_style_pad_all(eras, 2, 0);
+  lv_obj_set_ext_click_area(eras, 4);
 
   /* Classic pink rubber eraser (no Unicode eraser glyph). */
   lv_obj_t * eras_ico = lv_obj_create(eras);
   lv_obj_remove_style_all(eras_ico);
-  lv_obj_set_size(eras_ico, 22, 14);
+  lv_obj_set_size(eras_ico, 26, 16);
   lv_obj_set_style_radius(eras_ico, 3, 0);
   lv_obj_set_style_bg_color(eras_ico, lv_color_hex(0xf48fb1), 0);
   lv_obj_set_style_bg_opa(eras_ico, LV_OPA_COVER, 0);
@@ -294,7 +296,7 @@ void rebuild_tools() {
 
   lv_obj_t * band = lv_obj_create(eras_ico);
   lv_obj_remove_style_all(band);
-  lv_obj_set_size(band, 6, 14);
+  lv_obj_set_size(band, 7, 16);
   lv_obj_set_style_bg_color(band, lv_color_hex(0xb8bcc8), 0);
   lv_obj_set_style_bg_opa(band, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(band, 0, 0);
@@ -304,7 +306,7 @@ void rebuild_tools() {
 
   lv_obj_t * tip = lv_obj_create(eras_ico);
   lv_obj_remove_style_all(tip);
-  lv_obj_set_size(tip, 4, 14);
+  lv_obj_set_size(tip, 5, 16);
   lv_obj_set_style_bg_color(tip, lv_color_hex(0xffc1d5), 0);
   lv_obj_set_style_bg_opa(tip, LV_OPA_COVER, 0);
   lv_obj_align(tip, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -322,12 +324,14 @@ void rebuild_tools() {
   for (int w = 1; w <= 3; ++w) {
     const char * lab = w == 1 ? "S" : (w == 2 ? "M" : "L");
     lv_obj_t * b = lv_button_create(g_tools);
-    lv_obj_set_size(b, 28, 24);
+    lv_obj_set_size(b, 32, 32);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(b, g_width == w ? theme::gold() : theme::panel(), 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_ext_click_area(b, 4);
     lv_obj_t * l = lv_label_create(b);
     lv_label_set_text(l, lab);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(l, g_width == w ? lv_color_hex(0x1a1200) : theme::ink(), 0);
     lv_obj_center(l);
     lv_obj_add_event_cb(
@@ -381,22 +385,24 @@ lv_obj_t * doodle_screen() {
   lv_obj_set_flex_grow(draw, 1);
   lv_obj_set_flex_flow(draw, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(draw, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(draw, 8, 0);
+  lv_obj_set_style_pad_row(draw, 12, 0);
+  lv_obj_set_style_pad_top(draw, 4, 0);
   lv_obj_add_flag(draw, LV_OBJ_FLAG_HIDDEN);
   lv_obj_remove_flag(draw, LV_OBJ_FLAG_SCROLLABLE);
 
   g_tools = lv_obj_create(draw);
   lv_obj_remove_style_all(g_tools);
   lv_obj_set_width(g_tools, lv_pct(100));
-  lv_obj_set_height(g_tools, 30);
+  lv_obj_set_height(g_tools, 40);
   lv_obj_set_flex_flow(g_tools, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(g_tools, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(g_tools, 5, 0);
+  lv_obj_set_style_pad_column(g_tools, 4, 0);
   lv_obj_remove_flag(g_tools, LV_OBJ_FLAG_SCROLLABLE);
   rebuild_tools();
 
   g_canvas = lv_canvas_create(draw);
   lv_obj_set_size(g_canvas, kCanvasW, kCanvasH);
+  lv_obj_set_style_margin_top(g_canvas, 6, 0);
   lv_obj_set_style_radius(g_canvas, 12, 0);
   lv_obj_set_style_clip_corner(g_canvas, true, 0);
   lv_canvas_set_buffer(g_canvas, g_cbuf, kCanvasW, kCanvasH, LV_COLOR_FORMAT_ARGB8888);

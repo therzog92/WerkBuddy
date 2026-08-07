@@ -484,6 +484,31 @@ lv_obj_t * utils_folder_screen() {
   return scr;
 }
 
+/** Swipe-left reveal delete: clip viewport + horizontal scroller [front | X]. */
+constexpr int kCheckRowH = 48;
+constexpr int kCheckDelW = 56;
+constexpr int kCheckBodyPadX = 14;
+
+void checklist_close_rows(lv_obj_t * body, lv_obj_t * except_scroller) {
+  const uint32_t n = lv_obj_get_child_count(body);
+  for (uint32_t i = 0; i < n; ++i) {
+    lv_obj_t * clip = lv_obj_get_child(body, i);
+    if (!clip || lv_obj_get_child_count(clip) == 0) continue;
+    lv_obj_t * sc = lv_obj_get_child(clip, 0);
+    if (!sc || sc == except_scroller) continue;
+    if (lv_obj_get_scroll_x(sc) != 0) lv_obj_scroll_to_x(sc, 0, LV_ANIM_ON);
+  }
+}
+
+void checklist_snap_row(lv_event_t * e) {
+  lv_obj_t * sc = (lv_obj_t *)lv_event_get_target(e);
+  const int x = lv_obj_get_scroll_x(sc);
+  const int target = (x > kCheckDelW / 2) ? kCheckDelW : 0;
+  if (x == target) return;
+  if (target) checklist_close_rows(lv_obj_get_parent(lv_obj_get_parent(sc)), sc);
+  lv_obj_scroll_to_x(sc, target, LV_ANIM_ON);
+}
+
 lv_obj_t * checklist_screen() {
   checklist::init();
   lv_obj_t * scr = make_screen();
@@ -494,32 +519,69 @@ lv_obj_t * checklist_screen() {
   const int n = checklist::count();
   if (n == 0) make_tagline(body, "No tasks - tap Add.");
 
+  const int32_t row_w = WP_HOR_RES - (kCheckBodyPadX * 2);
+
   for (int i = 0; i < n; ++i) {
     const checklist::Item * it = checklist::at(i);
     if (!it) continue;
-    lv_obj_t * row = lv_obj_create(body);
-    lv_obj_remove_style_all(row);
-    lv_obj_set_width(row, lv_pct(100));
-    lv_obj_set_height(row, 48);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(row, 8, 0);
-    lv_obj_set_style_bg_color(row, theme::panel(), 0);
-    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(row, 12, 0);
-    lv_obj_set_style_pad_hor(row, 8, 0);
 
-    lv_obj_t * tog = lv_button_create(row);
-    lv_obj_set_height(tog, 40);
-    lv_obj_set_flex_grow(tog, 1);
-    lv_obj_set_style_bg_opa(tog, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_shadow_width(tog, 0, 0);
-    lv_obj_set_style_pad_hor(tog, 4, 0);
-    lv_obj_set_flex_flow(tog, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(tog, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(tog, 10, 0);
+    lv_obj_t * clip = lv_obj_create(body);
+    lv_obj_remove_style_all(clip);
+    lv_obj_set_size(clip, row_w, kCheckRowH);
+    lv_obj_set_style_radius(clip, 12, 0);
+    lv_obj_set_style_clip_corner(clip, true, 0);
+    lv_obj_set_style_bg_color(clip, theme::danger(), 0);
+    lv_obj_set_style_bg_opa(clip, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(clip, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(clip, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t * box = lv_obj_create(tog);
+    lv_obj_t * scroller = lv_obj_create(clip);
+    lv_obj_remove_style_all(scroller);
+    lv_obj_set_size(scroller, row_w, kCheckRowH);
+    lv_obj_set_pos(scroller, 0, 0);
+    lv_obj_set_flex_flow(scroller, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(scroller, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(scroller, 0, 0);
+    lv_obj_set_style_pad_column(scroller, 0, 0);
+    lv_obj_set_scroll_dir(scroller, LV_DIR_HOR);
+    lv_obj_set_scrollbar_mode(scroller, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_flag(scroller, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(scroller, LV_OBJ_FLAG_SCROLL_ELASTIC);
+    lv_obj_add_event_cb(scroller, checklist_snap_row, LV_EVENT_SCROLL_END, nullptr);
+    lv_obj_add_event_cb(
+        scroller,
+        [](lv_event_t * e) {
+          lv_obj_t * sc = (lv_obj_t *)lv_event_get_target(e);
+          checklist_close_rows(lv_obj_get_parent(lv_obj_get_parent(sc)), sc);
+        },
+        LV_EVENT_SCROLL_BEGIN, nullptr);
+
+    lv_obj_t * front = lv_obj_create(scroller);
+    lv_obj_remove_style_all(front);
+    lv_obj_set_size(front, row_w, kCheckRowH);
+    lv_obj_set_flex_flow(front, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(front, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_hor(front, 8, 0);
+    lv_obj_set_style_pad_column(front, 10, 0);
+    lv_obj_set_style_bg_color(front, theme::panel(), 0);
+    lv_obj_set_style_bg_opa(front, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(front, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(front, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(
+        front,
+        [](lv_event_t * e) {
+          lv_obj_t * fr = (lv_obj_t *)lv_event_get_target(e);
+          lv_obj_t * sc = lv_obj_get_parent(fr);
+          if (lv_obj_get_scroll_x(sc) > 4) {
+            lv_obj_scroll_to_x(sc, 0, LV_ANIM_ON);
+            return;
+          }
+          checklist::toggle((int)(intptr_t)lv_event_get_user_data(e));
+          go_checklist();
+        },
+        LV_EVENT_CLICKED, (void *)(intptr_t)i);
+
+    lv_obj_t * box = lv_obj_create(front);
     lv_obj_remove_style_all(box);
     lv_obj_set_size(box, 28, 28);
     lv_obj_set_style_radius(box, 8, 0);
@@ -539,29 +601,25 @@ lv_obj_t * checklist_screen() {
       lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
     }
 
-    lv_obj_t * lab = lv_label_create(tog);
+    lv_obj_t * lab = lv_label_create(front);
     lv_label_set_text(lab, it->text);
     lv_obj_set_style_text_color(lab, it->done ? theme::muted() : theme::ink(), 0);
     lv_obj_set_style_text_font(lab, &lv_font_montserrat_16, 0);
     lv_label_set_long_mode(lab, LV_LABEL_LONG_DOT);
     lv_obj_set_flex_grow(lab, 1);
+    lv_obj_set_width(lab, LV_SIZE_CONTENT);
     lv_obj_remove_flag(lab, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_add_event_cb(
-        tog,
-        [](lv_event_t * e) {
-          checklist::toggle((int)(intptr_t)lv_event_get_user_data(e));
-          go_checklist();
-        },
-        LV_EVENT_CLICKED, (void *)(intptr_t)i);
-
-    lv_obj_t * rm = lv_button_create(row);
-    lv_obj_set_size(rm, 40, 40);
-    lv_obj_set_style_radius(rm, 10, 0);
+    lv_obj_t * rm = lv_button_create(scroller);
+    lv_obj_set_size(rm, kCheckDelW, kCheckRowH);
+    lv_obj_set_style_radius(rm, 0, 0);
     lv_obj_set_style_bg_color(rm, theme::danger(), 0);
+    lv_obj_set_style_bg_opa(rm, LV_OPA_COVER, 0);
     lv_obj_set_style_shadow_width(rm, 0, 0);
+    lv_obj_set_style_pad_all(rm, 0, 0);
     lv_obj_t * xl = lv_label_create(rm);
     lv_label_set_text(xl, LV_SYMBOL_CLOSE);
+    lv_obj_set_style_text_color(xl, lv_color_hex(0xffffff), 0);
     lv_obj_center(xl);
     lv_obj_add_event_cb(
         rm,

@@ -29,13 +29,13 @@ IconColors colors_for(AppIcon icon) {
   /* Match web .app-glyph-* linear-gradient(145deg, …) endpoints. */
   switch (icon) {
     case AppIcon::Werk: return {u32(theme::hot()), u32(theme::gold())};
-    case AppIcon::Games: return {0x5a6a88, 0x3d4a66};
+    case AppIcon::Games: return {0x5b8cff, 0x7c5cff}; /* blue → violet */
     case AppIcon::Doodle: return {0xe87858, 0x9a7ad4};
     case AppIcon::Timer: return {u32(theme::mint()), u32(theme::gold())};
-    case AppIcon::Settings: return {0x6a7280, 0x4a5568};
+    case AppIcon::Settings: return {0xa78bfa, 0x4f46e5}; /* lilac → indigo */
     case AppIcon::Utilities: return {u32(theme::mint()), u32(theme::hot())};
     case AppIcon::Checklist: return {u32(theme::gold()), u32(theme::mint())};
-    case AppIcon::Calculator: return {0x6a7280, 0x2a2438};
+    case AppIcon::Calculator: return {0x38bdf8, 0x2563eb}; /* sky → blue */
     case AppIcon::Ttt: return {0x5b8cff, 0x7c5cff};
     case AppIcon::Sttt:
       return {u32(theme::hot()), u32(lv_color_mix(theme::hot(), theme::mint(), 128))};

@@ -155,7 +155,7 @@ lv_obj_t * hub_screen() {
   lv_snprintf(desk, sizeof(desk), "%s's Desk", app::desk().name);
   lv_label_set_text(g_desk, desk);
   lv_obj_set_style_text_color(g_desk, theme::muted(), 0);
-  lv_obj_set_style_text_font(g_desk, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(g_desk, &lv_font_montserrat_16, 0);
 
   g_clock = lv_label_create(hero);
   lv_label_set_text(g_clock, cb);

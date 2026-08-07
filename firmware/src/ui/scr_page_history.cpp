@@ -55,9 +55,9 @@ lv_obj_t * page_history_screen() {
       lv_obj_set_height(row, LV_SIZE_CONTENT);
       lv_obj_set_style_bg_color(row, theme::panel(), 0);
       lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
-      lv_obj_set_style_radius(row, 12, 0);
-      lv_obj_set_style_pad_all(row, 10, 0);
-      lv_obj_set_style_pad_row(row, 4, 0);
+      lv_obj_set_style_radius(row, 14, 0);
+      lv_obj_set_style_pad_all(row, 14, 0);
+      lv_obj_set_style_pad_row(row, 6, 0);
       lv_obj_set_flex_flow(row, LV_FLEX_FLOW_COLUMN);
       lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -73,12 +73,12 @@ lv_obj_t * page_history_screen() {
       lv_label_set_text(dir, e->dir == page_log::Dir::Out ? "Sent" : "Got");
       lv_obj_set_style_text_color(dir, e->dir == page_log::Dir::Out ? theme::mint() : theme::gold(),
                                   0);
-      lv_obj_set_style_text_font(dir, &lv_font_montserrat_12, 0);
+      lv_obj_set_style_text_font(dir, &lv_font_montserrat_14, 0);
 
       lv_obj_t * name = lv_label_create(top);
       lv_label_set_text(name, e->peer_name[0] ? e->peer_name : "—");
       lv_obj_set_style_text_color(name, theme::ink(), 0);
-      lv_obj_set_style_text_font(name, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_font(name, &lv_font_montserrat_16, 0);
       lv_obj_set_flex_grow(name, 1);
 
       char tb[24];
@@ -86,7 +86,7 @@ lv_obj_t * page_history_screen() {
       lv_obj_t * when = lv_label_create(top);
       lv_label_set_text(when, tb);
       lv_obj_set_style_text_color(when, theme::muted(), 0);
-      lv_obj_set_style_text_font(when, &lv_font_montserrat_12, 0);
+      lv_obj_set_style_text_font(when, &lv_font_montserrat_14, 0);
 
       lv_obj_t * msg_row = lv_obj_create(row);
       lv_obj_remove_style_all(msg_row);
@@ -97,12 +97,12 @@ lv_obj_t * page_history_screen() {
                             LV_FLEX_ALIGN_CENTER);
       lv_obj_set_style_pad_column(msg_row, 8, 0);
 
-      if (e->emoji[0]) make_emoji_image(msg_row, e->emoji, 22);
+      if (e->emoji[0]) make_emoji_image(msg_row, e->emoji, 26);
 
       lv_obj_t * msg = lv_label_create(msg_row);
       lv_label_set_text(msg, e->message[0] ? e->message : "(no message)");
       lv_obj_set_style_text_color(msg, theme::muted(), 0);
-      lv_obj_set_style_text_font(msg, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_font(msg, &lv_font_montserrat_16, 0);
       lv_label_set_long_mode(msg, LV_LABEL_LONG_WRAP);
       lv_obj_set_flex_grow(msg, 1);
     }
