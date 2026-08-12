@@ -6,6 +6,8 @@ namespace wp {
 namespace ui {
 
 lv_obj_t * settings_screen();
+/** Rebuild Settings while keeping the current scroll position (scan / add peer). */
+void refresh_settings_keep_scroll();
 lv_obj_t * keyboard_screen_name();
 lv_obj_t * keyboard_screen_setup_name();
 lv_obj_t * keyboard_screen_factory_reset();

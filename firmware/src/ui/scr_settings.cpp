@@ -19,6 +19,7 @@
 #include <ctime>
 
 #ifdef WP_DEVICE
+#include "device_net.h"
 #include "wifi_jobs.h"
 #endif
 
@@ -334,10 +335,15 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
 
 void on_scan(lv_event_t * /*e*/) {
   app::desk().nearby_count = 0;
+#ifdef WP_DEVICE
+  /* Wi‑Fi scan/sync can leave the radio off channel 1 — re-home before discover. */
+  net::restore_espnow_radio();
+#endif
   proto::Msg m;
   m.type = proto::MsgType::Discover;
   std::snprintf(m.from_id, sizeof(m.from_id), "%s", app::desk().id);
-  std::snprintf(m.from_name, sizeof(m.from_name), "%s", app::desk().name);
+  std::snprintf(m.from_name, sizeof(m.from_name), "%s",
+                app::desk().name[0] ? app::desk().name : "Desk");
   app::send(m);
   toast("Scanning desks...");
 }
@@ -762,6 +768,11 @@ void open_time_picker() {
 }
 
 }  // namespace
+
+void refresh_settings_keep_scroll() {
+  settings_remember_scroll();
+  go_settings();
+}
 
 lv_obj_t * settings_screen() {
   app::Desk & d = app::desk();
@@ -1236,7 +1247,7 @@ lv_obj_t * settings_screen() {
         [](lv_event_t * e) {
           const int idx = (int)(intptr_t)lv_event_get_user_data(e);
           if (idx >= 0 && idx < app::desk().peer_count) app::remove_peer(app::desk().peers[idx].id);
-          go_settings();
+          refresh_settings_keep_scroll();
         },
         LV_EVENT_CLICKED, (void *)(intptr_t)i);
   }
@@ -1271,7 +1282,7 @@ lv_obj_t * settings_screen() {
               app::Desk & desk = app::desk();
               if (idx >= 0 && idx < desk.nearby_count)
                 app::add_peer(desk.nearby[idx].id, desk.nearby[idx].name);
-              go_settings();
+              refresh_settings_keep_scroll();
             },
             LV_EVENT_CLICKED, (void *)(intptr_t)i);
       } else {

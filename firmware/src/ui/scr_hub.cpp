@@ -340,15 +340,6 @@ lv_obj_t * hub_screen() {
                       [](lv_event_t * /*e*/) { go_settings(); }, kGlyph, kColW, kColH,
                       &lv_font_montserrat_12);
 
-  lv_obj_t * status = lv_label_create(body);
-  char sb[56];
-  const int n = app::desk().peer_count;
-  lv_snprintf(sb, sizeof(sb), "%d desk%s nearby", n, n == 1 ? "" : "s");
-  lv_label_set_text(status, sb);
-  lv_obj_set_style_text_color(status, theme::muted(), 0);
-  lv_obj_set_style_text_font(status, &lv_font_montserrat_12, 0);
-  lv_obj_set_style_text_opa(status, LV_OPA_70, 0);
-
   return scr;
 }
 

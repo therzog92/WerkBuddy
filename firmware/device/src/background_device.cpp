@@ -6,6 +6,7 @@
 #include "app/background.h"
 
 #include "app/app.h"
+#include "device_net.h"
 
 #include <DNSServer.h>
 #include <LittleFS.h>
@@ -397,8 +398,8 @@ void stop_job() {
     g_upload.close();
     g_upload = File();
   }
-  /* Restore open SoftAP used for ESP-NOW (same name/channel as espnow_app_link). */
-  WiFi.softAP("WerkBuddy", nullptr, kApChannel);
+  /* Restore open SoftAP used for ESP-NOW (channel 1). */
+  net::restore_espnow_radio();
   Serial.println("BG upload SoftAP stopped");
 }
 

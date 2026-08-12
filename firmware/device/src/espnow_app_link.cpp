@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 
 #include <cstring>
 
@@ -15,17 +16,17 @@ namespace net {
 namespace {
 
 constexpr uint8_t kChannel = 1;
+constexpr size_t kRxDepth = 12;
 uint8_t kBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 uint8_t g_mac[6] = {};
 char g_mac_id[16] = {};
 char g_mac_pretty[18] = {};
 
-struct Slot {
-  bool pending = false;
-  proto::Msg msg;
-};
-volatile bool g_rx_flag = false;
-Slot g_rx;
+proto::Msg g_rx[kRxDepth];
+volatile size_t g_rx_head = 0;
+volatile size_t g_rx_tail = 0;
+volatile size_t g_rx_count = 0;
+portMUX_TYPE g_rx_mux = portMUX_INITIALIZER_UNLOCKED;
 
 bool mac_eq(const uint8_t * a, const uint8_t * b) { return std::memcmp(a, b, 6) == 0; }
 
@@ -47,21 +48,28 @@ void ensure_peer(const uint8_t mac[6]) {
 }
 
 void queue_msg(const proto::Msg & msg) {
-  g_rx.msg = msg;
-  g_rx.pending = true;
-  g_rx_flag = true;
+  portENTER_CRITICAL(&g_rx_mux);
+  if (g_rx_count >= kRxDepth) {
+    g_rx_head = (g_rx_head + 1) % kRxDepth;
+    --g_rx_count;
+  }
+  g_rx[g_rx_tail] = msg;
+  g_rx_tail = (g_rx_tail + 1) % kRxDepth;
+  ++g_rx_count;
+  portEXIT_CRITICAL(&g_rx_mux);
 }
 
 void send_discover_reply() {
   proto::Msg reply{};
   reply.type = proto::MsgType::DiscoverReply;
   std::snprintf(reply.from_id, sizeof(reply.from_id), "%s", g_mac_id);
-  std::snprintf(reply.from_name, sizeof(reply.from_name), "%s", app::desk().name);
+  const char * name = app::desk().name[0] ? app::desk().name : "Desk";
+  std::snprintf(reply.from_name, sizeof(reply.from_name), "%s", name);
   uint8_t frame[kDiscoverSize];
   const int n = pack_msg(reply, g_mac, frame, sizeof(frame));
   if (n > 0) esp_now_send(kBroadcast, frame, (size_t)n);
-  /* Also share clock so a desk coming back from power-loss can catch up. */
-  app::broadcast_time_sync();
+  /* Do NOT send TimeSync here — it raced DiscoverReply in the old 1-slot RX
+   * queue and made Scan desks look empty. Boot / Sync time still broadcast. */
 }
 
 void handle_frame(const uint8_t * data, int len) {
@@ -97,9 +105,20 @@ void on_recv(const uint8_t * mac, const uint8_t * data, int len) {
 
 }  // namespace
 
+void restore_espnow_radio() {
+  WiFi.disconnect(false /*wifioff*/, false /*erase*/);
+  delay(30);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP("WerkBuddy", nullptr, kChannel);
+  esp_wifi_set_channel(kChannel, WIFI_SECOND_CHAN_NONE);
+  delay(30);
+  Serial.printf("ESP-NOW radio restored ch=%d\n", WiFi.channel());
+}
+
 void link_init() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP("WerkBuddy", nullptr, kChannel);
+  esp_wifi_set_channel(kChannel, WIFI_SECOND_CHAN_NONE);
   delay(80);
   WiFi.macAddress(g_mac);
   mac_to_id(g_mac, g_mac_id, sizeof(g_mac_id));
@@ -126,7 +145,10 @@ void link_init() {
 void link_send(const proto::Msg & msg) {
   proto::Msg m = msg;
   if (!m.from_id[0]) std::snprintf(m.from_id, sizeof(m.from_id), "%s", g_mac_id);
-  if (!m.from_name[0]) std::snprintf(m.from_name, sizeof(m.from_name), "%s", app::desk().name);
+  if (!m.from_name[0]) {
+    const char * name = app::desk().name[0] ? app::desk().name : "Desk";
+    std::snprintf(m.from_name, sizeof(m.from_name), "%s", name);
+  }
 
   uint8_t frame[kEspNowMax];
   const int n = pack_msg(m, g_mac, frame, sizeof(frame));
@@ -151,12 +173,20 @@ void link_send(const proto::Msg & msg) {
 }
 
 void link_poll() {
-  if (!g_rx_flag) return;
-  Slot slot = g_rx;
-  g_rx.pending = false;
-  g_rx_flag = false;
-  if (!slot.pending) return;
-  app::handle_msg(slot.msg);
+  for (;;) {
+    proto::Msg msg;
+    bool have = false;
+    portENTER_CRITICAL(&g_rx_mux);
+    if (g_rx_count > 0) {
+      msg = g_rx[g_rx_head];
+      g_rx_head = (g_rx_head + 1) % kRxDepth;
+      --g_rx_count;
+      have = true;
+    }
+    portEXIT_CRITICAL(&g_rx_mux);
+    if (!have) break;
+    app::handle_msg(msg);
+  }
 }
 
 const char * own_mac_id() { return g_mac_id; }

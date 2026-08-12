@@ -5,6 +5,7 @@
 #include "wifi_jobs.h"
 
 #include "app/app.h"
+#include "device_net.h"
 
 #include <WiFi.h>
 #include <time.h>
@@ -16,14 +17,8 @@ namespace wp {
 namespace wifi_jobs {
 namespace {
 
-constexpr uint8_t kChannel = 1;
-constexpr int kJoinTries = 40;   /* *250ms = 10s */
+constexpr int kJoinTries = 40; /* *250ms = 10s */
 constexpr int kNtpTries = 40;
-
-void restore_espnow_ap() {
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP("WerkBuddy", nullptr, kChannel);
-}
 
 }  // namespace
 
@@ -46,7 +41,7 @@ int scan(ScanAp * out, int max_out) {
     ++count;
   }
   WiFi.scanDelete();
-  restore_espnow_ap();
+  net::restore_espnow_radio();
   return count;
 }
 
@@ -61,7 +56,7 @@ bool sync_time(char * err, size_t err_n) {
   Serial.printf("WiFi sync: joining %s\n", d.wifi_ssid);
   d.wifi_connected = true;
   WiFi.mode(WIFI_AP_STA);
-  WiFi.disconnect(true, false);
+  WiFi.disconnect(false, false);
   delay(50);
   WiFi.begin(d.wifi_ssid, d.wifi_pass[0] ? d.wifi_pass : nullptr);
 
@@ -75,24 +70,22 @@ bool sync_time(char * err, size_t err_n) {
   }
   if (!joined) {
     d.wifi_connected = false;
-    WiFi.disconnect(true, false);
-    restore_espnow_ap();
+    WiFi.disconnect(false, false);
+    net::restore_espnow_radio();
     if (err && err_n) std::snprintf(err, err_n, "Could not join %s", d.wifi_ssid);
     Serial.println("WiFi sync: join FAILED");
     return false;
   }
 
   Serial.printf("WiFi sync: joined IP=%s\n", WiFi.localIP().toString().c_str());
-  /* US Central with DST. configTzTime so localtime() is not stuck on UTC. */
   configTzTime("CST6CDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov");
 
   bool got = false;
   for (int i = 0; i < kNtpTries; ++i) {
     time_t now = time(nullptr);
-    if (now > 1700000000) { /* ~2023+ */
+    if (now > 1700000000) {
       struct tm ti {};
       localtime_r(&now, &ti);
-      /* Sanity: Central wall hour should not match UTC when offset is hours. */
       Serial.printf("WiFi sync: local %04d-%02d-%02d %02d:%02d\n", ti.tm_year + 1900,
                     ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min);
       got = true;
@@ -101,9 +94,9 @@ bool sync_time(char * err, size_t err_n) {
     delay(250);
   }
 
-  WiFi.disconnect(true, false);
+  WiFi.disconnect(false, false);
   delay(50);
-  restore_espnow_ap();
+  net::restore_espnow_radio();
   d.wifi_connected = false;
 
   if (!got) {
@@ -112,7 +105,6 @@ bool sync_time(char * err, size_t err_n) {
     return false;
   }
 
-  /* TZ via configTzTime; caller bumps sync_gen + ESP-NOW TimeSync. */
   d.clock_offset_ms = 0;
   Serial.println("WiFi sync: OK");
   return true;

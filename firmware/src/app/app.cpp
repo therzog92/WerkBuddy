@@ -12,6 +12,7 @@
 #include "ui/chrome.h"
 #include "ui/nav.h"
 #include "ui/scr_doodle.h"
+#include "ui/scr_settings.h"
 
 #include "lvgl/lvgl.h"
 
@@ -483,8 +484,9 @@ void handle_msg(const proto::Msg & m) {
         copy_str(d.nearby[d.nearby_count].name, proto::kMaxName, m.from_name);
         d.nearby_count++;
       }
-      ui::toast_fmt("%s is nearby", m.from_name);
-      if (ui::current_screen() == ui::Screen::Settings) ui::go_settings();
+      ui::toast_fmt("%s is nearby", m.from_name[0] ? m.from_name : "Desk");
+      /* Refresh Nearby list without jumping scroll to the top of Settings. */
+      if (ui::current_screen() == ui::Screen::Settings) ui::refresh_settings_keep_scroll();
       return;
     }
 
