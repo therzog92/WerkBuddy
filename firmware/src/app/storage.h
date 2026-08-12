@@ -19,6 +19,8 @@ namespace storage {
 /** Load persisted settings into the desk. Returns false when nothing saved yet. */
 bool load(app::Desk & desk);
 void save(const app::Desk & desk);
+/** Wipe all persisted desk settings (+ games blob on device). Used by factory reset. */
+void wipe();
 
 /**
  * Active-games blob (opaque bytes from active_games).

@@ -110,7 +110,8 @@ bool load(app::Desk & d) {
     }
   }
   d.peer_count = peer_i > 0 ? peer_i : d.peer_count;
-  if (!saw_setup) d.setup_done = true; /* existing installs */
+  /* Legacy file with no setup_done key: named ⇒ already configured. */
+  if (!saw_setup) d.setup_done = d.name[0] != '\0';
 
   if (timeout_scheme >= kTimeoutScheme) {
     d.timeout_id = raw_timeout;
@@ -182,6 +183,11 @@ bool save_games_blob(const void * src, size_t len) {
   const size_t n = std::fwrite(src, 1, len, f);
   std::fclose(f);
   return n == len;
+}
+
+void wipe() {
+  std::remove(kFile);
+  std::remove("werkpager_games.bin");
 }
 
 }  // namespace storage

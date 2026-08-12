@@ -294,11 +294,9 @@ void init() {
 
   storage::load(g_desk);
   if (g_desk.timeout_id >= kTimeoutCount) g_desk.timeout_id = 2;
-  /* Thin-shell NVS had name/theme but no setup_done — skip wizard if named. */
-  if (!g_desk.setup_done && g_desk.name[0]) {
-    g_desk.setup_done = true;
-    storage::save(g_desk);
-  }
+  /* setup_done is authoritative from storage — do not infer from name.
+   * (Old code auto-completed setup when name was set, which undid factory
+   * reset after a power cut: empty NVS name left the default in RAM.) */
 
 #if defined(WP_DEVICE)
   /* Power cut clears chip RTC; revive last wall time from NVS (frozen at save). */
@@ -345,6 +343,9 @@ void factory_reset() {
   checklist::clear_all();
   background::clear();
   clear_all_games();
+
+  /* Drop NVS/file first so a power cut mid-reset cannot resurrect old keys. */
+  storage::wipe();
 
   g_desk = Desk{};
   copy_str(g_desk.id, sizeof(g_desk.id), id);

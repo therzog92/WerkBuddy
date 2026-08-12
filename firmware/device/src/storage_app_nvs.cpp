@@ -17,8 +17,11 @@ Preferences prefs;
 bool load(app::Desk & d) {
   if (!prefs.begin("werkpager", true)) return false;
 
-  String name = prefs.getString("name", "");
-  if (name.length()) std::snprintf(d.name, sizeof(d.name), "%s", name.c_str());
+  /* Always apply — empty string must clear any in-RAM default name. */
+  {
+    String name = prefs.getString("name", "");
+    std::snprintf(d.name, sizeof(d.name), "%s", name.c_str());
+  }
   d.theme = (uint8_t)prefs.getUChar("theme", d.theme);
   if (d.theme > 7) d.theme = 0;
   d.bg_preset = (uint8_t)prefs.getUChar("bg_preset", d.bg_preset);
@@ -27,8 +30,14 @@ bool load(app::Desk & d) {
   d.brightness = (uint8_t)prefs.getUChar("brightness", d.brightness);
   if (d.brightness < 10) d.brightness = 10;
   d.rotate_180 = prefs.getUChar("rot180", d.rotate_180) ? 1 : 0;
-  d.setup_done = prefs.getBool("setup_done", false);
-  if (!d.setup_done) d.setup_done = prefs.getBool("setup", false); /* thin-shell key */
+  if (prefs.isKey("setup_done")) {
+    d.setup_done = prefs.getBool("setup_done", false);
+  } else if (prefs.isKey("setup")) {
+    d.setup_done = prefs.getBool("setup", false); /* thin-shell key */
+  } else {
+    /* Truly legacy NVS with a name but no setup flag → already configured. */
+    d.setup_done = d.name[0] != '\0';
+  }
   d.clock_offset_ms = prefs.getLong64("clock_off", d.clock_offset_ms);
   if (!prefs.isKey("clock_off")) d.clock_offset_ms = prefs.getLong64("clk_off", d.clock_offset_ms);
   d.wall_epoch = prefs.getUInt("wall_ep", d.wall_epoch);
@@ -97,6 +106,7 @@ void save(const app::Desk & d) {
   prefs.putUChar("brightness", d.brightness);
   prefs.putUChar("rot180", d.rotate_180 ? 1 : 0);
   prefs.putBool("setup_done", d.setup_done);
+  prefs.remove("setup"); /* drop thin-shell alias so load won't resurrect it */
   prefs.putLong64("clock_off", d.clock_offset_ms);
   prefs.putUInt("wall_ep", d.wall_epoch);
   prefs.putUInt("clock_gen", d.clock_sync_gen);
@@ -116,13 +126,26 @@ void save(const app::Desk & d) {
   }
 
   prefs.putInt("peers", d.peer_count);
-  for (int i = 0; i < d.peer_count; ++i) {
-    char ik[12], nk[12];
+  for (int i = 0; i < app::kMaxPeers; ++i) {
+    char ik[12], nk[12], legacy[8];
     std::snprintf(ik, sizeof(ik), "p%di", i);
     std::snprintf(nk, sizeof(nk), "p%dn", i);
-    prefs.putString(ik, d.peers[i].id);
-    prefs.putString(nk, d.peers[i].name);
+    std::snprintf(legacy, sizeof(legacy), "p%d", i);
+    if (i < d.peer_count) {
+      prefs.putString(ik, d.peers[i].id);
+      prefs.putString(nk, d.peers[i].name);
+    } else {
+      prefs.remove(ik);
+      prefs.remove(nk);
+    }
+    prefs.remove(legacy); /* thin-shell "mac|Name" slots */
   }
+  prefs.end();
+}
+
+void wipe() {
+  if (!prefs.begin("werkpager", false)) return;
+  prefs.clear();
   prefs.end();
 }
 

@@ -143,7 +143,7 @@ struct DbGame {
 
 struct Desk {
   char id[proto::kMaxId] = "mac-tommy";
-  char name[proto::kMaxName] = "Tommy";
+  char name[proto::kMaxName] = {}; /* empty until setup / NVS load */
   uint8_t theme = 0;
   uint8_t bg_preset = 0; /* background::Preset — used when no custom photo */
   uint8_t timeout_id = 2;  /* 0=1m 1=3m 2=5m 3=10m 4=off — default 5m */
