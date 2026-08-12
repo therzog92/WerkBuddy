@@ -77,7 +77,7 @@ QA jump: `WERKPAGER_SCREEN=<name>` + `WERKPAGER_SHOT=1` (run from `firmware/buil
 |-------|------|
 | **−1** | LVGL PC sim |
 | **0–5** | Glass bring-up through doodle — **done on desks as of v0.67** (see `docs/STATUS_v0.67.md`) |
-| **6+** | Device OTA, polish (sound / Memory FS / soak) |
+| **6+** | Device OTA, polish (sound / soak) — Memory faces are baked RGB565 in flash |
 
 **Leave-off doc:** [`docs/STATUS_v0.67.md`](docs/STATUS_v0.67.md) — read before continuing after a break.
 

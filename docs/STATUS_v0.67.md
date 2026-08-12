@@ -20,12 +20,15 @@ The **full LVGL desk app** runs on glass (shared UI from `firmware/src` + device
 | Wi‑Fi Sync time (ephemeral STA + SNTP, Central TZ) | Working |
 | Peer `TimeSync` (newest sync_gen wins) + NVS wall restore | Working |
 | Screen **Flip 180** (Settings) | Working |
-| Custom message OSK (blank unless editing custom; partial redraw) | Working |
-| Emoji on device | **Curated baked RGB565A8** in flash (`emoji_assets_gen.cpp`) — not full Twemoji FS |
-| Device drive USB `shot`/`tap` | **Code present, compiled OFF** (`WERKPAGER_DEVICE_DRIVE=0`) |
+| OSK | Fixed (non-scrollable); solid fill; partial redraw |
+| Idle **Black** | **TFT_BL off** — tap to wake; Clock keeps backlight |
+| Setup / post-reset | Auto-blank after **1m** (black + BL off) for bag safety |
+| Emoji on device | **Curated baked RGB565A8** in flash (`emoji_assets_gen.cpp`) |
+| Memory face art | **Baked RGB565** (`bake_memory_assets.py` → `memory_assets_gen.cpp`) |
+| Desk discovery / Scan | RX ring buffer; Settings keeps scroll on Nearby refresh |
+| Device drive USB `shot`/`tap` | **Compiled OFF** (`WERKPAGER_DEVICE_DRIVE=0`) |
 | OTA Updates on device | **Stub** — toast only; sim lists GitHub Releases |
 | Sound / battery % / DS3231 RTC | Not started |
-| Memory face art | **Baked RGB565 in flash** (`bake_memory_assets.py` → `memory_assets_gen.cpp`) — no LittleFS decode |
 
 ---
 
@@ -92,7 +95,9 @@ Rebuild/flash. Host tools: `firmware/scripts/drive-device.ps1` / `drive-device.p
 | `firmware/device/src/wifi_jobs.cpp` | Scan + Sync time |
 | `firmware/device/src/msg_codec.cpp` | Binary ESP-NOW |
 | `firmware/device/src/emoji_assets_gen.cpp` | Baked emoji (regen: `scripts/bake_emoji_assets.py`) |
+| `firmware/device/src/memory_assets_gen.cpp` | Baked Memory faces (regen: `scripts/bake_memory_assets.py`) |
 | `firmware/src/ui/display_perf.*` | PARTIAL default; FULL for call/alarm wash |
+| `firmware/src/ui/brightness.*` + `main.cpp` `wp_device_set_backlight` | Dim veil + hardware `TFT_BL` |
 | `firmware/src/ui/orient.*` | Flip 180 |
 | `AGENTS.md` | Agent rules |
 | `docs/ESP32_PORT_PLAN.md` | Architecture |
