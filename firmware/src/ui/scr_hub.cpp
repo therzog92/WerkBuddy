@@ -297,8 +297,40 @@ lv_obj_t * hub_screen() {
   constexpr int kGlyph = 48;
   constexpr int kColW = 72;
   constexpr int kColH = 76;
-  make_app_icon_sized(corners, AppIcon::Doodle, "Doodle", [](lv_event_t * /*e*/) { go_doodle(); },
-                      kGlyph, kColW, kColH, &lv_font_montserrat_12);
+  lv_obj_t * doodle = make_app_icon_sized(corners, AppIcon::Doodle, "Doodle",
+                                          [](lv_event_t * /*e*/) { go_doodle(); }, kGlyph, kColW,
+                                          kColH, &lv_font_montserrat_12);
+  /* Pulse like WerkPager when remote strokes arrived while we were elsewhere. */
+  if (app::desk().doodle_unread && lv_obj_get_child_count(doodle) > 0) {
+    lv_obj_t * wrap = lv_obj_get_child(doodle, 0);
+    if (wrap && lv_obj_get_child_count(wrap) > 0) {
+      lv_obj_t * glyph = lv_obj_get_child(wrap, 0);
+      lv_obj_set_style_transform_pivot_x(glyph, 36, 0);
+      lv_obj_set_style_transform_pivot_y(glyph, 36, 0);
+      constexpr int32_t kBase = (48 * 256) / 72;
+      constexpr int32_t kLo = (kBase * 90) / 100;
+      constexpr int32_t kHi = (kBase * 110) / 100;
+      lv_obj_set_style_transform_scale(glyph, kLo, 0);
+      lv_anim_t a;
+      lv_anim_init(&a);
+      lv_anim_set_var(&a, glyph);
+      lv_anim_set_values(&a, 0, 1000);
+      lv_anim_set_duration(&a, 1400);
+      lv_anim_set_playback_duration(&a, 1400);
+      lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+      lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+      lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
+        auto * g = static_cast<lv_obj_t *>(obj);
+        constexpr int32_t kBase = (48 * 256) / 72;
+        constexpr int32_t kLo = (kBase * 90) / 100;
+        constexpr int32_t kHi = (kBase * 110) / 100;
+        const lv_opa_t opa = (lv_opa_t)(150 + (v * 105) / 1000);
+        lv_obj_set_style_bg_opa(g, opa, 0);
+        lv_obj_set_style_transform_scale(g, kLo + ((kHi - kLo) * v) / 1000, 0);
+      });
+      lv_anim_start(&a);
+    }
+  }
   make_app_icon_sized(corners, AppIcon::Games, "Games", [](lv_event_t * /*e*/) { go_games_folder(); },
                       kGlyph, kColW, kColH, &lv_font_montserrat_12);
   make_app_icon_sized(corners, AppIcon::Utilities, "Utilities",

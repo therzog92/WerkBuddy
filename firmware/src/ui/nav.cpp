@@ -1,8 +1,10 @@
 #include "ui/nav.h"
 
 #include "app/app.h"
+#include "app/active_games.h"
 #include "app/desk_timer.h"
 #include "ui/brightness.h"
+#include "ui/display_perf.h"
 #include "ui/scr_doodle.h"
 #include "ui/scr_games.h"
 #include "ui/scr_active_games.h"
@@ -26,16 +28,46 @@ namespace {
 
 Screen g_screen = Screen::Hub;
 Screen g_before_idle = Screen::Hub;
+int g_idle_focus = -1; /* focus_index saved at idle so we can resume matches */
+bool g_idle_had_games = false; /* snapshot for wake recovery if RAM slots vanish */
+bool g_wake_pending = false;
 bool g_has_compose_peer = false;
 app::Peer g_compose_peer;
+
+bool is_game_board(Screen s) {
+  return s == Screen::Ttt || s == Screen::Sttt || s == Screen::C4 || s == Screen::Bs ||
+         s == Screen::Ck || s == Screen::Mem || s == Screen::Rv || s == Screen::Db;
+}
+
+app::GameKind kind_for_screen(Screen s) {
+  switch (s) {
+    case Screen::Ttt: return app::GameKind::Ttt;
+    case Screen::Sttt: return app::GameKind::Sttt;
+    case Screen::C4: return app::GameKind::C4;
+    case Screen::Bs: return app::GameKind::Bs;
+    case Screen::Ck: return app::GameKind::Ck;
+    case Screen::Mem: return app::GameKind::Mem;
+    case Screen::Rv: return app::GameKind::Rv;
+    case Screen::Db: return app::GameKind::Db;
+    default: return app::GameKind::Ttt;
+  }
+}
 
 void load(lv_obj_t * scr, Screen which) {
   lv_obj_t * old = lv_screen_active();
   g_screen = which;
-  lv_screen_load(scr);
-  if (old && old != scr) lv_obj_delete_async(old);
+  /* Instant swap — animated loads + partial RGB strips look like a top-down wipe. */
+  if (old && old != scr)
+    lv_screen_load_anim(scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, true);
+  else
+    lv_screen_load(scr);
+  const bool wash =
+      which == Screen::Incoming ||
+      (which == Screen::Timer && desk_timer::is_finished());
   brightness::set_page_boost(which == Screen::Incoming || which == Screen::Outgoing ||
                              (which == Screen::Timer && desk_timer::is_finished()));
+  /* Full-frame only while a screen-wide color wash is animating. */
+  display_perf::prefer_full_frame(wash);
 }
 
 void idle_tick(lv_timer_t * /*t*/) {
@@ -83,14 +115,62 @@ void go_incoming() { load(pager_incoming_screen(), Screen::Incoming); }
 void go_games_folder() { load(games_folder_screen(), Screen::GamesFolder); }
 void go_active_games() { load(active_games_screen(), Screen::ActiveGames); }
 void go_utils_folder() { load(utils_folder_screen(), Screen::UtilsFolder); }
-void go_ttt() { load(game_ttt_screen(), Screen::Ttt); }
-void go_sttt() { load(game_sttt_screen(), Screen::Sttt); }
-void go_c4() { load(game_c4_screen(), Screen::C4); }
-void go_battleship() { load(game_bs_screen(), Screen::Bs); }
-void go_checkers() { load(game_ck_screen(), Screen::Ck); }
-void go_memory() { load(game_mem_screen(), Screen::Mem); }
-void go_reversi() { load(game_rv_screen(), Screen::Rv); }
-void go_dots() { load(game_db_screen(), Screen::Db); }
+void go_ttt() {
+  if (g_screen == Screen::Ttt) {
+    game_reload_inplace();
+    return;
+  }
+  load(game_ttt_screen(), Screen::Ttt);
+}
+void go_sttt() {
+  if (g_screen == Screen::Sttt) {
+    game_reload_inplace();
+    return;
+  }
+  load(game_sttt_screen(), Screen::Sttt);
+}
+void go_c4() {
+  if (g_screen == Screen::C4) {
+    game_reload_inplace();
+    return;
+  }
+  load(game_c4_screen(), Screen::C4);
+}
+void go_battleship() {
+  if (g_screen == Screen::Bs) {
+    game_reload_inplace();
+    return;
+  }
+  load(game_bs_screen(), Screen::Bs);
+}
+void go_checkers() {
+  if (g_screen == Screen::Ck) {
+    game_reload_inplace();
+    return;
+  }
+  load(game_ck_screen(), Screen::Ck);
+}
+void go_memory() {
+  if (g_screen == Screen::Mem) {
+    game_reload_inplace();
+    return;
+  }
+  load(game_mem_screen(), Screen::Mem);
+}
+void go_reversi() {
+  if (g_screen == Screen::Rv) {
+    game_reload_inplace();
+    return;
+  }
+  load(game_rv_screen(), Screen::Rv);
+}
+void go_dots() {
+  if (g_screen == Screen::Db) {
+    game_reload_inplace();
+    return;
+  }
+  load(game_db_screen(), Screen::Db);
+}
 void go_scoreboard() { load(scoreboard_screen(), Screen::Scoreboard); }
 void go_g2048() { load(game_g2048_screen(), Screen::G2048); }
 
@@ -115,12 +195,49 @@ void go_page_history() { load(page_history_screen(), Screen::PageHistory); }
 
 void go_idle() {
   if (g_screen == Screen::Idle) return;
+  /* Don't lock over an incoming page / live call — those need the action UI. */
+  if (app::desk().incoming.active || app::desk().outgoing.active) return;
   g_before_idle = g_screen;
+  g_idle_focus = app::focus_index();
+  g_idle_had_games = app::active_count() > 0;
+  /* Flush matches before tearing down the board — survives wake corruption + unplug. */
+  app::games_persist();
   load(idle_screen(), Screen::Idle);
 }
 
-void wake_from_idle() {
+void finish_wake_from_idle(void * /*ud*/) {
+  g_wake_pending = false;
   if (g_screen != Screen::Idle) return;
+  lv_display_trigger_activity(nullptr);
+
+  /*
+   * If RAM slots vanished while locked (seen after deleting the game screen /
+   * waking from inside a PRESSED handler), reload the idle-time snapshot.
+   */
+  if (app::active_count() == 0 && g_idle_had_games) {
+    if (app::games_restore()) app::games_probe_peers();
+  }
+  g_idle_had_games = false;
+
+  /* Restore focus saved at lock — go_* boards need it or they show an empty peer pick. */
+  if (g_idle_focus >= 0) {
+    app::GameSlot * saved = app::slot_at(g_idle_focus);
+    if (saved && app::slot_is_live(*saved)) app::set_focus(g_idle_focus);
+  }
+  if (is_game_board(g_before_idle)) {
+    const int live = app::find_live_kind(kind_for_screen(g_before_idle));
+    if (live >= 0) app::set_focus(live);
+  }
+
+  /*
+   * Never rebuild a heavy game board from the press path — that froze touch.
+   * If any match is live, land on Active Games (tap row to resume).
+   */
+  if (app::active_count() > 0) {
+    go_active_games();
+    return;
+  }
+
   switch (g_before_idle) {
     case Screen::Werk: go_werk(); break;
     case Screen::Compose:
@@ -132,14 +249,6 @@ void wake_from_idle() {
     case Screen::GamesFolder: go_games_folder(); break;
     case Screen::ActiveGames: go_active_games(); break;
     case Screen::UtilsFolder: go_utils_folder(); break;
-    case Screen::Ttt: go_ttt(); break;
-    case Screen::Sttt: go_sttt(); break;
-    case Screen::C4: go_c4(); break;
-    case Screen::Bs: go_battleship(); break;
-    case Screen::Ck: go_checkers(); break;
-    case Screen::Mem: go_memory(); break;
-    case Screen::Rv: go_reversi(); break;
-    case Screen::Db: go_dots(); break;
     case Screen::Scoreboard: go_scoreboard(); break;
     case Screen::G2048: go_g2048(); break;
     case Screen::Doodle: go_doodle(); break;
@@ -151,6 +260,16 @@ void wake_from_idle() {
     case Screen::Incoming: sync_ui(); break;
     default: go_hub(); break;
   }
+}
+
+void wake_from_idle() {
+  if (g_screen != Screen::Idle) return;
+  if (g_wake_pending) return;
+  /* Defer screen swap — deleting Idle from its own PRESSED/CLICKED handler
+   * corrupted nearby BSS (including active game slots) on device. */
+  g_wake_pending = true;
+  lv_display_trigger_activity(nullptr);
+  app::schedule(1, finish_wake_from_idle, nullptr);
 }
 
 void sync_ui() {

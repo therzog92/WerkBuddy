@@ -11,7 +11,7 @@ Instructions for Cursor (and other) agents working in this repo. Prefer this fil
 - **Link:** ESP-NOW between desks. Wi‑Fi is optional and **ephemeral** (join for SNTP/OTA, then disconnect — never stay on STA). Paging MAY drop while STA is up (same radio/channel). See port plan §8b.
 - **UX source of truth:** `firmware/` LVGL PC sim (`scripts/run-sim.ps1`). Do not revive the archived web sim for new work.
 - **Interactive QA (PC sim):** Prefer the TCP drive (`WERKPAGER_DRIVE=1`, `scripts/drive-sim.ps1`) — `tap` / `swipe` / `shot` / `screen` — over `WERKPAGER_SCREEN` jumps when validating real navigation. Keep screen jumps for static README galleries.
-- **Interactive QA (real glass):** Planned **device drive** over USB (`docs/ESP32_PORT_PLAN.md` §8c) — same shot/tap idea for agents. Prefer **two boards / two COM ports** so the agent can act as both desks for ESP-NOW pager + games. **Debug builds only**; must compile out of release so normal desk use is unaffected. No Settings UI for it.
+- **Interactive QA (real glass):** USB **device drive** (`docs/ESP32_PORT_PLAN.md` §8c) — `shot` / `tap` for agents. **Default OFF** in `firmware/device/platformio.ini` (`WERKPAGER_DEVICE_DRIVE=0`) so shipping builds pay zero cost; set to `1` only for debug flashes. No Settings UI. Prefer two COM ports (A+B) for ESP-NOW QA.
 - **Protocol:** Keep `protocol/messages.js` type names in sync with `firmware/src/protocol/messages.h`. Binary on device; ~250 B ESP-NOW budget.
 
 ---
@@ -75,9 +75,10 @@ QA jump: `WERKPAGER_SCREEN=<name>` + `WERKPAGER_SHOT=1` (run from `firmware/buil
 
 | Phase | Goal |
 |-------|------|
-| **−1** | LVGL PC sim (current) |
-| **0** | Glass + touch + ESP-NOW ping (bring-up Sessions) |
-| **1** | Shell / NVS / idle |
-| **2+** | Pager, games, doodle on device |
+| **−1** | LVGL PC sim |
+| **0–5** | Glass bring-up through doodle — **done on desks as of v0.67** (see `docs/STATUS_v0.67.md`) |
+| **6+** | Device OTA, polish (sound / Memory FS / soak) |
 
-Do **not** flash the full desk app on day one. Night-one success = LCD + touch + brand + two-board ping.
+**Leave-off doc:** [`docs/STATUS_v0.67.md`](docs/STATUS_v0.67.md) — read before continuing after a break.
+
+Do **not** assume boards are unflashed. Night-one glass+ping is complete; continue from OTA / polish unless the operator says otherwise.

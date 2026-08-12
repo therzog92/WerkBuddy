@@ -80,7 +80,13 @@ inline void place_ship(Fleet & f, int ship_idx, int x, int y, bool horiz) {
     const int yy = horiz ? y : y + i;
     f.grid[yy][xx] = (int8_t)ship_idx;
   }
-  f.ships[ship_idx] = {(int8_t)x, (int8_t)y, (uint8_t)len, horiz, 0, true};
+  Ship & s = f.ships[ship_idx];
+  s.x = (int8_t)x;
+  s.y = (int8_t)y;
+  s.len = (uint8_t)len;
+  s.horiz = horiz;
+  s.hits = 0;
+  s.placed = true;
 }
 
 inline void remove_ship(Fleet & f, int ship_idx) {

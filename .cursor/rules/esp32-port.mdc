@@ -7,14 +7,14 @@ alwaysApply: true
 
 When working on this project toward real desks / Guition ESP32-S3 **4848S040** / ESP-NOW:
 
-1. **Read** `AGENTS.md` and `docs/ESP32_PORT_PLAN.md` before writing firmware or changing the wire protocol.
-2. When boards arrive (or the operator asks what to plug in / flash), **also read** `docs/HARDWARE_BRINGUP_MANUAL.md`. Walk through **exactly one Session** at a time — do not dump the whole ladder.
-3. Treat **`firmware/` LVGL (PC SDL sim)** as the UX + behavior source of truth. Prefer fixing flows there when iterating product behavior; **shipping UI is the same LVGL stack** on ESP32 later. The former `web/` HTML sim is archived outside this repo — do not revive it for new work.
+1. **Read** `AGENTS.md`, `docs/STATUS_v0.67.md` (leave-off), and `docs/ESP32_PORT_PLAN.md` before writing firmware or changing the wire protocol.
+2. Boards are **already brought up** as of **v0.67** — do not restart Session 0 unless the operator asks. For hardware tasks, stay focused (one flash/feature at a time).
+3. Treat **`firmware/` LVGL (PC SDL sim + device)** as the UX + behavior source of truth. Prefer fixing flows in `firmware/src` (shared). The former `web/` HTML sim is archived outside this repo — do not revive it for new work.
 4. Keep **`protocol/messages.js` type names** in sync with any C/C++ enums; don’t silently rename.
 5. Prefer **binary ESP-NOW payloads** on device (JSON was sim-only). Respect ~250B practical limits (doodle chunking already designed).
 6. Do **not** invent hover-only UI, always-on Wi‑Fi, or cloud requirements for v1. Multi-game resume (cap 24, one type per peer, Forfeit+Home, Active Games, 24h monotonic auto-forfeit) is in-scope — see port plan. Optional Wi‑Fi is **ephemeral STA only** (SNTP/OTA then disconnect); paging MAY drop while associated — see port plan §8b.
-7. **Phase −1 (pre-hardware):** edit `firmware/src/ui/*`, run `firmware/scripts/run-sim.ps1` (or `-Shot` for `sim-out/preview.png`).
-8. When boards arrive, start at **Session 0** in the bring-up manual (unbox), then Phase 0 glass + ping, then Phase 1 shell — **not games first**.
+7. **PC sim:** edit `firmware/src/ui/*`, run `firmware/scripts/run-sim.ps1` (or `-Shot` for `sim-out/preview.png`).
+8. **Device:** `firmware/device` PlatformIO project. Flash COM5/COM6. See `firmware/device/README.md`.
 9. Product brand is **WerkBuddy**; the Home pager app tile/screens stay **WerkPager**.
-10. **LiPo:** rear **BAT** is MX1.25 2P (`BAT+`/`BAT−`) for a single LiPo cell only — never 5 V. See `AGENTS.md` § LiPo. UART 4P is serial, not I²C for an RTC.
-11. **Device drive** (USB `shot`/`tap` for agents on glass) is roadmap §8c — **debug builds only**, compile out of release, no product UI, must not alter ESP-NOW/game behavior when disarmed. Prefer **two driven boards** for ESP-NOW / game QA once Phase 0 ping works.
+10. **LiPo:** rear **BAT** MX1.25 2P — **B+ bottom/red**, **B− top/black**; single LiPo cell only — never 5 V. See `AGENTS.md` § LiPo. UART 4P is serial, not I²C for an RTC.
+11. **Device drive** (USB `shot`/`tap`) — code stays in tree; **`WERKPAGER_DEVICE_DRIVE=0` by default** (zero cost stubs). Set to `1` only for agent glass QA. No Settings UI. Prefer two COM ports when driving ESP-NOW QA.

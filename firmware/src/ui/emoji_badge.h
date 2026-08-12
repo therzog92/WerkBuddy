@@ -9,6 +9,9 @@ const char * emoji_to_twemoji_id(const char * emoji_utf8);
 const char * emoji_chip_label(const char * emoji_utf8);
 const char * emoji_png_path(const char * emoji_utf8);
 
+/** LVGL image src for an emoji: FS path (sim) or baked lv_image_dsc_t* (device). */
+const void * emoji_image_src(const char * emoji_utf8);
+
 /**
  * LVGL imgfont that maps Unicode emoji → Twemoji PNGs.
  * Use as text_font on labels that contain real emoji UTF-8.

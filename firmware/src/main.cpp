@@ -11,6 +11,7 @@
 #include "sim/screenshot.h"
 #include "ui/brightness.h"
 #include "ui/nav.h"
+#include "ui/orient.h"
 #include "ui/scr_doodle.h"
 #include "ui/scr_games.h"
 #include "ui/theme.h"
@@ -59,6 +60,7 @@ int main() {
   wp::desk_timer::init();
   wp::theme::set(static_cast<wp::theme::Id>(wp::app::desk().theme));
   wp::ui::brightness::init();
+  wp::ui::orient::apply();
   wp::ui::idle_init();
 
   const char * scr_name = std::getenv("WERKPAGER_SCREEN");

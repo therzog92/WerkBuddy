@@ -10,7 +10,11 @@ struct EmojiCategory {
   int count;
 };
 
+#ifdef WP_DEVICE
+constexpr int kEmojiCategoryCount = 1; /* curated desk pack */
+#else
 constexpr int kEmojiCategoryCount = 7;
+#endif
 extern const EmojiCategory kEmojiCategories[kEmojiCategoryCount];
 
 /** Flat index across all categories (for callbacks). */

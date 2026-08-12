@@ -114,7 +114,10 @@ lv_obj_t * idle_screen() {
   lv_obj_set_size(scr, WP_HOR_RES, WP_VER_RES);
   lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_event_cb(scr, [](lv_event_t * /*e*/) { wake_from_idle(); }, LV_EVENT_CLICKED, nullptr);
+  /* PRESSED wakes even if CLICKED is eaten by a toast / short tap glitch. */
+  auto wake = [](lv_event_t * /*e*/) { wake_from_idle(); };
+  lv_obj_add_event_cb(scr, wake, LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_event_cb(scr, wake, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(scr, on_deleted, LV_EVENT_DELETE, nullptr);
 
   const bool clock_mode = app::desk().idle_mode == 1;

@@ -127,6 +127,8 @@ const char * emoji_png_path(const char * emoji_utf8) {
   return path;
 }
 
+const void * emoji_image_src(const char * emoji_utf8) { return emoji_png_path(emoji_utf8); }
+
 lv_font_t * emoji_imgfont(uint16_t height_px) {
   static std::unordered_map<uint16_t, lv_font_t *> cache;
   auto it = cache.find(height_px);

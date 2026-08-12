@@ -1,6 +1,6 @@
 # WerkBuddy → ESP32 Port Plan
 
-**Status:** Web simulator complete. **Phase −1 complete enough** — full LVGL PC (SDL) app under `firmware/` (hub, pager, settings/OSK, all games, doodle, idle). Hardware on order.  
+**Status:** Web simulator complete. **Phase −1 complete enough** — full LVGL PC (SDL) app under `firmware/`. **Hardware:** Sessions 0–5 done (pager Call/Ack/Clear + toast OK). Next: Session 6 TTT. Polish note: pager peer-pick Home should be bottom dock, not a peer-like row.  
 **Primary target:** GUITION **ESP32-4848S040C_I** (ESP32-S3 N16R8, 4″ 480×480 capacitive ST7701 + GT911), ~3 desks.  
 **Link:** **ESP-NOW** desk-to-desk (no Wi‑Fi / no cloud required for core features).
 
@@ -417,7 +417,7 @@ Notes:
 
 - Internet / cloud sync  
 - More than ~3–8 peers discovered  
-- Persisting active games across full power-off (RAM slots for v1)  
+- ~~Persisting active games across full power-off~~ (now NVS/disk snapshots)  
 
 - Perfect CSS parity / web fonts on device  
 - Hover-only interactions  
@@ -443,9 +443,20 @@ Then: `docs/ESP32_PORT_PLAN.md` for architecture; do **not** skip to games.
 | 2026-08-04 | Phase −1: LVGL 9.3 + SDL2 PC sim (CMake/MinGW) | Full UI surface on PC (not just hub stub) |
 | 2026-08-04 | Bring-up manual written | `docs/HARDWARE_BRINGUP_MANUAL.md` |
 | 2026-08-06 | Device drive (§8c) on roadmap | Debug USB shot/tap; dual-COM A+B agent QA; compile-out for release; no product UI |
-| | Board model target | GUITION ESP32-4848S040C_I |
-| | SDK: _TBD_ | Lock in Session 2 of bring-up manual |
-| | LVGL version: **9.3** (PC); device pin later | Prefer 9.x on device if BSP allows |
+| 2026-08-11 | Session 0 done (Board A) | Sticker ESP32-4848S040; BAT 2P LiPo on hand (unplugged); BOOT/RST under rear cover; USB-C + CH340 |
+| 2026-08-11 | CH340 serial fixed | Removed broken Niimbot INF spoof; official WCH CH341SER → **COM5** (`USB-SERIAL CH340`) |
+| 2026-08-11 | Session 1 done (Board A) | Factory UI (Wi‑Fi setup) on glass; **touch OK**; no axis issues reported. Demo toolchain = stock firmware (no reflash yet) |
+| 2026-08-11 | Session 2 SDK lock | **PlatformIO + Arduino** (`espressif32`) under `firmware/device/` — ESP-NOW via `WiFi` + `esp_now.h` matches `espnow_link.cpp.hardware`; ephemeral STA OK later |
+| 2026-08-11 | Session 2 done (Board A) | COM5; ST7701 RGB + GT911 + LVGL **9.x** (9.5.0); **WERKBUDDY** + tap accent OK. Axis map not proven yet (full-screen hit target) — check in Session 3+ with localized UI |
+| 2026-08-11 | Session 3 done (A↔B) | ESP-NOW HELLO/ACK on glass + serial; ch 1; **Phase 0 exit**. A=`28:84:85:85:52:10` (COM5) B=`28:84:85:86:13:58` (COM6) |
+| 2026-08-11 | Session 4 done | Name/NVS/scan/peers OK on glass. Thin shell UI (not full sim chrome yet). Em-dash + nearby Save label nits noted/fixed |
+| 2026-08-11 | Session 5 done | Pager OK: send/receive, Acknowledge, Cancel, gold top-layer toast. Polish later: peer-pick Home as bottom dock (not peer-row lookalike) |
+| 2026-08-11 | Session 6 started | TTT invite/accept/move/forfeit on device + expand binary pack |
+| | Board A MAC | `28:84:85:85:52:10` (COM5) |
+| | Board B MAC | `28:84:85:86:13:58` (COM6) |
+| | Board model target | GUITION ESP32-4848S040C_I (confirmed on PCB) |
+| | SDK: **PlatformIO + Arduino** | Locked Session 2 — not IDF for v1 (can revisit if BSP forces it) |
+| | LVGL: **9.3** (PC) / **9.x** (device) | Device hello uses LVGL 9.5 via `lvgl/lvgl@^9.2.0`; same major as sim for UI port |
 | | FS: LittleFS vs SPIFFS: _TBD_ | |
 | | Binary protocol ver: 1 | |
 

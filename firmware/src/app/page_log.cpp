@@ -35,6 +35,10 @@ void copy_field(char * dst, size_t n, const char * src) {
 void init() {
   if (g_loaded) return;
   g_loaded = true;
+#ifdef WP_DEVICE
+  /* No POSIX filesystem on glass yet — RAM ring only (NVS later). */
+  return;
+#else
   FILE * f = std::fopen(kFile, "rb");
   if (!f) return;
   char line[256];
@@ -63,9 +67,13 @@ void init() {
   }
   g_head = g_count % kMaxEntries;
   std::fclose(f);
+#endif
 }
 
 void save() {
+#ifdef WP_DEVICE
+  return;
+#else
   FILE * f = std::fopen(kFile, "wb");
   if (!f) return;
   const int n = g_count;
@@ -76,6 +84,7 @@ void save() {
                  e.message, (long long)e.epoch_ms);
   }
   std::fclose(f);
+#endif
 }
 
 void add(Dir dir, const char * peer_name, const char * emoji, const char * message) {

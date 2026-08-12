@@ -30,3 +30,8 @@ Thumbs.db
 **/wifi_secrets.h
 
 firmware/assets/bg/
+dist/
+_scratch/
+firmware/device/_boot_*.txt
+firmware/device/scripts/__pycache__/
+

@@ -194,6 +194,9 @@ lv_obj_t * active_games_screen() {
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_hub(); });
 
+  /* Re-check peers after unplug/forfeit desync — stale rows drop when they reply gone. */
+  app::games_probe_peers();
+
   int idxs[app::kMaxActiveGames];
   const int n = app::list_sorted(idxs, app::kMaxActiveGames);
   if (n == 0) {

@@ -1,6 +1,7 @@
 #include "app/active_games.h"
 
 #include "app/score_log.h"
+#include "app/storage.h"
 #include "net/link.h"
 #include "protocol/messages.h"
 #include "ui/chrome.h"
@@ -9,6 +10,7 @@
 #include "lvgl/lvgl.h"
 
 #include <cstdio>
+#include <cstring>
 
 namespace wp {
 namespace app {
@@ -17,6 +19,24 @@ namespace {
 GameSlot g_slots[kMaxActiveGames];
 int g_focus = -1;
 lv_timer_t * g_forfeit_timer = nullptr;
+bool g_persist_dirty = false;
+
+constexpr uint32_t kGamesMagic = 0x31414757u; /* WGA1 */
+constexpr uint16_t kGamesVersion = 1;
+
+#pragma pack(push, 1)
+struct GamesHdr {
+  uint32_t magic;
+  uint16_t version;
+  int16_t focus;
+  uint16_t count;
+  uint16_t _pad;
+};
+struct GamesRec {
+  uint32_t turn_elapsed_ms;
+  uint8_t raw[sizeof(GameSlot)];
+};
+#pragma pack(pop)
 
 bool same(const char * a, const char * b) { return a && b && std::strcmp(a, b) == 0; }
 
@@ -154,6 +174,8 @@ bool outgoing_wait(const GameSlot & s) {
   }
 }
 
+void persist_now();
+
 void auto_forfeit_slot(int idx) {
   GameSlot & s = g_slots[idx];
   if (!slot_live(s) || s.invite_pending) return;
@@ -176,7 +198,16 @@ void auto_forfeit_slot(int idx) {
   if (was_focus || on_screen) ui::go_hub();
 }
 
+bool on_game_board_ui() {
+  using S = ui::Screen;
+  const S s = ui::current_screen();
+  return s == S::Ttt || s == S::Sttt || s == S::C4 || s == S::Bs || s == S::Ck || s == S::Mem ||
+         s == S::Rv || s == S::Db;
+}
+
 void forfeit_tick(lv_timer_t * /*t*/) {
+  /* NVS writes stall the RGB panel — never flush mid-board (caused your-turn glitches). */
+  if (g_persist_dirty && !on_game_board_ui()) persist_now();
   const uint32_t now = mono_ms();
   for (int i = 0; i < kMaxActiveGames; ++i) {
     GameSlot & s = g_slots[i];
@@ -190,15 +221,90 @@ void forfeit_tick(lv_timer_t * /*t*/) {
   }
 }
 
-GameSlot & require_focus(GameKind k) {
-  GameSlot * s = focused_kind(k);
-  if (!s) {
-    static GameSlot dummy;
-    dummy = GameSlot{};
-    dummy.kind = k;
-    return dummy;
+Invite & invite_dummy() {
+  static Invite d;
+  d = {};
+  return d;
+}
+
+template <typename T>
+T & game_dummy() {
+  static T d;
+  d = {};
+  return d;
+}
+
+void persist_now() {
+  alignas(4) static uint8_t buf[sizeof(GamesHdr) + sizeof(GamesRec) * kMaxActiveGames];
+  GamesHdr hdr{};
+  hdr.magic = kGamesMagic;
+  hdr.version = kGamesVersion;
+  hdr.focus = -1;
+  hdr.count = 0;
+
+  auto * recs = reinterpret_cast<GamesRec *>(buf + sizeof(GamesHdr));
+  const uint32_t now = mono_ms();
+  int packed_focus = -1;
+  for (int i = 0; i < kMaxActiveGames; ++i) {
+    if (!slot_live(g_slots[i])) continue;
+    if (i == g_focus) packed_focus = (int)hdr.count;
+    GamesRec & r = recs[hdr.count++];
+    uint32_t elapsed = 0;
+    if (g_slots[i].turn_started_ms != 0 && now >= g_slots[i].turn_started_ms)
+      elapsed = now - g_slots[i].turn_started_ms;
+    r.turn_elapsed_ms = elapsed;
+    std::memcpy(r.raw, &g_slots[i], sizeof(GameSlot));
   }
-  return *s;
+  hdr.focus = (int16_t)packed_focus;
+  std::memcpy(buf, &hdr, sizeof(hdr));
+  const size_t len = sizeof(GamesHdr) + sizeof(GamesRec) * hdr.count;
+  storage::save_games_blob(buf, len);
+  g_persist_dirty = false;
+}
+
+bool restore_now() {
+  alignas(4) static uint8_t buf[sizeof(GamesHdr) + sizeof(GamesRec) * kMaxActiveGames];
+  size_t len = sizeof(buf);
+  if (!storage::load_games_blob(buf, &len)) return false;
+  if (len < sizeof(GamesHdr)) return false;
+  GamesHdr hdr{};
+  std::memcpy(&hdr, buf, sizeof(hdr));
+  if (hdr.magic != kGamesMagic || hdr.version != kGamesVersion) return false;
+  if (hdr.count > kMaxActiveGames) return false;
+  if (len < sizeof(GamesHdr) + sizeof(GamesRec) * hdr.count) return false;
+
+  auto * recs = reinterpret_cast<GamesRec *>(buf + sizeof(GamesHdr));
+  GameKind focus_kind = GameKind::Count;
+  char focus_peer[proto::kMaxId] = {};
+  /* hdr.focus is an index into the packed live-slot list we wrote. */
+  if (hdr.focus >= 0 && hdr.focus < (int)hdr.count) {
+    GameSlot tmp{};
+    std::memcpy(&tmp, recs[hdr.focus].raw, sizeof(GameSlot));
+    if (tmp.used) {
+      focus_kind = tmp.kind;
+      copy_str(focus_peer, sizeof(focus_peer), opp_id_of(tmp));
+    }
+  }
+
+  for (int i = 0; i < kMaxActiveGames; ++i) g_slots[i] = GameSlot{};
+  g_focus = -1;
+
+  const uint32_t now = mono_ms();
+  int placed = 0;
+  for (uint16_t i = 0; i < hdr.count && placed < kMaxActiveGames; ++i) {
+    GameSlot s{};
+    std::memcpy(&s, recs[i].raw, sizeof(GameSlot));
+    if (!s.used) continue;
+    s.turn_started_ms = now - recs[i].turn_elapsed_ms;
+    g_slots[placed] = s;
+    if (focus_kind != GameKind::Count && s.kind == focus_kind &&
+        same(opp_id_of(s), focus_peer))
+      g_focus = placed;
+    ++placed;
+  }
+  if (g_focus < 0 && placed > 0) g_focus = 0;
+  g_persist_dirty = false;
+  return placed > 0;
 }
 
 }  // namespace
@@ -209,7 +315,29 @@ bool slot_is_live(const GameSlot & s) { return slot_live(s); }
 
 uint32_t mono_ms() { return lv_tick_get(); }
 
+void games_mark_dirty() { g_persist_dirty = true; }
+
+void games_persist() { persist_now(); }
+
+bool games_restore() { return restore_now(); }
+
+void games_probe_peers() {
+  for (int i = 0; i < kMaxActiveGames; ++i) {
+    if (!slot_live(g_slots[i])) continue;
+    const char * oid = opp_id_of(g_slots[i]);
+    if (!oid || !oid[0]) continue;
+    proto::Msg m;
+    m.type = proto::MsgType::GameProbe;
+    fill_from(m);
+    copy_str(m.to_id, sizeof(m.to_id), oid);
+    m.cell = (int8_t)g_slots[i].kind;
+    m.hit = false;
+    send(m);
+  }
+}
+
 void games_init() {
+  if (restore_now()) games_probe_peers();
   if (!g_forfeit_timer) g_forfeit_timer = lv_timer_create(forfeit_tick, 5000, nullptr);
 }
 
@@ -244,6 +372,13 @@ int find_slot(GameKind kind, const char * peer_id) {
   return -1;
 }
 
+int find_live_kind(GameKind kind) {
+  for (int i = 0; i < kMaxActiveGames; ++i) {
+    if (g_slots[i].used && g_slots[i].kind == kind && slot_live(g_slots[i])) return i;
+  }
+  return -1;
+}
+
 int alloc_slot(GameKind kind) {
   if (active_count() >= kMaxActiveGames) return -1;
   for (int i = 0; i < kMaxActiveGames; ++i) {
@@ -252,6 +387,7 @@ int alloc_slot(GameKind kind) {
     g_slots[i].used = true;
     g_slots[i].kind = kind;
     g_slots[i].turn_started_ms = mono_ms();
+    g_persist_dirty = true;
     return i;
   }
   return -1;
@@ -261,11 +397,14 @@ void free_slot(int idx) {
   if (idx < 0 || idx >= kMaxActiveGames) return;
   g_slots[idx] = GameSlot{};
   if (g_focus == idx) g_focus = -1;
+  /* Immediate persist so idle/wake NVS snapshot cannot revive a dropped match. */
+  persist_now();
 }
 
 void clear_all_games() {
   for (int i = 0; i < kMaxActiveGames; ++i) g_slots[i] = GameSlot{};
   g_focus = -1;
+  persist_now();
 }
 
 void set_focus(int idx) { g_focus = idx; }
@@ -329,6 +468,7 @@ bool is_my_turn(const GameSlot & s) {
 void note_turn_start(int idx) {
   if (idx < 0 || idx >= kMaxActiveGames) return;
   g_slots[idx].turn_started_ms = mono_ms();
+  g_persist_dirty = true;
 }
 
 bool is_viewing(GameKind kind, const char * peer_id) {
@@ -344,12 +484,16 @@ void notify_your_turn(GameKind kind, const char * opp_name, const char * peer_id
   std::snprintf(toast, sizeof(toast), "%s vs %s: Your Turn", kind_name(kind),
                 opp_name ? opp_name : "peer");
   ui::toast_fmt("%s", toast);
+  /* Hub strip is built once — rebuild so Your Turn pill appears without navigating away. */
+  if (ui::current_screen() == ui::Screen::Hub) ui::go_hub();
+  else if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
 }
 
 void refresh_viewing(GameKind kind, const char * peer_id) {
   if (is_viewing(kind, peer_id)) go_kind(kind);
-  /* Keep Active Games rows (Invite sent → Your turn) in sync. */
+  /* Keep Active Games / hub chrome in sync when not viewing the board. */
   if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
+  else if (ui::current_screen() == ui::Screen::Hub) ui::go_hub();
 }
 
 void open_slot(int idx) {
@@ -368,16 +512,43 @@ bool invite_active(GameKind kind) {
   return s && s->invite_pending && s->invite.active;
 }
 
-Invite & invite_ref(GameKind kind) { return require_focus(kind).invite; }
+Invite & invite_ref(GameKind kind) {
+  GameSlot * s = focused_kind(kind);
+  return s ? s->invite : invite_dummy();
+}
 
-TttGame & ttt() { return require_focus(GameKind::Ttt).g.ttt; }
-StttGame & sttt() { return require_focus(GameKind::Sttt).g.sttt; }
-C4Game & c4() { return require_focus(GameKind::C4).g.c4; }
-BsGame & bs() { return require_focus(GameKind::Bs).g.bs; }
-CkGame & ck() { return require_focus(GameKind::Ck).g.ck; }
-MemGame & mem() { return require_focus(GameKind::Mem).g.mem; }
-RvGame & rv() { return require_focus(GameKind::Rv).g.rv; }
-DbGame & db() { return require_focus(GameKind::Db).g.db; }
+TttGame & ttt() {
+  GameSlot * s = focused_kind(GameKind::Ttt);
+  return s ? s->g.ttt : game_dummy<TttGame>();
+}
+StttGame & sttt() {
+  GameSlot * s = focused_kind(GameKind::Sttt);
+  return s ? s->g.sttt : game_dummy<StttGame>();
+}
+C4Game & c4() {
+  GameSlot * s = focused_kind(GameKind::C4);
+  return s ? s->g.c4 : game_dummy<C4Game>();
+}
+BsGame & bs() {
+  GameSlot * s = focused_kind(GameKind::Bs);
+  return s ? s->g.bs : game_dummy<BsGame>();
+}
+CkGame & ck() {
+  GameSlot * s = focused_kind(GameKind::Ck);
+  return s ? s->g.ck : game_dummy<CkGame>();
+}
+MemGame & mem() {
+  GameSlot * s = focused_kind(GameKind::Mem);
+  return s ? s->g.mem : game_dummy<MemGame>();
+}
+RvGame & rv() {
+  GameSlot * s = focused_kind(GameKind::Rv);
+  return s ? s->g.rv : game_dummy<RvGame>();
+}
+DbGame & db() {
+  GameSlot * s = focused_kind(GameKind::Db);
+  return s ? s->g.db : game_dummy<DbGame>();
+}
 
 bool begin_match(GameKind kind, const char * peer_id) {
   if (!can_start(kind, peer_id)) return false;
@@ -385,6 +556,7 @@ bool begin_match(GameKind kind, const char * peer_id) {
   if (idx < 0) return false;
   set_focus(idx);
   g_slots[idx].invite_pending = false;
+  g_persist_dirty = true;
   return true;
 }
 
@@ -394,6 +566,7 @@ void accept_invite(GameKind kind) {
   s->invite_pending = false;
   s->invite = Invite{};
   s->turn_started_ms = mono_ms();
+  g_persist_dirty = true;
 }
 
 void end_focused() {

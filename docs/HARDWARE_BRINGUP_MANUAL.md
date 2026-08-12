@@ -78,7 +78,7 @@ Then do each Session when the agent says you’re ready. One chunk at a time.
 - Internet / cloud / NTP required for v1  
 - Hover-only UI  
 - Shipping JSON over ESP-NOW in production  
-- Persisting active games across full power-off  
+- ~~Persisting active games across full power-off~~ (NVS snapshots now)  
 
 - Perfect CSS pixel parity  
 

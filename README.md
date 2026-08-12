@@ -102,7 +102,7 @@ Requires MSYS2 MinGW + SDL2 (`C:\msys64\mingw64`). **F12** (or `-Shot`) saves `f
 | **Games** | Tic Tac Toe, Super TTT, Connect Four, Battleship, Checkers, Memory, Reversi, Dots & Boxes, **2048** (solo + high score), Scoreboard; up to 24 concurrent multiplayer (one type per peer); Forfeit + Home |
 | **Utilities** | Timer, Checklist, Calculator |
 | **Doodle** | Peer draw, colors, eraser, S/M/L strokes, chunked stroke sync |
-| **Settings** | Name, themes, brightness, background, timeout, idle, date & time, emojis, canned, peers, factory reset |
+| **Settings** | Name, themes, brightness, **screen Flip 180**, background SoftAP upload, timeout, idle, date & time, Wi‑Fi save + Sync time, emojis, canned, peers, factory reset |
 | **Setup** | First-run / post-reset: name + theme |
 | **Idle** | Black or clock |
 
@@ -122,10 +122,12 @@ Notable UX already baked in:
 
 ```
 protocol/           MessageType catalog (keep names in sync with C++)
-firmware/           LVGL app (PC SDL sim now → ESP32 later)
-  src/ui/           Screens
+firmware/           LVGL app (PC SDL sim + ESP32 device)
+  src/              Shared UI / app / games (sim + device)
+  device/           PlatformIO Guition 4848S040 project
   scripts/run-sim.ps1
 docs/
+  STATUS_v0.67.md               ★ Leave-off / pickup notes for agents
   ESP32_PORT_PLAN.md            Architecture + phases
   HARDWARE_BRINGUP_MANUAL.md    Session-by-session unbox → glass → ping
 AGENTS.md                       Instructions for Cursor agents (boards, LiPo, sessions)
@@ -139,24 +141,36 @@ AGENTS.md                       Instructions for Cursor agents (boards, LiPo, se
 - **Guition ESP32-4848S040** (ESP32-S3, 4″ 480×480 capacitive; ST7701 + GT911 typical)
 - **ESP-NOW** desk-to-desk (router optional)
 - Rear connectors (confirm silkscreen on your unit):
-  - **BAT** MX1.25 2P — LiPo cell only (`BAT+` / `BAT−`, ~3.0–4.2 V) — **not** 5 V
+  - **BAT** MX1.25 2P — LiPo cell only (`B+` / `B−`, ~3.0–4.2 V) — **not** 5 V. On these boards **B+ is bottom / red**, **B− is top / black**.
   - **UART** MX1.25 4P — `3V3` / `TXD` / `RXD` / `GND`
   - **Speak** MX1.25 2P — speaker
-- Optional **LiPo** on BAT keeps the desk powered without USB; wall-clock across full power-off still needs Sync time (Wi‑Fi) or a future external RTC
+- Optional **LiPo** on BAT keeps the desk powered without USB; after a full power cut the clock restores from NVS (frozen) then catches up via peer **TimeSync** or Wi‑Fi **Sync time**
+
+### Flash desks
+
+```powershell
+cd firmware/device
+pio run -t upload --upload-port COM5
+pio run -t upload --upload-port COM6
+```
+
+See `firmware/device/README.md` and **`docs/STATUS_v0.67.md`**.
 
 ---
 
-## When the boards arrive
+## When picking up after a break
 
-1. Open this repo in Cursor.
-2. Say:
+1. Read **`docs/STATUS_v0.67.md`** (exact leave-off: what works, what’s next, COM ports, BAT wiring, how to re-enable device drive).
+2. Read `AGENTS.md`.
+3. Suggested prompt:
 
-   > Boards are here — Guition ESP32-4848S040. Read `AGENTS.md` and `docs/HARDWARE_BRINGUP_MANUAL.md`. Walk me through **Session 0 only**.
+   > Read `docs/STATUS_v0.67.md` and `AGENTS.md`. Continue from device OTA unless I say otherwise.
 
-3. Do **one session at a time** (unbox → vendor demo → LVGL hello → ESP-NOW ping → shell → pager → games).
-4. Night-one goal: LCD + touch + tappable WERKBUDDY + two-desk ping — **not** the full game suite.
+---
 
-Details: `docs/HARDWARE_BRINGUP_MANUAL.md` and `docs/ESP32_PORT_PLAN.md`.
+## When the boards arrive (historical)
+
+Bring-up Sessions in `docs/HARDWARE_BRINGUP_MANUAL.md` were used for first glass. Desks are past that ladder as of **v0.67**.
 
 ---
 
@@ -164,9 +178,10 @@ Details: `docs/HARDWARE_BRINGUP_MANUAL.md` and `docs/ESP32_PORT_PLAN.md`.
 
 Paging/games stay **ESP-NOW**. Wi‑Fi is **ephemeral only** — never leave STA associated for long:
 
-- Save credentials in NVS; Settings can show “Saved: …” without staying on the AP
-- **Sync time** (SNTP) / **OTA** / similar: join briefly → do the job → **disconnect**
-- ESP-NOW and STA share the same 2.4 GHz radio. While STA is up, the radio follows the AP’s channel, so **paging/games MAY drop or go offline** until Wi‑Fi disconnects
+- Save credentials in NVS; Settings shows “Saved: …” without staying on the AP
+- **Sync time** (SNTP): join → sync (US Central) → disconnect → ESP-NOW **TimeSync** to peers
+- **OTA**: still stubbed on device (sim lists GitHub Releases); implement next
+- While STA is up, **paging/games MAY drop** until disconnect
 
 See `docs/ESP32_PORT_PLAN.md` §8b.
 
@@ -174,7 +189,7 @@ See `docs/ESP32_PORT_PLAN.md` §8b.
 
 ## Protocol
 
-Message kinds: `protocol/messages.js` ↔ `firmware/src/protocol/messages.h`. Prefer **compact binary** on the wire (~250 B ESP-NOW budget; doodle already chunks).
+Message kinds: `protocol/messages.js` ↔ `firmware/src/protocol/messages.h`. Prefer **compact binary** on the wire (~250 B ESP-NOW budget; doodle already chunks). Includes **`time_sync`** for peer clock leadership.
 
 ---
 
@@ -182,6 +197,8 @@ Message kinds: `protocol/messages.js` ↔ `firmware/src/protocol/messages.h`. Pr
 
 | Track | State |
 |-------|--------|
-| LVGL PC sim | Active UX + behavior surface |
-| Firmware on ESP32 | Not started — wait for boards; follow bring-up manual |
-| LiPo on BAT | Supported by hardware; safe power path documented in bring-up |
+| LVGL PC sim | UX + behavior surface (`scripts/run-sim.ps1`) |
+| Firmware on ESP32 | **Shipping on glass as v0.67** — see `docs/STATUS_v0.67.md` |
+| Device drive | Code in tree; **compiled OFF** by default |
+| Next up | Device OTA from GitHub Releases |
+| LiPo on BAT | Supported; wiring notes in STATUS doc |

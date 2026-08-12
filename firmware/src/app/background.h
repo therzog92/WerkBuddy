@@ -25,8 +25,12 @@ void preset_colors(Preset p, uint32_t * top, uint32_t * bot);
 Preset preset();
 void set_preset(Preset p);
 
-/** LVGL FS path (S:...) for the PNG wallpaper, or nullptr if none. */
-const char * lv_src();
+/**
+ * Wallpaper source for LVGL bg-image, or nullptr if none.
+ * Sim: FS path string (S:...). Device: baked lv_image_dsc_t* in PSRAM (not a JPEG path —
+ * streaming TJPGD every redraw is unusably slow).
+ */
+const void * lv_src();
 
 /** Absolute / relative filesystem path to the PNG (for existence checks). */
 const char * file_path();
@@ -40,12 +44,23 @@ void clear();
 /**
  * Read upload-server session (sim-data/bg_upload_session.json).
  * Fills url/local_url/qr_path for desk().id. Returns false if server not running.
+ * On device: starts SoftAP upload job and fills phone URL (qr_lv_src unused — use wifi_qr_payload).
  */
 bool upload_session(char * url, size_t url_n, char * local_url, size_t local_n,
                     char * qr_lv_src, size_t qr_n);
 
-/** Poll stamp file; returns true once when a new upload arrives. */
+/** Poll stamp file / SoftAP job; returns true once when a new upload arrives. */
 bool poll_new_upload();
+
+/** SoftAP job: pump DNS/HTTP (device). No-op on sim. */
+void upload_poll();
+/** Tear down SoftAP upload job (device). No-op on sim. */
+void end_upload_job();
+
+/** WIFI:… QR payload for SoftAP join, or nullptr if N/A. */
+const char * wifi_qr_payload();
+const char * softap_ssid();
+const char * softap_pass();
 
 /** Soft dark wash over wallpaper (0..255). Higher recolor = dimmer photo. */
 constexpr lv_opa_t kWashHub = 90;

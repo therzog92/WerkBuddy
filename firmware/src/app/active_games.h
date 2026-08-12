@@ -33,12 +33,22 @@ struct GameSlot {
   } g;
 };
 
-void games_init(); /* start auto-forfeit timer */
+void games_init(); /* start auto-forfeit timer; restore slots from NVS/disk */
+/** Mark registry dirty — flushed to NVS/disk within a few seconds or on idle. */
+void games_mark_dirty();
+/** Force-write live slots now (call before idle / power-sensitive moments). */
+void games_persist();
+/** Reload slots from last persist (wake recovery if RAM was wiped). */
+bool games_restore();
+/** Ask each live opponent whether they still have the match (clears stale NVS games). */
+void games_probe_peers();
 
 int active_count();
 int your_turn_count();
 bool can_start(GameKind kind, const char * peer_id);
 int find_slot(GameKind kind, const char * peer_id); /* -1 none */
+/** First live slot of this kind (-1 none). Used to restore focus after idle. */
+int find_live_kind(GameKind kind);
 int alloc_slot(GameKind kind);                      /* -1 full */
 void free_slot(int idx);
 void clear_all_games();

@@ -18,9 +18,18 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#if defined(WP_DEVICE)
+#include <sys/time.h>
+#endif
 
 namespace wp {
 namespace app {
+
+constexpr uint32_t kMinValidEpoch = 1700000000u; /* ~2023-11 */
+
+void persist_wall_clock();
+void broadcast_time_sync();
+
 namespace {
 
 Desk g_desk;
@@ -37,14 +46,23 @@ void apply_runtime_defaults(Desk & d) {
   for (int i = 0; i < kEmojiSlots; ++i) copy_str(d.emojis[i], proto::kMaxEmoji, kDefaultEmojis[i]);
   for (int i = 0; i < kCannedCount; ++i)
     copy_str(d.canned[i], proto::kMaxMessage, kDefaultCanned[i]);
+#ifndef WP_DEVICE
+  /* PC sim bots — never seed fake peers on glass. */
   copy_str(d.peers[0].id, proto::kMaxId, "mac-will");
   copy_str(d.peers[0].name, proto::kMaxName, "Will");
   copy_str(d.peers[1].id, proto::kMaxId, "mac-alex");
   copy_str(d.peers[1].name, proto::kMaxName, "Alex");
   d.peer_count = 2;
+#else
+  d.peer_count = 0;
+#endif
 }
 
 bool same(const char * a, const char * b) { return std::strcmp(a, b) == 0; }
+
+void clock_snapshot_cb(lv_timer_t * /*t*/) { persist_wall_clock(); }
+
+void time_sync_boot_cb(void * /*ud*/) { broadcast_time_sync(); }
 
 /* —— schedule helper —— */
 struct Scheduled {
@@ -142,6 +160,8 @@ void go_game(GameKind kind) {
   }
 }
 
+void go_game_deferred(void * p) { go_game(static_cast<GameKind>((intptr_t)p)); }
+
 GameSlot * receive_invite(GameKind kind, const proto::Msg & m, int & idx) {
   if (!can_start(kind, m.from_id)) return nullptr;
   idx = alloc_slot(kind);
@@ -155,12 +175,16 @@ GameSlot * receive_invite(GameKind kind, const proto::Msg & m, int & idx) {
       (m.color >= 0 && m.color < games::c4::kColorCount) ? m.color : 0;
   slot->invite.seed = m.seed;
   set_focus(idx);
-  go_game(kind);
+  /* Build game UI next tick — sync go_* from ESP-NOW poll nested too deep and
+   * froze touch (especially when the desk was on the idle lock screen). */
+  lv_display_trigger_activity(nullptr);
+  schedule(1, go_game_deferred, (void *)(intptr_t)kind);
   return slot;
 }
 
 void finish_remote_move(int idx, GameKind kind, const char * peer_id, const char * peer_name,
                         bool local_turn) {
+  games_mark_dirty();
   if (local_turn) {
     note_turn_start(idx);
     if (is_viewing(kind, peer_id))
@@ -170,6 +194,37 @@ void finish_remote_move(int idx, GameKind kind, const char * peer_id, const char
   } else {
     refresh_viewing(kind, peer_id);
   }
+}
+
+void reply_game_gone(GameKind kind, const char * to_id) {
+  proto::Msg r;
+  r.type = proto::MsgType::GameProbeReply;
+  copy_str(r.from_id, sizeof(r.from_id), g_desk.id);
+  copy_str(r.from_name, sizeof(r.from_name), g_desk.name);
+  copy_str(r.to_id, sizeof(r.to_id), to_id);
+  r.cell = (int8_t)kind;
+  r.hit = false;
+  send(r);
+}
+
+/** false → no live slot; peer is told the match is gone. */
+bool have_live_slot(GameKind kind, const proto::Msg & m, int & idx) {
+  idx = find_slot(kind, m.from_id);
+  if (idx >= 0) return true;
+  reply_game_gone(kind, m.from_id);
+  return false;
+}
+
+void drop_stale_match(GameKind kind, const char * peer_id, const char * peer_name) {
+  const int idx = find_slot(kind, peer_id);
+  if (idx < 0) return;
+  const bool was_viewing = is_viewing(kind, peer_id);
+  const bool was_focus = focus_index() == idx;
+  free_slot(idx);
+  ui::toast_fmt("%s ended the match", peer_name && peer_name[0] ? peer_name : "Peer");
+  if (was_viewing || was_focus) ui::go_hub();
+  else if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
+  else if (ui::current_screen() == ui::Screen::Hub) ui::go_hub();
 }
 
 void remove_remote_game(GameKind kind, const proto::Msg & m, const char * score_name,
@@ -212,6 +267,22 @@ void drop_slot_if_viewing(GameKind kind, const char * peer_id, int idx) {
 
 Desk & desk() { return g_desk; }
 
+void apply_wall_unix(uint32_t utc_sec) {
+  if (utc_sec < kMinValidEpoch) return;
+  Desk & d = desk();
+#if defined(WP_DEVICE)
+  timeval tv{};
+  tv.tv_sec = (time_t)utc_sec;
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+  d.clock_offset_ms = 0;
+#else
+  const std::time_t now = std::time(nullptr);
+  d.clock_offset_ms = (int64_t)((std::time_t)utc_sec - now) * 1000;
+#endif
+  d.wall_epoch = utc_sec;
+}
+
 void schedule(uint32_t delay_ms, void (*fn)(void *), void * user_data) {
   lv_timer_t * t = lv_timer_create(scheduled_cb, delay_ms, new Scheduled{fn, user_data});
   lv_timer_set_repeat_count(t, 1);
@@ -222,8 +293,30 @@ void init() {
 
   storage::load(g_desk);
   if (g_desk.timeout_id >= kTimeoutCount) g_desk.timeout_id = 2;
+  /* Thin-shell NVS had name/theme but no setup_done — skip wizard if named. */
+  if (!g_desk.setup_done && g_desk.name[0]) {
+    g_desk.setup_done = true;
+    storage::save(g_desk);
+  }
+
+#if defined(WP_DEVICE)
+  /* Power cut clears chip RTC; revive last wall time from NVS (frozen at save). */
+  {
+    const std::time_t rtc = std::time(nullptr);
+    if (g_desk.wall_epoch >= kMinValidEpoch && (uint32_t)rtc < kMinValidEpoch) {
+      apply_wall_unix(g_desk.wall_epoch);
+    }
+  }
+#endif
+
   net::link_init();
   games_init();
+
+  /* Keep NVS wall_epoch fresh so a dead desk resumes near last-on time. */
+  lv_timer_create(clock_snapshot_cb, 30000, nullptr);
+  /* Announce (and invite overwrite) after link is up. */
+  schedule(400, time_sync_boot_cb, nullptr);
+  schedule(2500, time_sync_boot_cb, nullptr);
 }
 
 void save() { storage::save(g_desk); }
@@ -307,14 +400,71 @@ void local_time(std::tm * out) {
 #endif
 }
 
+uint32_t wall_unix() {
+  const std::time_t t =
+      std::time(nullptr) + (std::time_t)(g_desk.clock_offset_ms / 1000);
+  if (t < 0) return 0;
+  return (uint32_t)t;
+}
+
+void persist_wall_clock() {
+  const uint32_t w = wall_unix();
+  if (w < kMinValidEpoch) return;
+  if (w == g_desk.wall_epoch) return;
+  g_desk.wall_epoch = w;
+  save();
+}
+
+void broadcast_time_sync() {
+  const uint32_t w = wall_unix();
+  if (w < kMinValidEpoch) return;
+  g_desk.wall_epoch = w;
+  proto::Msg m{};
+  m.type = proto::MsgType::TimeSync;
+  copy_str(m.from_id, sizeof(m.from_id), g_desk.id);
+  copy_str(m.from_name, sizeof(m.from_name), g_desk.name);
+  m.unix_sec = w;
+  m.sync_gen = g_desk.clock_sync_gen ? g_desk.clock_sync_gen : w;
+  send(m);
+}
+
+void note_clock_synced() {
+  const uint32_t w = wall_unix();
+  if (w < kMinValidEpoch) return;
+#if defined(WP_DEVICE)
+  g_desk.clock_offset_ms = 0;
+#endif
+  g_desk.wall_epoch = w;
+  g_desk.clock_sync_gen = w;
+  save();
+  broadcast_time_sync();
+}
+
+void set_clock_local(int year, int mon, int day, int hour, int min) {
+  std::tm target{};
+  target.tm_year = year - 1900;
+  target.tm_mon = mon - 1;
+  target.tm_mday = day;
+  target.tm_hour = hour;
+  target.tm_min = min;
+  target.tm_sec = 0;
+  target.tm_isdst = -1;
+  const std::time_t want = std::mktime(&target);
+  if (want == (std::time_t)-1 || want < (std::time_t)kMinValidEpoch) return;
+  apply_wall_unix((uint32_t)want);
+  g_desk.clock_sync_gen = (uint32_t)want;
+  save();
+  broadcast_time_sync();
+}
+
 void adjust_clock_minutes(int minutes) {
   g_desk.clock_offset_ms += (int64_t)minutes * 60 * 1000;
-  save();
+  note_clock_synced();
 }
 
 void adjust_clock_days(int days) {
   g_desk.clock_offset_ms += (int64_t)days * 24 * 60 * 60 * 1000;
-  save();
+  note_clock_synced();
 }
 
 void send(const proto::Msg & msg) { net::link_send(msg); }
@@ -353,7 +503,7 @@ void handle_msg(const proto::Msg & m) {
       if (d.outgoing.active) {
         d.outgoing.active = false;
         ui::sync_ui();
-        ui::toast_fmt("%s shantayed", m.from_name);
+        ui::toast_fmt("%s acknowledged", m.from_name);
       }
       return;
     }
@@ -364,6 +514,28 @@ void handle_msg(const proto::Msg & m) {
         ui::sync_ui();
         ui::toast_fmt("%s cancelled", m.from_name);
       }
+      return;
+    }
+
+    case proto::MsgType::GameProbe: {
+      const auto kind = static_cast<GameKind>(m.cell);
+      if (kind >= GameKind::Count) return;
+      proto::Msg r;
+      r.type = proto::MsgType::GameProbeReply;
+      copy_str(r.from_id, sizeof(r.from_id), d.id);
+      copy_str(r.from_name, sizeof(r.from_name), d.name);
+      copy_str(r.to_id, sizeof(r.to_id), m.from_id);
+      r.cell = m.cell;
+      r.hit = find_slot(kind, m.from_id) >= 0;
+      send(r);
+      return;
+    }
+
+    case proto::MsgType::GameProbeReply: {
+      const auto kind = static_cast<GameKind>(m.cell);
+      if (kind >= GameKind::Count) return;
+      if (m.hit) return;
+      drop_stale_match(kind, m.from_id, m.from_name);
       return;
     }
 
@@ -394,7 +566,8 @@ void handle_msg(const proto::Msg & m) {
       return;
     }
     case proto::MsgType::TttMove: {
-      const int idx = find_slot(GameKind::Ttt, m.from_id);
+      int idx = -1;
+      if (!have_live_slot(GameKind::Ttt, m, idx)) return;
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       TttGame & g = slot->g.ttt;
@@ -442,7 +615,8 @@ void handle_msg(const proto::Msg & m) {
       return;
     }
     case proto::MsgType::StttMove: {
-      const int idx = find_slot(GameKind::Sttt, m.from_id);
+      int idx = -1;
+      if (!have_live_slot(GameKind::Sttt, m, idx)) return;
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       StttGame & g = slot->g.sttt;
@@ -491,7 +665,8 @@ void handle_msg(const proto::Msg & m) {
       return;
     }
     case proto::MsgType::C4Drop: {
-      const int idx = find_slot(GameKind::C4, m.from_id);
+      int idx = -1;
+      if (!have_live_slot(GameKind::C4, m, idx)) return;
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       C4Game & g = slot->g.c4;
@@ -562,7 +737,8 @@ void handle_msg(const proto::Msg & m) {
     }
     case proto::MsgType::BsFire: {
       /* web handleIncomingFire */
-      const int idx = find_slot(GameKind::Bs, m.from_id);
+      int idx = -1;
+      if (!have_live_slot(GameKind::Bs, m, idx)) return;
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       BsGame & g = slot->g.bs;
@@ -654,7 +830,8 @@ void handle_msg(const proto::Msg & m) {
     }
     case proto::MsgType::CkMove: {
       /* web applyIncomingCkMove */
-      const int idx = find_slot(GameKind::Ck, m.from_id);
+      int idx = -1;
+      if (!have_live_slot(GameKind::Ck, m, idx)) return;
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       CkGame & g = slot->g.ck;
@@ -719,7 +896,8 @@ void handle_msg(const proto::Msg & m) {
     }
     case proto::MsgType::MemFlip: {
       /* web applyIncomingMemFlip */
-      const int idx = find_slot(GameKind::Mem, m.from_id);
+      int idx = -1;
+      if (!have_live_slot(GameKind::Mem, m, idx)) return;
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       MemGame & g = slot->g.mem;
@@ -768,28 +946,41 @@ void handle_msg(const proto::Msg & m) {
       return;
     }
     case proto::MsgType::RvMove: {
-      const int idx = find_slot(GameKind::Rv, m.from_id);
+      int idx = -1;
+      if (!have_live_slot(GameKind::Rv, m, idx)) return;
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       RvGame & g = slot->g.rv;
-      const int8_t color = (g.my_color == games::rv::kBlack) ? games::rv::kWhite : games::rv::kBlack;
+      const int8_t opp = (g.my_color == games::rv::kBlack) ? games::rv::kWhite : games::rv::kBlack;
       if (m.x < 0 && m.y < 0) {
         /* Pass — board unchanged */
-      } else if (!games::rv::apply(g.board, m.x, m.y, color)) {
+      } else if (!games::rv::apply(g.board, m.x, m.y, opp)) {
         return;
       }
+      bool local_turn = false;
       const int8_t w = games::rv::check_over(g.board);
       if (w != 0) {
         g.over = true;
         g.result_dismissed = false;
       } else if (games::rv::any_move(g.board, g.my_color)) {
         g.turn = g.my_color;
+        local_turn = true;
+      } else if (games::rv::any_move(g.board, opp)) {
+        /* Auto-pass here so UI does not rebuild twice (build → pass → rebuild). */
+        proto::Msg pass;
+        pass.type = proto::MsgType::RvMove;
+        copy_str(pass.from_id, sizeof(pass.from_id), d.id);
+        copy_str(pass.from_name, sizeof(pass.from_name), d.name);
+        copy_str(pass.to_id, sizeof(pass.to_id), m.from_id);
+        pass.x = -1;
+        pass.y = -1;
+        send(pass);
+        g.turn = opp;
       } else {
-        /* I must pass; opponent plays again after we send pass from UI */
-        g.turn = g.my_color; /* UI auto-passes when no legal move */
+        g.over = true;
+        g.result_dismissed = false;
       }
-      finish_remote_move(idx, GameKind::Rv, m.from_id, g.opp_name,
-                         !g.over && g.turn == g.my_color);
+      finish_remote_move(idx, GameKind::Rv, m.from_id, g.opp_name, local_turn);
       return;
     }
     case proto::MsgType::RvForfeit: {
@@ -825,7 +1016,8 @@ void handle_msg(const proto::Msg & m) {
       return;
     }
     case proto::MsgType::DbLine: {
-      const int idx = find_slot(GameKind::Db, m.from_id);
+      int idx = -1;
+      if (!have_live_slot(GameKind::Db, m, idx)) return;
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       DbGame & g = slot->g.db;
@@ -855,16 +1047,30 @@ void handle_msg(const proto::Msg & m) {
         copy_str(d.doodle_peer_id, proto::kMaxId, m.from_id);
         copy_str(d.doodle_peer_name, proto::kMaxName, m.from_name);
       }
-      if (ui::current_screen() != ui::Screen::Doodle) {
-        ui::toast_fmt("Doodle from %s", m.from_name);
-        ui::go_doodle();
-      }
       ui::doodle_apply_remote_stroke(m);
+      /* Never yank the desk to Doodle — pulse the hub icon until they open it. */
+      if (ui::current_screen() != ui::Screen::Doodle) {
+        const bool was = d.doodle_unread;
+        d.doodle_unread = true;
+        if (!was && ui::current_screen() == ui::Screen::Hub) ui::go_hub();
+      }
       return;
     }
     case proto::MsgType::DoodleClear: {
       /* Always wipe session — even if not currently on the doodle screen. */
       ui::doodle_remote_clear();
+      return;
+    }
+
+    case proto::MsgType::TimeSync: {
+      if (m.unix_sec < kMinValidEpoch) return;
+      const uint32_t their_gen = m.sync_gen ? m.sync_gen : m.unix_sec;
+      if (their_gen <= d.clock_sync_gen) return;
+      apply_wall_unix(m.unix_sec);
+      d.clock_sync_gen = their_gen;
+      save();
+      /* Relay so a third desk (or one that missed the first blast) catches up. */
+      broadcast_time_sync();
       return;
     }
 

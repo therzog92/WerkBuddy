@@ -15,6 +15,9 @@ lv_obj_t * game_mem_screen();
 lv_obj_t * game_rv_screen();
 lv_obj_t * game_db_screen();
 
+/** Rebuild the active game board without swapping LVGL screens (avoids RGB flash). */
+void game_reload_inplace();
+
 /** Sim/QA helper: load a game screen and force a panel ("play" | "wait" | "invite"). */
 void games_debug_show(const char * game, const char * panel);
 

@@ -151,11 +151,21 @@ void refresh_compose_styles() {
   if (g_preview_img) {
     if (has) {
       lv_obj_remove_flag(g_preview_img, LV_OBJ_FLAG_HIDDEN);
-      lv_image_set_src(g_preview_img, emoji_png_path(g_compose_emoji));
+      if (lv_obj_check_type(g_preview_img, &lv_image_class)) {
+        if (const void * src = emoji_image_src(g_compose_emoji)) lv_image_set_src(g_preview_img, src);
+      }
     } else {
       lv_obj_add_flag(g_preview_img, LV_OBJ_FLAG_HIDDEN);
     }
   }
+}
+
+void clear_compose_widget_ptrs() {
+  g_preview_img = nullptr;
+  g_preview_lbl = nullptr;
+  g_emoji_picker_btn = nullptr;
+  for (int i = 0; i < app::kEmojiSlots; ++i) g_emoji_btns[i] = nullptr;
+  for (int i = 0; i < app::kCannedCount; ++i) g_canned_btns[i] = nullptr;
 }
 
 void on_emoji(lv_event_t * e) {
@@ -291,7 +301,8 @@ void on_send(lv_event_t * /*e*/) {
 
   page_log::add(page_log::Dir::Out, g_compose_peer.name, m.emoji, m.message);
   app::send(m);
-  sync_ui();
+  clear_compose_widget_ptrs(); /* compose is about to be deleted — no dangling refresh */
+  go_outgoing();
 }
 
 void on_cancel_ping(lv_event_t * /*e*/) {
@@ -319,11 +330,11 @@ void on_shantay(lv_event_t * /*e*/) {
   app::send(m);
   d.incoming.active = false;
   sync_ui();
-  toast("Shantay - they know");
+  toast("Acknowledged");
 }
 
 void on_sashay(lv_event_t * /*e*/) {
-  /* web btnClear: dismiss locally, no message */
+  /* Kept for sim/demo; glass UI uses a single Acknowledge action. */
   app::desk().incoming.active = false;
   sync_ui();
 }
@@ -387,7 +398,6 @@ void anim_bg_mix(void * obj, int32_t v) {
   auto * wash = static_cast<lv_obj_t *>(obj);
   const lv_color_t c = lv_color_mix(theme::call_b(), theme::call_a(), (lv_opa_t)v);
   lv_obj_set_style_bg_color(wash, c, 0);
-  lv_obj_invalidate(wash);
 }
 
 void anim_blink_opa(void * obj, int32_t v) {
@@ -405,7 +415,10 @@ void anim_glow(void * obj, int32_t v) {
 }
 
 void anim_emoji_pop(void * obj, int32_t v) {
-  lv_image_set_scale(static_cast<lv_obj_t *>(obj), (uint32_t)v);
+  auto * o = static_cast<lv_obj_t *>(obj);
+  /* Device emoji stub is a plain obj+label — lv_image_set_scale would corrupt LVGL. */
+  if (!o || !lv_obj_check_type(o, &lv_image_class)) return;
+  lv_image_set_scale(o, (uint32_t)v);
 }
 
 }  // namespace
@@ -468,6 +481,7 @@ void compose_set_emoji(const char * emoji) {
 }
 
 lv_obj_t * pager_compose_screen(const app::Peer & peer) {
+  clear_compose_widget_ptrs();
   g_compose_peer = peer;
   const app::Desk & d = app::desk();
   if (g_compose_fresh) {
@@ -592,7 +606,13 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
   refresh_compose_styles();
 
   lv_obj_t * dock = make_dock(scr);
-  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_werk(); });
+  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) {
+    if (app::desk().outgoing.active || app::desk().incoming.active) {
+      sync_ui();
+      return;
+    }
+    go_werk();
+  });
   dock_btn(dock, "Send", true, false, on_send);
   return scr;
 }
@@ -669,6 +689,7 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_remove_flag(wash, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(wash, LV_OBJ_FLAG_SCROLLABLE);
   {
+    /* FULL framebuffer (device) makes this wash pulse smooth like the PC sim. */
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, wash);
@@ -787,7 +808,7 @@ lv_obj_t * pager_incoming_screen() {
 
   constexpr lv_coord_t kEmoji = 48;
   lv_obj_t * emoji_img = make_emoji_image(body, emoji, kEmoji);
-  {
+  if (lv_obj_check_type(emoji_img, &lv_image_class)) {
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, emoji_img);
@@ -814,56 +835,19 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_set_style_text_font(msg, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
 
-  /* Soft bar so actions read clearly while the call wash still shows through. */
-  constexpr lv_coord_t kIncomingDockH = 84;
-  lv_obj_t * dock = lv_obj_create(scr);
-  lv_obj_remove_style_all(dock);
-  lv_obj_set_size(dock, WP_HOR_RES, kIncomingDockH);
-  lv_obj_align(dock, LV_ALIGN_BOTTOM_MID, 0, 0);
-  lv_obj_set_style_bg_color(dock, lv_color_hex(0x000000), 0);
-  lv_obj_set_style_bg_opa(dock, LV_OPA_40, 0);
-  lv_obj_set_style_pad_hor(dock, 12, 0);
+  /* Single green Acknowledge pill (product: one clear action, not Shantay/Sashay pair). */
+  lv_obj_t * dock = make_dock(scr);
+  lv_obj_set_height(dock, 64);
   lv_obj_set_style_pad_ver(dock, 8, 0);
-  lv_obj_set_flex_flow(dock, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(dock, 8, 0);
-  lv_obj_remove_flag(dock, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_remove_flag(dock, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_move_foreground(dock);
-
-  auto make_action = [&](const char * label, const char * sub, lv_color_t bg, lv_color_t fg,
-                         lv_event_cb_t cb) {
-    lv_obj_t * col = lv_obj_create(dock);
-    lv_obj_remove_style_all(col);
-    lv_obj_set_flex_grow(col, 1);
-    lv_obj_set_height(col, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(col, 2, 0);
-    lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t * btn = dock_btn(col, label, false, false, cb);
-    lv_obj_set_width(btn, lv_pct(100));
-    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_height(btn, 48);
-    lv_obj_set_style_bg_color(btn, bg, 0);
-    const uint32_t cnt = lv_obj_get_child_count(btn);
-    for (uint32_t i = 0; i < cnt; ++i) {
-      lv_obj_t * ch = lv_obj_get_child(btn, i);
-      if (lv_obj_check_type(ch, &lv_label_class)) lv_obj_set_style_text_color(ch, fg, 0);
-    }
-
-    lv_obj_t * cap = lv_label_create(col);
-    lv_label_set_text(cap, sub);
-    lv_obj_set_style_text_color(cap, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_text_opa(cap, LV_OPA_70, 0);
-    lv_obj_set_style_text_font(cap, font_body_italic(14), 0);
-  };
-
-  make_action("Shantay", "(acknowledge)", lv_color_hex(0x3dd68c), lv_color_hex(0x0a1a10),
-              on_shantay);
-  make_action("Sashay away", "(ignore)", lv_color_hex(0xff8a9a), lv_color_hex(0x2a0610),
-              on_sashay);
+  lv_obj_t * ack = dock_btn(dock, "Acknowledge", false, false, on_shantay);
+  lv_obj_set_height(ack, 48);
+  lv_obj_set_style_bg_color(ack, lv_color_hex(0x22c55e), 0);
+  lv_obj_set_style_bg_opa(ack, LV_OPA_COVER, 0);
+  if (lv_obj_t * lbl = lv_obj_get_child(ack, 0)) {
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0x0a1a10), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
+  }
 
   return scr;
 }

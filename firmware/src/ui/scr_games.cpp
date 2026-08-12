@@ -24,9 +24,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <string>
 #include <vector>
+#ifndef WP_DEVICE
+#include <filesystem>
+#else
+#include <esp_heap_caps.h>
+#endif
 
 namespace wp {
 namespace ui {
@@ -203,6 +207,8 @@ lv_obj_t * make_wait_block(lv_obj_t * parent, const char * eye, const char * nam
   lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(box, 8, 0);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t * e = lv_label_create(box);
   lv_label_set_text(e, eye);
@@ -425,9 +431,11 @@ void fill_ttt_play(lv_obj_t * parent) {
   }
 }
 
-lv_obj_t * game_ttt_build() {
+lv_obj_t * game_ttt_build(lv_obj_t * into) {
   app::Desk & d = app::desk();
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = into;
+  if (scr) lv_obj_clean(scr);
+  else scr = make_screen();
   char sub[40];
   make_topbar(scr, "TIC TAC TOE", d.name,
               game_vs_sub(sub, sizeof(sub), app::ttt().active, app::ttt().opp_name, app::invite_active(app::GameKind::Ttt),
@@ -760,9 +768,11 @@ lv_obj_t * make_sttt_play_topbar(lv_obj_t * scr, const char * me, const char * o
   return top;
 }
 
-lv_obj_t * game_sttt_build() {
+lv_obj_t * game_sttt_build(lv_obj_t * into) {
   app::Desk & d = app::desk();
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = into;
+  if (scr) lv_obj_clean(scr);
+  else scr = make_screen();
 
   const bool playing = app::sttt().active && !app::sttt().waiting && !app::invite_active(app::GameKind::Sttt);
   lv_obj_t * top = nullptr;
@@ -944,7 +954,8 @@ void c4_challenge(lv_event_t * e) {
   fill_msg_ids(m, p.id);
   m.color = app::c4().my_color;
   app::send(m);
-  go_c4();
+  /* Defer rebuild — color-picker radials + sync go_c4 froze touch on both desks. */
+  app::schedule(1, [](void * /*p*/) { go_c4(); }, nullptr);
 }
 
 void c4_drop(lv_event_t * e) {
@@ -1078,7 +1089,11 @@ void fill_c4_play(lv_obj_t * parent) {
       lv_obj_set_size(disc, kC4Cell, kC4Cell);
       lv_obj_set_style_radius(disc, LV_RADIUS_CIRCLE, 0);
       lv_obj_set_style_bg_opa(disc, LV_OPA_COVER, 0);
+#ifdef WP_DEVICE
+      lv_obj_set_style_bg_color(disc, lv_color_hex(kDiscs[g.board[r][c] % 6].main), 0);
+#else
       lv_obj_set_style_bg_grad(disc, disc_grad(g.board[r][c]), 0);
+#endif
       lv_obj_remove_flag(disc, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_remove_flag(disc, LV_OBJ_FLAG_SCROLLABLE);
       if (g.last_r == r && g.last_c == c) {
@@ -1103,7 +1118,18 @@ void fill_c4_play(lv_obj_t * parent) {
   }
 
   if (!g_c4_frame_buf) {
-    g_c4_frame_buf = static_cast<uint8_t *>(lv_malloc(kC4BoardW * kC4BoardH * 4));
+    const size_t n = (size_t)kC4BoardW * (size_t)kC4BoardH * 4;
+#ifdef WP_DEVICE
+    g_c4_frame_buf = static_cast<uint8_t *>(
+        heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!g_c4_frame_buf) g_c4_frame_buf = static_cast<uint8_t *>(malloc(n));
+#else
+    g_c4_frame_buf = static_cast<uint8_t *>(lv_malloc(n));
+#endif
+  }
+  if (!g_c4_frame_buf) {
+    make_status(parent, "Board OOM");
+    return;
   }
   lv_obj_t * frame = lv_canvas_create(wrap);
   lv_obj_set_pos(frame, 0, 0);
@@ -1139,9 +1165,11 @@ void fill_c4_play(lv_obj_t * parent) {
   }
 }
 
-lv_obj_t * game_c4_build() {
+lv_obj_t * game_c4_build(lv_obj_t * into) {
   app::Desk & d = app::desk();
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = into;
+  if (scr) lv_obj_clean(scr);
+  else scr = make_screen();
   char sub[40];
   make_topbar(scr, "CONNECT FOUR", d.name,
               game_vs_sub(sub, sizeof(sub), app::c4().active, app::c4().opp_name, app::invite_active(app::GameKind::C4),
@@ -1177,7 +1205,7 @@ lv_obj_t * game_c4_build() {
       fill_msg_ids(m, inv.from_id);
       m.color = app::c4().my_color;
       app::send(m);
-      go_c4();
+      app::schedule(1, [](void * /*p*/) { go_c4(); }, nullptr);
     });
   } else if (app::c4().active && app::c4().waiting) {
     make_wait_block(body, "CHALLENGE SENT", app::c4().opp_name, "Waiting for them to accept...");
@@ -1237,7 +1265,12 @@ lv_obj_t * game_c4_build() {
       lv_obj_remove_style_all(sw);
       lv_obj_set_size(sw, 36, 36);
       lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, 0);
+#ifdef WP_DEVICE
+      /* Solid discs — radial grads on six swatches froze glass after invite. */
+      lv_obj_set_style_bg_color(sw, lv_color_hex(kDiscs[i].main), 0);
+#else
       lv_obj_set_style_bg_grad(sw, disc_grad(i), 0);
+#endif
       lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
       lv_obj_set_style_border_width(sw, g_c4_pick_color == i ? 3 : 0, 0);
       lv_obj_set_style_border_color(sw, theme::ink(), 0);
@@ -1536,9 +1569,11 @@ void fill_bs_grid(lv_obj_t * parent, bool offense) {
   }
 }
 
-lv_obj_t * game_bs_build() {
+lv_obj_t * game_bs_build(lv_obj_t * into) {
   app::Desk & d = app::desk();
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = into;
+  if (scr) lv_obj_clean(scr);
+  else scr = make_screen();
   char sub[40];
   make_topbar(scr, "BATTLESHIP", d.name,
               game_vs_sub(sub, sizeof(sub), app::bs().active, app::bs().opp_name, app::invite_active(app::GameKind::Bs),
@@ -1939,9 +1974,11 @@ void fill_ck_play(lv_obj_t * parent) {
   }
 }
 
-lv_obj_t * game_ck_build() {
+lv_obj_t * game_ck_build(lv_obj_t * into) {
   app::Desk & d = app::desk();
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = into;
+  if (scr) lv_obj_clean(scr);
+  else scr = make_screen();
   char sub[40];
   make_topbar(scr, "CHECKERS", d.name,
               game_vs_sub(sub, sizeof(sub), app::ck().active, app::ck().opp_name, app::invite_active(app::GameKind::Ck),
@@ -2038,6 +2075,9 @@ std::string g_mem_faces[games::mem::kPairs];
 uint32_t g_mem_faces_seed = 0;
 bool g_mem_faces_bound = false;
 
+#ifdef WP_DEVICE
+std::vector<std::string> mem_scan_pool() { return {}; }
+#else
 std::filesystem::path mem_assets_dir() {
   namespace fs = std::filesystem;
   const fs::path candidates[] = {
@@ -2093,7 +2133,11 @@ std::vector<std::string> mem_scan_pool() {
     if (rank < 0) continue;
     std::string stem = p.stem().string();
     if (stem.empty() || stem[0] == '_' || stem[0] == '.') continue;
-    cands.push_back({stem, p, rank});
+    Cand c;
+    c.stem = stem;
+    c.path = p;
+    c.rank = rank;
+    cands.push_back(c);
   }
   std::sort(cands.begin(), cands.end(), [](const Cand & a, const Cand & b) {
     if (a.stem != b.stem) return a.stem < b.stem;
@@ -2108,6 +2152,7 @@ std::vector<std::string> mem_scan_pool() {
   }
   return out;
 }
+#endif
 
 /** Pick kPairs faces from the folder using seed (deterministic for MP sync). */
 void mem_bind_faces(uint32_t seed) {
@@ -2336,9 +2381,11 @@ void fill_mem_play(lv_obj_t * parent) {
   }
 }
 
-lv_obj_t * game_mem_build() {
+lv_obj_t * game_mem_build(lv_obj_t * into) {
   app::Desk & d = app::desk();
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = into;
+  if (scr) lv_obj_clean(scr);
+  else scr = make_screen();
   char sub[40];
   make_topbar(scr, "MEMORY", d.name,
               game_vs_sub(sub, sizeof(sub), app::mem().active, app::mem().opp_name, app::invite_active(app::GameKind::Mem),
@@ -2504,14 +2551,16 @@ void fill_rv_play(lv_obj_t * parent) {
   const bool my_turn = !g.over && !g.waiting && g.turn == g.my_color;
   const bool can_move = games::rv::any_move(g.board, g.my_color);
 
+  /* Passes are handled in app::handle_msg (RvMove) to avoid a second full rebuild. */
   if (my_turn && !can_move && !g.over) {
     if (games::rv::check_over(g.board) != 0) {
       g.over = true;
       g.result_dismissed = false;
     } else {
       rv_send_pass();
+      /* Defer rebuild — sync go_reversi here stacked with the incoming-move refresh. */
+      app::schedule(1, [](void * /*p*/) { go_reversi(); }, nullptr);
     }
-    go_reversi();
     return;
   }
 
@@ -2622,9 +2671,11 @@ void fill_rv_play(lv_obj_t * parent) {
   }
 }
 
-lv_obj_t * game_rv_build() {
+lv_obj_t * game_rv_build(lv_obj_t * into) {
   app::Desk & d = app::desk();
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = into;
+  if (scr) lv_obj_clean(scr);
+  else scr = make_screen();
   char sub[40];
   make_topbar(scr, "REVERSI", d.name,
               game_vs_sub(sub, sizeof(sub), app::rv().active, app::rv().opp_name, app::invite_active(app::GameKind::Rv),
@@ -2915,9 +2966,11 @@ void fill_db_play(lv_obj_t * parent) {
   }
 }
 
-lv_obj_t * game_db_build() {
+lv_obj_t * game_db_build(lv_obj_t * into) {
   app::Desk & d = app::desk();
-  lv_obj_t * scr = make_screen();
+  lv_obj_t * scr = into;
+  if (scr) lv_obj_clean(scr);
+  else scr = make_screen();
   char sub[40];
   make_topbar(scr, "DOTS & BOXES", d.name,
               game_vs_sub(sub, sizeof(sub), app::db().active, app::db().opp_name, app::invite_active(app::GameKind::Db),
@@ -3091,14 +3144,31 @@ lv_obj_t * games_folder_screen() {
   return scr;
 }
 
-lv_obj_t * game_ttt_screen() { return game_ttt_build(); }
-lv_obj_t * game_sttt_screen() { return game_sttt_build(); }
-lv_obj_t * game_c4_screen() { return game_c4_build(); }
-lv_obj_t * game_bs_screen() { return game_bs_build(); }
-lv_obj_t * game_ck_screen() { return game_ck_build(); }
-lv_obj_t * game_mem_screen() { return game_mem_build(); }
-lv_obj_t * game_rv_screen() { return game_rv_build(); }
-lv_obj_t * game_db_screen() { return game_db_build(); }
+lv_obj_t * game_ttt_screen() { return game_ttt_build(nullptr); }
+lv_obj_t * game_sttt_screen() { return game_sttt_build(nullptr); }
+lv_obj_t * game_c4_screen() { return game_c4_build(nullptr); }
+lv_obj_t * game_bs_screen() { return game_bs_build(nullptr); }
+lv_obj_t * game_ck_screen() { return game_ck_build(nullptr); }
+lv_obj_t * game_mem_screen() { return game_mem_build(nullptr); }
+lv_obj_t * game_rv_screen() { return game_rv_build(nullptr); }
+lv_obj_t * game_db_screen() { return game_db_build(nullptr); }
+
+void game_reload_inplace() {
+  lv_obj_t * cur = lv_screen_active();
+  if (!cur) return;
+  hide_forfeit_confirm();
+  switch (current_screen()) {
+    case Screen::Ttt: game_ttt_build(cur); break;
+    case Screen::Sttt: game_sttt_build(cur); break;
+    case Screen::C4: game_c4_build(cur); break;
+    case Screen::Bs: game_bs_build(cur); break;
+    case Screen::Ck: game_ck_build(cur); break;
+    case Screen::Mem: game_mem_build(cur); break;
+    case Screen::Rv: game_rv_build(cur); break;
+    case Screen::Db: game_db_build(cur); break;
+    default: break;
+  }
+}
 
 void games_debug_show(const char * game, const char * panel) {
   auto seed_peer = [&](auto & g) {

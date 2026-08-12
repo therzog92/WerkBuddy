@@ -56,6 +56,9 @@ export const MessageType = Object.freeze({
   DB_FORFEIT: 'db_forfeit',
   DOODLE_STROKE: 'doodle_stroke',
   DOODLE_CLEAR: 'doodle_clear',
+  GAME_PROBE: 'game_probe',
+  GAME_PROBE_REPLY: 'game_probe_reply',
+  TIME_SYNC: 'time_sync',
 });
 
 /**

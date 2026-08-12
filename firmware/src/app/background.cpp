@@ -174,7 +174,7 @@ void set_preset(Preset p) {
   app::save();
 }
 
-const char * lv_src() {
+const void * lv_src() {
   if (!g_checked) refresh_paths();
   return g_has ? g_lv.c_str() : nullptr;
 }
@@ -282,6 +282,12 @@ bool poll_new_upload() {
   /* Ignore the first observation so opening the screen doesn't toast immediately. */
   return !first && has();
 }
+
+void upload_poll() {}
+void end_upload_job() {}
+const char * wifi_qr_payload() { return nullptr; }
+const char * softap_ssid() { return nullptr; }
+const char * softap_pass() { return nullptr; }
 
 }  // namespace background
 }  // namespace wp

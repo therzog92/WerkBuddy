@@ -70,13 +70,21 @@ bool load(app::Desk & d) {
       if (b < 10) b = 10;
       if (b > 100) b = 100;
       d.brightness = (uint8_t)b;
+    } else if (!std::strcmp(key, "rotate_180")) {
+      d.rotate_180 = std::atoi(val) != 0 ? 1 : 0;
     } else if (!std::strcmp(key, "setup_done")) {
       d.setup_done = std::atoi(val) != 0;
       saw_setup = true;
     } else if (!std::strcmp(key, "clock_offset_ms")) {
       d.clock_offset_ms = std::atoll(val);
+    } else if (!std::strcmp(key, "wall_epoch")) {
+      d.wall_epoch = (uint32_t)std::strtoul(val, nullptr, 10);
+    } else if (!std::strcmp(key, "clock_sync_gen")) {
+      d.clock_sync_gen = (uint32_t)std::strtoul(val, nullptr, 10);
     } else if (!std::strcmp(key, "wifi_ssid")) {
       std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", val);
+    } else if (!std::strcmp(key, "wifi_pass")) {
+      std::snprintf(d.wifi_pass, sizeof(d.wifi_pass), "%s", val);
     } else if (!std::strcmp(key, "wifi_connected")) {
       /* Legacy key ignored — association is never persisted (ephemeral STA). */
       (void)val;
@@ -125,9 +133,13 @@ void save(const app::Desk & d) {
   put_int(f, "timeout_v", kTimeoutScheme);
   put_int(f, "idle_mode", d.idle_mode);
   put_int(f, "brightness", d.brightness);
+  put_int(f, "rotate_180", d.rotate_180 ? 1 : 0);
   put_int(f, "setup_done", d.setup_done ? 1 : 0);
   put_int(f, "clock_offset_ms", d.clock_offset_ms);
+  put_int(f, "wall_epoch", (int)d.wall_epoch);
+  put_int(f, "clock_sync_gen", (int)d.clock_sync_gen);
   put(f, "wifi_ssid", d.wifi_ssid);
+  put(f, "wifi_pass", d.wifi_pass);
   /* Do not persist wifi_connected — STA is join-for-job only. */
   put_int(f, "hs_2048", d.high_score_2048);
   if (d.fw_version[0]) put(f, "fw_version", d.fw_version);
@@ -147,6 +159,29 @@ void save(const app::Desk & d) {
     put(f, "peer", val);
   }
   std::fclose(f);
+}
+
+bool load_games_blob(void * dst, size_t * len_io) {
+  if (!dst || !len_io || !*len_io) return false;
+  FILE * f = std::fopen("werkpager_games.bin", "rb");
+  if (!f) return false;
+  const size_t n = std::fread(dst, 1, *len_io, f);
+  std::fclose(f);
+  if (n < 8) return false;
+  *len_io = n;
+  return true;
+}
+
+bool save_games_blob(const void * src, size_t len) {
+  if (!src || !len) {
+    std::remove("werkpager_games.bin");
+    return true;
+  }
+  FILE * f = std::fopen("werkpager_games.bin", "wb");
+  if (!f) return false;
+  const size_t n = std::fwrite(src, 1, len, f);
+  std::fclose(f);
+  return n == len;
 }
 
 }  // namespace storage

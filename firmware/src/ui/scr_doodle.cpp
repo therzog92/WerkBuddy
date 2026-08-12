@@ -10,6 +10,9 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#ifdef WP_DEVICE
+#include <esp_heap_caps.h>
+#endif
 
 namespace wp {
 namespace ui {
@@ -40,9 +43,27 @@ struct SavedStroke {
 };
 std::vector<SavedStroke> g_history;
 
-/* Aligned canvas buffer — stride-aware size required by LVGL 9 */
+/* Aligned canvas buffer — stride-aware size required by LVGL 9.
+ * On device this is ~470 KB — keep it out of internal DRAM (PSRAM heap). */
+#ifdef WP_DEVICE
+static uint8_t * g_cbuf = nullptr;
+#else
 static uint8_t g_cbuf[LV_CANVAS_BUF_SIZE(kCanvasW, kCanvasH, 32, LV_DRAW_BUF_STRIDE_ALIGN)];
+#endif
 static bool g_buf_dirty = true; /* true → need clear/fill on next bind */
+
+bool ensure_canvas_buf() {
+#ifdef WP_DEVICE
+  if (g_cbuf) return true;
+  const size_t n = LV_CANVAS_BUF_SIZE(kCanvasW, kCanvasH, 32, LV_DRAW_BUF_STRIDE_ALIGN);
+  g_cbuf = (uint8_t *)heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!g_cbuf) g_cbuf = (uint8_t *)malloc(n);
+  if (g_cbuf) std::memset(g_cbuf, 0, n);
+  return g_cbuf != nullptr;
+#else
+  return true;
+#endif
+}
 
 const uint32_t kColors[] = {0x2a2438, 0xe07090, 0xe8b056, 0x5cb88a,
                             0x5a9fd4, 0x9a7ad4, 0xe87858, 0xf0f0f0};
@@ -65,8 +86,10 @@ void refresh_canvas() {
   if (!g_canvas) return;
   /* Pixel edits don't auto-drop the image cache — without this, strokes stay invisible
    * until the widget is recreated (e.g. picking another color). */
+#if LV_CACHE_DEF_SIZE > 0
   const void * src = lv_image_get_src(g_canvas);
   if (src) lv_image_cache_drop(src);
+#endif
   lv_obj_invalidate(g_canvas);
 }
 
@@ -348,6 +371,7 @@ void rebuild_tools() {
 
 lv_obj_t * doodle_screen() {
   app::Desk & d = app::desk();
+  d.doodle_unread = false;
   const uint32_t gen = ++g_screen_gen;
   lv_obj_t * scr = make_screen();
   lv_obj_t * top = make_topbar(scr, "DOODLE", d.name, d.doodle_peer_id[0] ? nullptr : "Draw together");
@@ -405,7 +429,13 @@ lv_obj_t * doodle_screen() {
   lv_obj_set_style_margin_top(g_canvas, 6, 0);
   lv_obj_set_style_radius(g_canvas, 12, 0);
   lv_obj_set_style_clip_corner(g_canvas, true, 0);
-  lv_canvas_set_buffer(g_canvas, g_cbuf, kCanvasW, kCanvasH, LV_COLOR_FORMAT_ARGB8888);
+  if (!ensure_canvas_buf()) {
+    lv_obj_t * err = lv_label_create(draw);
+    lv_label_set_text(err, "Canvas OOM");
+    lv_obj_set_style_text_color(err, lv_color_hex(0xe07070), 0);
+  } else {
+    lv_canvas_set_buffer(g_canvas, g_cbuf, kCanvasW, kCanvasH, LV_COLOR_FORMAT_ARGB8888);
+  }
   lv_obj_add_flag(g_canvas, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(g_canvas, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(g_canvas, on_canvas, LV_EVENT_PRESSED, nullptr);

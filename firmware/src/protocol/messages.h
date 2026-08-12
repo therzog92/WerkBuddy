@@ -65,6 +65,12 @@ enum class MsgType : uint8_t {
   DbForfeit,
   DoodleStroke,
   DoodleClear,
+  /** Ask peer if they still have kind+match with us. cell = GameKind. */
+  GameProbe,
+  /** Reply: cell = GameKind, hit = still active on this desk. */
+  GameProbeReply,
+  /** Broadcast wall clock; peers adopt if sync_gen is newer. */
+  TimeSync,
 };
 
 constexpr int kMaxName = 13;    /* 12 chars + NUL (web clamps to 12) */
@@ -119,6 +125,10 @@ struct Msg {
   uint8_t stroke_w = 2;    /* 1|2|3 = S/M/L */
   uint8_t n_pts = 0;       /* point count (pairs in pts) */
   uint8_t pts[kMaxStrokePts * 2] = {}; /* quantized 0..120 */
+
+  /* time_sync — UTC unix seconds + generation (authoritative set time) */
+  uint32_t unix_sec = 0;
+  uint32_t sync_gen = 0;
 };
 
 }  // namespace proto

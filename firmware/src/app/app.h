@@ -23,7 +23,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "0.1.0-sim";
+constexpr const char * kFirmwareVersion = "0.67";
 /** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
 const char * firmware_version();
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
@@ -149,9 +149,16 @@ struct Desk {
   uint8_t timeout_id = 2;  /* 0=1m 1=3m 2=5m 3=10m 4=off — default 5m */
   uint8_t idle_mode = 1;   /* 0=black 1=clock */
   uint8_t brightness = 85; /* 10..100; pages force full */
+  /** 0 = normal, 1 = rotate UI+touch 180° (stand flipped). */
+  uint8_t rotate_180 = 0;
   bool setup_done = false; /* false → first-run / post-reset setup */
   int64_t clock_offset_ms = 0;
+  /** Last known UTC wall seconds (NVS); restored into RTC after power loss. */
+  uint32_t wall_epoch = 0;
+  /** When this clock lineage was last set (UTC sec). Newer peer wins. */
+  uint32_t clock_sync_gen = 0;
   char wifi_ssid[33] = {}; /* saved STA network; empty = none (≠ associated) */
+  char wifi_pass[65] = {}; /* WPA password; empty OK for open networks */
   bool wifi_connected = false; /* ephemeral: true only while Sync/OTA job holds STA */
   char emojis[kEmojiSlots][proto::kMaxEmoji] = {};
   char canned[kCannedCount][proto::kMaxMessage] = {};
@@ -168,6 +175,7 @@ struct Desk {
 
   char doodle_peer_id[proto::kMaxId] = {};
   char doodle_peer_name[proto::kMaxName] = {};
+  bool doodle_unread = false; /* remote strokes since last opening Doodle */
 
   int high_score_2048 = 0; /* solo 2048 best score */
   char fw_version[24] = {}; /* installed tag body; empty → kFirmwareVersion */
@@ -190,10 +198,20 @@ bool peer_saved(const char * id);
 void add_peer(const char * id, const char * name);
 void remove_peer(const char * id);
 
-/* —— time (manual clock, no NTP — mirrors web clockOffsetMs) —— */
+/* —— time (manual / SNTP / peer TimeSync; NVS survives power loss) —— */
 void local_time(std::tm * out);
+/** Current wall time as UTC unix seconds (offset applied). */
+uint32_t wall_unix();
 void adjust_clock_minutes(int minutes);
 void adjust_clock_days(int days);
+/** Apply local civil time (Settings date/time Done); bumps gen + ESP-NOW sync. */
+void set_clock_local(int year, int mon, int day, int hour, int min);
+/** After SNTP (or sim sync): treat RTC as authoritative, bump gen, broadcast. */
+void note_clock_synced();
+/** Snapshot wall_epoch to NVS (periodic); does not bump sync_gen. */
+void persist_wall_clock();
+/** Broadcast TimeSync so peers can adopt or overwrite us. */
+void broadcast_time_sync();
 
 struct TimeoutSpec {
   const char * label;

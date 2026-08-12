@@ -296,7 +296,6 @@ void anim_bg_mix(void * obj, int32_t v) {
   auto * wash = static_cast<lv_obj_t *>(obj);
   const lv_color_t c = lv_color_mix(theme::call_b(), theme::call_a(), (lv_opa_t)v);
   lv_obj_set_style_bg_color(wash, c, 0);
-  lv_obj_invalidate(wash);
 }
 
 void anim_blink_opa(void * obj, int32_t v) {
@@ -314,7 +313,9 @@ void anim_glow(void * obj, int32_t v) {
 }
 
 void anim_emoji_pop(void * obj, int32_t v) {
-  lv_image_set_scale(static_cast<lv_obj_t *>(obj), (uint32_t)v);
+  auto * o = static_cast<lv_obj_t *>(obj);
+  if (!o || !lv_obj_check_type(o, &lv_image_class)) return;
+  lv_image_set_scale(o, (uint32_t)v);
 }
 
 void on_alarm_dismiss(lv_event_t * /*e*/) {
