@@ -4,6 +4,11 @@
 
 #include "lvgl/lvgl.h"
 
+#if defined(WP_DEVICE)
+/* Provided by device main — drives TFT_BL. */
+extern "C" void wp_device_set_backlight(bool on);
+#endif
+
 namespace wp {
 namespace ui {
 namespace brightness {
@@ -56,6 +61,14 @@ void set_percent(uint8_t percent) {
 }
 
 uint8_t percent() { return clamp_pct(app::desk().brightness); }
+
+void set_panel_on(bool on) {
+#if defined(WP_DEVICE)
+  wp_device_set_backlight(on);
+#else
+  (void)on;
+#endif
+}
 
 }  // namespace brightness
 }  // namespace ui

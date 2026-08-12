@@ -3,6 +3,7 @@
 #include "app/app.h"
 #include "app/background.h"
 #include "app/desk_timer.h"
+#include "ui/brightness.h"
 #include "ui/chrome.h"
 #include "ui/fonts.h"
 #include "ui/nav.h"
@@ -120,8 +121,10 @@ lv_obj_t * idle_screen() {
   lv_obj_add_event_cb(scr, wake, LV_EVENT_CLICKED, nullptr);
   lv_obj_add_event_cb(scr, on_deleted, LV_EVENT_DELETE, nullptr);
 
-  const bool clock_mode = app::desk().idle_mode == 1;
+  /* Pre-setup always blacks out (and kills backlight) — no clock drain in a bag. */
+  const bool clock_mode = app::desk().setup_done && app::desk().idle_mode == 1;
   apply_idle_bg(scr, !clock_mode);
+  brightness::set_panel_on(clock_mode);
 
   if (clock_mode) {
     /* Soft hot accent pool behind the clock */

@@ -23,6 +23,12 @@ void set_percent(uint8_t percent);
 
 uint8_t percent();
 
+/**
+ * Hardware TFT backlight (device pin). Sim: no-op.
+ * Black idle turns this off so desks don't cook the battery in a bag.
+ */
+void set_panel_on(bool on);
+
 }  // namespace brightness
 }  // namespace ui
 }  // namespace wp

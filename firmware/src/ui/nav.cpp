@@ -71,20 +71,31 @@ void load(lv_obj_t * scr, Screen which) {
 }
 
 void idle_tick(lv_timer_t * /*t*/) {
-  uint8_t tid = app::desk().timeout_id;
-  if (tid >= app::kTimeoutCount) tid = 2;
-  const app::TimeoutSpec & spec = app::timeout_specs()[tid];
-  if (!spec.ms) return;
-  if (g_screen == Screen::Idle || g_screen == Screen::Incoming || g_screen == Screen::Outgoing ||
-      g_screen == Screen::Keyboard || g_screen == Screen::EmojiPicker ||
-      g_screen == Screen::WifiScan || g_screen == Screen::OtaReleases ||
-      g_screen == Screen::BgUpload || g_screen == Screen::Splash || g_screen == Screen::Setup ||
-      g_screen == Screen::Doodle ||
-      (g_screen == Screen::Timer && desk_timer::is_finished())) {
-    return;
-  }
+  if (g_screen == Screen::Idle) return;
   if (app::busy()) return;
-  if (lv_display_get_inactive_time(nullptr) >= spec.ms) go_idle();
+  if (g_screen == Screen::Incoming || g_screen == Screen::Outgoing || g_screen == Screen::Splash)
+    return;
+
+  uint32_t limit_ms = 0;
+  if (!app::desk().setup_done) {
+    /* Post-reset / first-run: blank after 1m even on Setup + name OSK so a
+     * desk in a backpack isn't stuck at full brightness with no power button. */
+    limit_ms = 60000;
+  } else {
+    uint8_t tid = app::desk().timeout_id;
+    if (tid >= app::kTimeoutCount) tid = 2;
+    const app::TimeoutSpec & spec = app::timeout_specs()[tid];
+    if (!spec.ms) return;
+    limit_ms = spec.ms;
+    if (g_screen == Screen::Keyboard || g_screen == Screen::EmojiPicker ||
+        g_screen == Screen::WifiScan || g_screen == Screen::OtaReleases ||
+        g_screen == Screen::BgUpload || g_screen == Screen::Setup ||
+        g_screen == Screen::Doodle ||
+        (g_screen == Screen::Timer && desk_timer::is_finished())) {
+      return;
+    }
+  }
+  if (lv_display_get_inactive_time(nullptr) >= limit_ms) go_idle();
 }
 
 }  // namespace
@@ -246,6 +257,11 @@ void finish_wake_from_idle(void * /*ud*/) {
       break;
     case Screen::Settings: go_settings(); break;
     case Screen::Setup: go_setup(); break;
+    case Screen::Keyboard:
+      /* Setup name OSK — don't drop into Hub before Continue. */
+      if (!app::desk().setup_done) go_setup();
+      else go_hub();
+      break;
     case Screen::GamesFolder: go_games_folder(); break;
     case Screen::ActiveGames: go_active_games(); break;
     case Screen::UtilsFolder: go_utils_folder(); break;
@@ -268,6 +284,7 @@ void wake_from_idle() {
   /* Defer screen swap — deleting Idle from its own PRESSED/CLICKED handler
    * corrupted nearby BSS (including active game slots) on device. */
   g_wake_pending = true;
+  brightness::set_panel_on(true);
   lv_display_trigger_activity(nullptr);
   app::schedule(1, finish_wake_from_idle, nullptr);
 }

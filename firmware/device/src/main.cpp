@@ -150,6 +150,10 @@ void setup() {
                 (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >> 10));
 }
 
+extern "C" void wp_device_set_backlight(bool on) {
+  digitalWrite(TFT_BL, on ? HIGH : LOW);
+}
+
 void loop() {
   wp::drive::poll();
   wp::net::link_poll();
