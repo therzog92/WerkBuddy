@@ -196,6 +196,8 @@ bool busy();
 
 bool peer_saved(const char * id);
 void add_peer(const char * id, const char * name);
+/** Update saved desk display name when a peer renames (Discover / invites). */
+void touch_peer_name(const char * id, const char * name);
 void remove_peer(const char * id);
 
 /* —— time (manual / SNTP / peer TimeSync; NVS survives power loss) —— */

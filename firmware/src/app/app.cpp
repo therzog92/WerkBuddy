@@ -165,6 +165,7 @@ void go_game_deferred(void * p) { go_game(static_cast<GameKind>((intptr_t)p)); }
 
 GameSlot * receive_invite(GameKind kind, const proto::Msg & m, int & idx) {
   if (!can_start(kind, m.from_id)) return nullptr;
+  touch_peer_name(m.from_id, m.from_name);
   idx = alloc_slot(kind);
   GameSlot * slot = slot_at(idx);
   if (!slot) return nullptr;
@@ -351,8 +352,15 @@ void factory_reset() {
   copy_str(g_desk.id, sizeof(g_desk.id), id);
   g_desk.name[0] = '\0';
   g_desk.setup_done = false;
-  apply_runtime_defaults(g_desk);
+  g_desk.peer_count = 0;
+  g_desk.nearby_count = 0;
+  for (int i = 0; i < kMaxPeers; ++i) {
+    g_desk.peers[i] = Peer{};
+    g_desk.nearby[i] = Peer{};
+  }
+  apply_runtime_defaults(g_desk); /* emojis/canned; sim seeds Will/Alex, device peer_count=0 */
   storage::save(g_desk);
+  clear_all_games(); /* rewrite empty games blob into clean namespace */
 }
 
 const TimeoutSpec * timeout_specs() {
@@ -374,11 +382,32 @@ bool peer_saved(const char * id) {
 }
 
 void add_peer(const char * id, const char * name) {
-  if (peer_saved(id) || g_desk.peer_count >= kMaxPeers) return;
+  if (!id || !id[0]) return;
+  for (int i = 0; i < g_desk.peer_count; ++i) {
+    if (!same(g_desk.peers[i].id, id)) continue;
+    /* Already saved — refresh display name if the peer renamed. */
+    if (name && name[0] && !same(g_desk.peers[i].name, name)) {
+      copy_str(g_desk.peers[i].name, proto::kMaxName, name);
+      save();
+    }
+    return;
+  }
+  if (g_desk.peer_count >= kMaxPeers) return;
   copy_str(g_desk.peers[g_desk.peer_count].id, proto::kMaxId, id);
-  copy_str(g_desk.peers[g_desk.peer_count].name, proto::kMaxName, name);
+  copy_str(g_desk.peers[g_desk.peer_count].name, proto::kMaxName, name ? name : "");
   g_desk.peer_count++;
   save();
+}
+
+void touch_peer_name(const char * id, const char * name) {
+  if (!id || !id[0] || !name || !name[0]) return;
+  for (int i = 0; i < g_desk.peer_count; ++i) {
+    if (!same(g_desk.peers[i].id, id)) continue;
+    if (same(g_desk.peers[i].name, name)) return;
+    copy_str(g_desk.peers[i].name, proto::kMaxName, name);
+    save();
+    return;
+  }
 }
 
 void remove_peer(const char * id) {
@@ -478,8 +507,16 @@ void handle_msg(const proto::Msg & m) {
 
   switch (m.type) {
     case proto::MsgType::DiscoverReply: {
-      for (int i = 0; i < d.nearby_count; ++i)
-        if (same(d.nearby[i].id, m.from_id)) return;
+      touch_peer_name(m.from_id, m.from_name);
+      for (int i = 0; i < d.nearby_count; ++i) {
+        if (!same(d.nearby[i].id, m.from_id)) continue;
+        /* Refresh name if they renamed since last scan. */
+        if (m.from_name[0] && !same(d.nearby[i].name, m.from_name)) {
+          copy_str(d.nearby[i].name, proto::kMaxName, m.from_name);
+          if (ui::current_screen() == ui::Screen::Settings) ui::refresh_settings_keep_scroll();
+        }
+        return;
+      }
       if (d.nearby_count < kMaxPeers) {
         copy_str(d.nearby[d.nearby_count].id, proto::kMaxId, m.from_id);
         copy_str(d.nearby[d.nearby_count].name, proto::kMaxName, m.from_name);

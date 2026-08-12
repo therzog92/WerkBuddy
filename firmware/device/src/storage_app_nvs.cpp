@@ -62,8 +62,9 @@ bool load(app::Desk & d) {
     if (v.length()) std::snprintf(d.canned[i], sizeof(d.canned[i]), "%s", v.c_str());
   }
 
-  const int n = prefs.getInt("peers", 0);
   d.peer_count = 0;
+  const bool has_peers_key = prefs.isKey("peers");
+  const int n = prefs.getInt("peers", 0);
   for (int i = 0; i < n && i < app::kMaxPeers; ++i) {
     char ik[12], nk[12];
     std::snprintf(ik, sizeof(ik), "p%di", i);
@@ -75,8 +76,9 @@ bool load(app::Desk & d) {
     std::snprintf(d.peers[d.peer_count].name, sizeof(d.peers[0].name), "%s", nm.c_str());
     ++d.peer_count;
   }
-  /* Thin-shell peers: p0 = "macid|Name" */
-  if (d.peer_count == 0) {
+  /* Thin-shell peers: p0 = "macid|Name" — only when never migrated (no peers key).
+   * If peers=0 after factory reset, must NOT resurrect leftover p0/p1 keys. */
+  if (!has_peers_key && d.peer_count == 0) {
     for (int i = 0; i < app::kMaxPeers; ++i) {
       char key[8];
       std::snprintf(key, sizeof(key), "p%d", i);
