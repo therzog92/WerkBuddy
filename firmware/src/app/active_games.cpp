@@ -7,6 +7,7 @@
 #include "protocol/messages.h"
 #include "ui/chrome.h"
 #include "ui/nav.h"
+#include "ui/scr_hub.h"
 
 #include "lvgl/lvgl.h"
 
@@ -500,14 +501,14 @@ void notify_your_turn(GameKind kind, const char * opp_name, const char * peer_id
   std::snprintf(toast, sizeof(toast), "%s vs %s: Your Turn", kind_name(kind),
                 opp_name ? opp_name : "peer");
   ui::toast_fmt("%s", toast);
-  /* Rebuild Active Games; skip Hub — full go_hub() flashes the wallpaper. */
   if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
+  else if (ui::current_screen() == ui::Screen::Hub) ui::hub_refresh_games_chrome();
 }
 
 void refresh_viewing(GameKind kind, const char * peer_id) {
   if (is_viewing(kind, peer_id)) go_kind(kind);
-  /* Keep Active Games in sync; never tear down Hub just to refresh chrome. */
   if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
+  else if (ui::current_screen() == ui::Screen::Hub) ui::hub_refresh_games_chrome();
 }
 
 void open_slot(int idx) {

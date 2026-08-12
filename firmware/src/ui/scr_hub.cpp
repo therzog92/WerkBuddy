@@ -19,7 +19,10 @@ lv_obj_t * g_clock = nullptr;
 lv_obj_t * g_date = nullptr;
 lv_obj_t * g_desk = nullptr;
 lv_obj_t * g_timer_lbl = nullptr;
+lv_obj_t * g_games_host = nullptr;
 lv_timer_t * g_timer = nullptr;
+int g_games_active_seen = -1;
+int g_games_turn_seen = -1;
 
 void format_clock(char * buf, size_t n, char * date_buf, size_t dn) {
   std::tm tm{};
@@ -37,6 +40,79 @@ void format_clock(char * buf, size_t n, char * date_buf, size_t dn) {
   static const char * kMo[] = {"January", "February", "March", "April", "May", "June",
                                "July", "August", "September", "October", "November", "December"};
   lv_snprintf(date_buf, (uint32_t)dn, "%s, %s %d", kWd[tm.tm_wday], kMo[tm.tm_mon], tm.tm_mday);
+}
+
+void rebuild_games_strip() {
+  if (!g_games_host) return;
+  lv_obj_clean(g_games_host);
+  const int n_active = app::active_count();
+  const int n_turn = app::your_turn_count();
+  g_games_active_seen = n_active;
+  g_games_turn_seen = n_turn;
+  if (n_active <= 0) {
+    lv_obj_set_height(g_games_host, 0);
+    lv_obj_add_flag(g_games_host, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  lv_obj_remove_flag(g_games_host, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_height(g_games_host, LV_SIZE_CONTENT);
+
+  lv_obj_t * strip = lv_button_create(g_games_host);
+  lv_obj_remove_style_all(strip);
+  lv_obj_set_width(strip, lv_pct(100));
+  lv_obj_set_height(strip, 48);
+  lv_obj_set_style_pad_ver(strip, 10, 0);
+  lv_obj_set_style_pad_hor(strip, 12, 0);
+  lv_obj_set_style_radius(strip, 12, 0);
+  lv_obj_set_style_bg_color(strip, theme::panel(), 0);
+  lv_obj_set_style_bg_opa(strip, LV_OPA_COVER, 0);
+  lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(strip, 10, 0);
+  lv_obj_add_flag(strip, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(strip, [](lv_event_t * /*e*/) { go_active_games(); }, LV_EVENT_CLICKED,
+                      nullptr);
+
+  lv_obj_t * count_lbl = lv_label_create(strip);
+  char abuf[40];
+  lv_snprintf(abuf, sizeof(abuf), "Active Games: %d", n_active);
+  lv_label_set_text(count_lbl, abuf);
+  lv_obj_set_style_text_color(count_lbl, theme::ink(), 0);
+  lv_obj_set_style_text_font(count_lbl, &lv_font_montserrat_16, 0);
+
+  if (n_turn > 0) {
+    constexpr uint32_t kTurnGreen = 0x3ddc84;
+    lv_obj_t * pill = lv_obj_create(strip);
+    lv_obj_remove_style_all(pill);
+    lv_obj_set_height(pill, 32);
+    lv_obj_set_style_pad_hor(pill, 14, 0);
+    lv_obj_set_style_pad_ver(pill, 6, 0);
+    lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(pill, lv_color_hex(kTurnGreen), 0);
+    lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
+    lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_remove_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(pill, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t * turn_lbl = lv_label_create(pill);
+    lv_label_set_text(turn_lbl, "Your Turn");
+    lv_obj_set_style_text_color(turn_lbl, lv_color_hex(0x062012), 0);
+    lv_obj_set_style_text_font(turn_lbl, &lv_font_montserrat_14, 0);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, pill);
+    lv_anim_set_values(&a, 170, 255);
+    lv_anim_set_duration(&a, 700);
+    lv_anim_set_playback_duration(&a, 700);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
+      lv_obj_set_style_bg_opa(static_cast<lv_obj_t *>(obj), (lv_opa_t)v, 0);
+    });
+    lv_anim_start(&a);
+  }
 }
 
 void tick(lv_timer_t * /*t*/) {
@@ -74,6 +150,12 @@ void tick(lv_timer_t * /*t*/) {
       lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
     }
   }
+  /* Live Your Turn / Active Games chrome without tearing down the hub. */
+  if (g_games_host) {
+    const int n_active = app::active_count();
+    const int n_turn = app::your_turn_count();
+    if (n_active != g_games_active_seen || n_turn != g_games_turn_seen) rebuild_games_strip();
+  }
 }
 
 void on_deleted(lv_event_t * /*e*/) {
@@ -81,6 +163,9 @@ void on_deleted(lv_event_t * /*e*/) {
   g_date = nullptr;
   g_desk = nullptr;
   g_timer_lbl = nullptr;
+  g_games_host = nullptr;
+  g_games_active_seen = -1;
+  g_games_turn_seen = -1;
   if (g_timer) {
     lv_timer_delete(g_timer);
     g_timer = nullptr;
@@ -227,68 +312,14 @@ lv_obj_t * hub_screen() {
   }
 
   {
-    const int n_active = app::active_count();
-    const int n_turn = app::your_turn_count();
-    if (n_active > 0) {
-      lv_obj_t * strip = lv_button_create(body);
-      lv_obj_remove_style_all(strip);
-      lv_obj_set_width(strip, lv_pct(100));
-      lv_obj_set_height(strip, 48);
-      lv_obj_set_style_pad_ver(strip, 10, 0);
-      lv_obj_set_style_pad_hor(strip, 12, 0);
-      lv_obj_set_style_radius(strip, 12, 0);
-      lv_obj_set_style_bg_color(strip, theme::panel(), 0);
-      lv_obj_set_style_bg_opa(strip, LV_OPA_COVER, 0);
-      lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
-      lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-      lv_obj_set_style_pad_column(strip, 10, 0);
-      lv_obj_add_flag(strip, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_add_event_cb(strip, [](lv_event_t * /*e*/) { go_active_games(); }, LV_EVENT_CLICKED,
-                          nullptr);
-
-      lv_obj_t * count_lbl = lv_label_create(strip);
-      char abuf[40];
-      lv_snprintf(abuf, sizeof(abuf), "Active Games: %d", n_active);
-      lv_label_set_text(count_lbl, abuf);
-      lv_obj_set_style_text_color(count_lbl, theme::ink(), 0);
-      lv_obj_set_style_text_font(count_lbl, &lv_font_montserrat_16, 0);
-
-      if (n_turn > 0) {
-        /* Fixed bright green pill — readable on every wallpaper/theme. */
-        constexpr uint32_t kTurnGreen = 0x3ddc84;
-        lv_obj_t * pill = lv_obj_create(strip);
-        lv_obj_remove_style_all(pill);
-        lv_obj_set_height(pill, 32);
-        lv_obj_set_style_pad_hor(pill, 14, 0);
-        lv_obj_set_style_pad_ver(pill, 6, 0);
-        lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(pill, lv_color_hex(kTurnGreen), 0);
-        lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
-        lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                              LV_FLEX_ALIGN_CENTER);
-        lv_obj_remove_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_remove_flag(pill, LV_OBJ_FLAG_CLICKABLE);
-
-        lv_obj_t * turn_lbl = lv_label_create(pill);
-        lv_label_set_text(turn_lbl, "Your Turn");
-        lv_obj_set_style_text_color(turn_lbl, lv_color_hex(0x062012), 0);
-        lv_obj_set_style_text_font(turn_lbl, &lv_font_montserrat_14, 0);
-
-        lv_anim_t a;
-        lv_anim_init(&a);
-        lv_anim_set_var(&a, pill);
-        lv_anim_set_values(&a, 170, 255);
-        lv_anim_set_duration(&a, 700);
-        lv_anim_set_playback_duration(&a, 700);
-        lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
-        lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
-          lv_obj_set_style_bg_opa(static_cast<lv_obj_t *>(obj), (lv_opa_t)v, 0);
-        });
-        lv_anim_start(&a);
-      }
-    }
+    g_games_host = lv_obj_create(body);
+    lv_obj_remove_style_all(g_games_host);
+    lv_obj_set_width(g_games_host, lv_pct(100));
+    lv_obj_set_height(g_games_host, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(g_games_host, LV_FLEX_FLOW_COLUMN);
+    lv_obj_remove_flag(g_games_host, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(g_games_host, LV_OBJ_FLAG_CLICKABLE);
+    rebuild_games_strip();
   }
 
   lv_obj_t * corners = lv_obj_create(body);
@@ -346,6 +377,11 @@ lv_obj_t * hub_screen() {
                       &lv_font_montserrat_12);
 
   return scr;
+}
+
+void hub_refresh_games_chrome() {
+  if (current_screen() != Screen::Hub || !g_games_host) return;
+  rebuild_games_strip();
 }
 
 }  // namespace ui
