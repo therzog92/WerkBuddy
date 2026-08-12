@@ -686,8 +686,9 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_set_pos(wash, 0, 0);
   lv_obj_set_style_bg_color(wash, theme::call_a(), 0);
   lv_obj_set_style_bg_opa(wash, LV_OPA_COVER, 0);
-  lv_obj_remove_flag(wash, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(wash, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(wash, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(wash, on_shantay, LV_EVENT_CLICKED, nullptr);
   {
     /* FULL framebuffer (device) makes this wash pulse smooth like the PC sim. */
     lv_anim_t a;

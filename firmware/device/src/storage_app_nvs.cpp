@@ -30,6 +30,7 @@ bool load(app::Desk & d) {
   d.brightness = (uint8_t)prefs.getUChar("brightness", d.brightness);
   if (d.brightness < 10) d.brightness = 10;
   d.rotate_180 = prefs.getUChar("rot180", d.rotate_180) ? 1 : 0;
+  d.clock_24h = prefs.getUChar("clk24", d.clock_24h) ? 1 : 0;
   if (prefs.isKey("setup_done")) {
     d.setup_done = prefs.getBool("setup_done", false);
   } else if (prefs.isKey("setup")) {
@@ -107,6 +108,7 @@ void save(const app::Desk & d) {
   prefs.putUChar("idle_mode", d.idle_mode);
   prefs.putUChar("brightness", d.brightness);
   prefs.putUChar("rot180", d.rotate_180 ? 1 : 0);
+  prefs.putUChar("clk24", d.clock_24h ? 1 : 0);
   prefs.putBool("setup_done", d.setup_done);
   prefs.remove("setup"); /* drop thin-shell alias so load won't resurrect it */
   prefs.putLong64("clock_off", d.clock_offset_ms);
@@ -218,6 +220,33 @@ bool save_games_blob(const void * src, size_t len) {
   prefs.putUInt("glen", (uint32_t)len);
   prefs.end();
   return true;
+}
+
+bool load_timer_blob(void * dst, size_t * len_io) {
+  if (!dst || !len_io || !*len_io) return false;
+  if (!prefs.begin("werkpager", true)) return false;
+  const size_t n = prefs.getBytesLength("tmr");
+  if (n == 0 || n > *len_io) {
+    prefs.end();
+    return false;
+  }
+  const size_t got = prefs.getBytes("tmr", dst, n);
+  prefs.end();
+  if (got != n) return false;
+  *len_io = got;
+  return true;
+}
+
+bool save_timer_blob(const void * src, size_t len) {
+  if (!prefs.begin("werkpager", false)) return false;
+  if (!src || !len) {
+    prefs.remove("tmr");
+    prefs.end();
+    return true;
+  }
+  const bool ok = prefs.putBytes("tmr", src, len) == len;
+  prefs.end();
+  return ok;
 }
 
 }  // namespace storage

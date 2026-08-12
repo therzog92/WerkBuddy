@@ -23,10 +23,14 @@ lv_timer_t * g_timer = nullptr;
 void format_now(char * time_buf, size_t tn, char * date_buf, size_t dn) {
   std::tm tm{};
   app::local_time(&tm);
-  int hour = tm.tm_hour % 12;
-  if (hour == 0) hour = 12;
-  const char * ampm = tm.tm_hour >= 12 ? "PM" : "AM";
-  lv_snprintf(time_buf, (uint32_t)tn, "%d:%02d %s", hour, tm.tm_min, ampm);
+  if (app::desk().clock_24h) {
+    lv_snprintf(time_buf, (uint32_t)tn, "%02d:%02d", tm.tm_hour, tm.tm_min);
+  } else {
+    int hour = tm.tm_hour % 12;
+    if (hour == 0) hour = 12;
+    const char * ampm = tm.tm_hour >= 12 ? "PM" : "AM";
+    lv_snprintf(time_buf, (uint32_t)tn, "%d:%02d %s", hour, tm.tm_min, ampm);
+  }
   static const char * kWd[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
                                "Thursday", "Friday", "Saturday"};
   static const char * kMo[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -151,7 +155,7 @@ lv_obj_t * idle_screen() {
     lv_snprintf(desk_buf, sizeof(desk_buf), "%s's Desk", app::desk().name);
     lv_label_set_text(desk, desk_buf);
     lv_obj_set_style_text_color(desk, theme::gold(), 0);
-    lv_obj_set_style_text_font(desk, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(desk, &lv_font_montserrat_28, 0);
     lv_obj_set_style_text_letter_space(desk, 1, 0);
 
     char tb[16], db[32];
@@ -160,18 +164,18 @@ lv_obj_t * idle_screen() {
     g_time = lv_label_create(col);
     lv_label_set_text(g_time, tb);
     lv_obj_set_style_text_color(g_time, theme::ink(), 0);
-    lv_obj_set_style_text_font(g_time, font_display(88), 0);
+    lv_obj_set_style_text_font(g_time, font_display(96), 0);
     lv_obj_set_style_text_letter_space(g_time, 2, 0);
 
     g_date = lv_label_create(col);
     lv_label_set_text(g_date, db);
     lv_obj_set_style_text_color(g_date, theme::muted(), 0);
-    lv_obj_set_style_text_font(g_date, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(g_date, &lv_font_montserrat_28, 0);
 
     g_timer_lbl = lv_label_create(col);
     lv_label_set_text(g_timer_lbl, "");
     lv_obj_set_style_text_color(g_timer_lbl, theme::mint(), 0);
-    lv_obj_set_style_text_font(g_timer_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(g_timer_lbl, &lv_font_montserrat_20, 0);
     lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t * hint = lv_label_create(col);

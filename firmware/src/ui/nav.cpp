@@ -54,6 +54,7 @@ app::GameKind kind_for_screen(Screen s) {
 }
 
 void load(lv_obj_t * scr, Screen which) {
+  const Screen prev = g_screen;
   lv_obj_t * old = lv_screen_active();
   g_screen = which;
   /* Instant swap — animated loads + partial RGB strips look like a top-down wipe. */
@@ -68,6 +69,8 @@ void load(lv_obj_t * scr, Screen which) {
                              (which == Screen::Timer && desk_timer::is_finished()));
   /* Full-frame only while a screen-wide color wash is animating. */
   display_perf::prefer_full_frame(wash);
+  /* Leaving a board → Hub/Idle: flush games after paint, not mid-teardown. */
+  if (is_game_board(prev) && !is_game_board(which)) app::games_persist_soon();
 }
 
 void idle_tick(lv_timer_t * /*t*/) {
@@ -211,9 +214,9 @@ void go_idle() {
   g_before_idle = g_screen;
   g_idle_focus = app::focus_index();
   g_idle_had_games = app::active_count() > 0;
-  /* Flush matches before tearing down the board — survives wake corruption + unplug. */
-  app::games_persist();
   load(idle_screen(), Screen::Idle);
+  /* Flush after idle paints — sync NVS during load stalled the RGB panel. */
+  app::schedule(450, [](void * /*ud*/) { app::games_persist(); }, nullptr);
 }
 
 void finish_wake_from_idle(void * /*ud*/) {
@@ -242,9 +245,10 @@ void finish_wake_from_idle(void * /*ud*/) {
 
   /*
    * Never rebuild a heavy game board from the press path — that froze touch.
-   * If any match is live, land on Active Games (tap row to resume).
+   * Only jump to Active Games when it's your turn. Otherwise Hub / prior screen
+   * — games stay live in the registry (NVS already flushed).
    */
-  if (app::active_count() > 0) {
+  if (app::your_turn_count() > 0) {
     go_active_games();
     return;
   }
@@ -263,7 +267,10 @@ void finish_wake_from_idle(void * /*ud*/) {
       else go_hub();
       break;
     case Screen::GamesFolder: go_games_folder(); break;
-    case Screen::ActiveGames: go_active_games(); break;
+    case Screen::ActiveGames:
+      /* Not your turn — Hub keeps sync; avoid bouncing into AG every wake. */
+      go_hub();
+      break;
     case Screen::UtilsFolder: go_utils_folder(); break;
     case Screen::Scoreboard: go_scoreboard(); break;
     case Screen::G2048: go_g2048(); break;

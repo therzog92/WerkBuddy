@@ -49,8 +49,11 @@ void clear();
 bool upload_session(char * url, size_t url_n, char * local_url, size_t local_n,
                     char * qr_lv_src, size_t qr_n);
 
-/** Poll stamp file / SoftAP job; returns true once when a new upload arrives. */
+/** Poll SoftAP job; returns true once when a JPEG finished uploading (not baked yet). */
 bool poll_new_upload();
+
+/** After SoftAP is stopped: bake JPEG → RGB565. Returns true if wallpaper ready. */
+bool finalize_upload();
 
 /** SoftAP job: pump DNS/HTTP (device). No-op on sim. */
 void upload_poll();

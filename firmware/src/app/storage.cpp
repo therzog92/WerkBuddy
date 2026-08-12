@@ -72,6 +72,8 @@ bool load(app::Desk & d) {
       d.brightness = (uint8_t)b;
     } else if (!std::strcmp(key, "rotate_180")) {
       d.rotate_180 = std::atoi(val) != 0 ? 1 : 0;
+    } else if (!std::strcmp(key, "clock_24h")) {
+      d.clock_24h = std::atoi(val) != 0 ? 1 : 0;
     } else if (!std::strcmp(key, "setup_done")) {
       d.setup_done = std::atoi(val) != 0;
       saw_setup = true;
@@ -135,6 +137,7 @@ void save(const app::Desk & d) {
   put_int(f, "idle_mode", d.idle_mode);
   put_int(f, "brightness", d.brightness);
   put_int(f, "rotate_180", d.rotate_180 ? 1 : 0);
+  put_int(f, "clock_24h", d.clock_24h ? 1 : 0);
   put_int(f, "setup_done", d.setup_done ? 1 : 0);
   put_int(f, "clock_offset_ms", d.clock_offset_ms);
   put_int(f, "wall_epoch", (int)d.wall_epoch);
@@ -185,9 +188,33 @@ bool save_games_blob(const void * src, size_t len) {
   return n == len;
 }
 
+bool load_timer_blob(void * dst, size_t * len_io) {
+  if (!dst || !len_io || !*len_io) return false;
+  FILE * f = std::fopen("werkpager_timer.bin", "rb");
+  if (!f) return false;
+  const size_t n = std::fread(dst, 1, *len_io, f);
+  std::fclose(f);
+  if (n == 0) return false;
+  *len_io = n;
+  return true;
+}
+
+bool save_timer_blob(const void * src, size_t len) {
+  if (!src || !len) {
+    std::remove("werkpager_timer.bin");
+    return true;
+  }
+  FILE * f = std::fopen("werkpager_timer.bin", "wb");
+  if (!f) return false;
+  const size_t n = std::fwrite(src, 1, len, f);
+  std::fclose(f);
+  return n == len;
+}
+
 void wipe() {
   std::remove(kFile);
   std::remove("werkpager_games.bin");
+  std::remove("werkpager_timer.bin");
 }
 
 }  // namespace storage

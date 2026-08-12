@@ -156,11 +156,11 @@ int pack_msg(const proto::Msg & msg, const uint8_t own_mac[6], uint8_t * out, si
   if (type == T::Call) {
     if (out_len < kCallSize) return -1;
     if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
-    char em[8] = {}, text[22] = {};
+    char em[16] = {}, text[22] = {};
     pad_copy(em, sizeof(em), msg.emoji);
     pad_copy(text, sizeof(text), msg.message);
-    std::memcpy(out + 26, em, 8);
-    std::memcpy(out + 34, text, 22);
+    std::memcpy(out + 26, em, 16);
+    std::memcpy(out + 42, text, 22);
     return (int)kCallSize;
   }
 
@@ -309,9 +309,9 @@ bool unpack_msg(const uint8_t * data, size_t len, proto::Msg * out) {
 
   if (m.type == T::Call) {
     if (len < kCallSize || !unpack_peer_hdr(data, len, &m)) return false;
-    std::memcpy(m.emoji, data + 26, 8);
-    m.emoji[8] = 0;
-    std::memcpy(m.message, data + 34, 22);
+    std::memcpy(m.emoji, data + 26, 16);
+    m.emoji[15] = 0;
+    std::memcpy(m.message, data + 42, 22);
     m.message[22] = 0;
     *out = m;
     return true;

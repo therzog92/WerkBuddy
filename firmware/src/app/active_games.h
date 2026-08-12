@@ -38,6 +38,8 @@ void games_init(); /* start auto-forfeit timer; restore slots from NVS/disk */
 void games_mark_dirty();
 /** Force-write live slots now (call before idle / power-sensitive moments). */
 void games_persist();
+/** Debounced NVS flush after UI settles (avoids RGB stall mid-transition). */
+void games_persist_soon();
 /** Reload slots from last persist (wake recovery if RAM was wiped). */
 bool games_restore();
 /** Ask each live opponent whether they still have the match (clears stale NVS games). */

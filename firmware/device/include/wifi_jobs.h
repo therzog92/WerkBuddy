@@ -22,5 +22,14 @@ int scan(ScanAp * out, int max_out);
  */
 bool sync_time(char * err, size_t err_n);
 
+/**
+ * Join saved Wi-Fi and leave STA up (for Updates fetch/install).
+ * Caller must call leave_sta() when done. Returns true on success.
+ */
+bool join_sta(char * err, size_t err_n);
+
+/** Disconnect STA and restore SoftAP / ESP-NOW radio. */
+void leave_sta();
+
 }  // namespace wifi_jobs
 }  // namespace wp

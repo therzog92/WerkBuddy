@@ -24,10 +24,14 @@ lv_timer_t * g_timer = nullptr;
 void format_clock(char * buf, size_t n, char * date_buf, size_t dn) {
   std::tm tm{};
   app::local_time(&tm);
-  int hour12 = tm.tm_hour % 12;
-  if (hour12 == 0) hour12 = 12;
-  const char * ampm = tm.tm_hour >= 12 ? "PM" : "AM";
-  lv_snprintf(buf, (uint32_t)n, "%d:%02d %s", hour12, tm.tm_min, ampm);
+  if (app::desk().clock_24h) {
+    lv_snprintf(buf, (uint32_t)n, "%02d:%02d", tm.tm_hour, tm.tm_min);
+  } else {
+    int hour12 = tm.tm_hour % 12;
+    if (hour12 == 0) hour12 = 12;
+    const char * ampm = tm.tm_hour >= 12 ? "PM" : "AM";
+    lv_snprintf(buf, (uint32_t)n, "%d:%02d %s", hour12, tm.tm_min, ampm);
+  }
   static const char * kWd[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
                                "Thursday", "Friday", "Saturday"};
   static const char * kMo[] = {"January", "February", "March", "April", "May", "June",
@@ -146,34 +150,53 @@ lv_obj_t * hub_screen() {
   lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(hero, 3, 0);
   lv_obj_set_style_pad_ver(hero, 4, 0);
-  lv_obj_add_flag(hero, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_event_cb(hero, [](lv_event_t * /*e*/) { go_timer(); }, LV_EVENT_CLICKED, nullptr);
 
   g_desk = lv_label_create(hero);
   char desk[48];
   lv_snprintf(desk, sizeof(desk), "%s's Desk", app::desk().name);
   lv_label_set_text(g_desk, desk);
   lv_obj_set_style_text_color(g_desk, theme::muted(), 0);
-  lv_obj_set_style_text_font(g_desk, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(g_desk, &lv_font_montserrat_28, 0);
 
   g_clock = lv_label_create(hero);
   lv_label_set_text(g_clock, cb);
   lv_obj_set_style_text_color(g_clock, theme::gold(), 0);
-  lv_obj_set_style_text_font(g_clock, font_display(52), 0);
+  lv_obj_set_style_text_font(g_clock, font_display(60), 0);
   lv_obj_set_style_text_letter_space(g_clock, 2, 0);
+  lv_obj_add_flag(g_clock, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(
+      g_clock,
+      [](lv_event_t * /*e*/) {
+        app::desk().clock_24h = app::desk().clock_24h ? 0 : 1;
+        app::save();
+        char cb2[24], db2[40];
+        format_clock(cb2, sizeof(cb2), db2, sizeof(db2));
+        if (g_clock) lv_label_set_text(g_clock, cb2);
+        if (g_date) lv_label_set_text(g_date, db2);
+        toast(app::desk().clock_24h ? "24-hour clock" : "12-hour clock");
+      },
+      LV_EVENT_CLICKED, nullptr);
 
   g_date = lv_label_create(hero);
   lv_label_set_text(g_date, db);
   lv_obj_set_style_text_color(g_date, theme::gold(), 0);
-  lv_obj_set_style_text_font(g_date, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(g_date, &lv_font_montserrat_20, 0);
 
   g_timer_lbl = lv_label_create(hero);
   lv_label_set_text(g_timer_lbl, "");
   lv_obj_set_style_text_color(g_timer_lbl, theme::mint(), 0);
-  lv_obj_set_style_text_font(g_timer_lbl, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(g_timer_lbl, &lv_font_montserrat_20, 0);
   lv_obj_set_style_pad_top(g_timer_lbl, 2, 0);
   lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(g_timer_lbl, [](lv_event_t * /*e*/) { go_timer(); }, LV_EVENT_CLICKED,
+                      nullptr);
+  /* Desk name also opens timer (easy target). */
+  lv_obj_add_flag(g_desk, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(g_desk, [](lv_event_t * /*e*/) { go_timer(); }, LV_EVENT_CLICKED, nullptr);
+  lv_obj_add_flag(g_date, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(g_date, [](lv_event_t * /*e*/) { go_timer(); }, LV_EVENT_CLICKED, nullptr);
 
   g_timer = lv_timer_create(tick, 1000, nullptr);
   tick(nullptr);
@@ -231,9 +254,12 @@ lv_obj_t * hub_screen() {
       lv_obj_t * strip = lv_button_create(body);
       lv_obj_remove_style_all(strip);
       lv_obj_set_width(strip, lv_pct(100));
-      lv_obj_set_height(strip, LV_SIZE_CONTENT);
-      lv_obj_set_style_pad_ver(strip, 6, 0);
-      lv_obj_set_style_pad_hor(strip, 8, 0);
+      lv_obj_set_height(strip, 48);
+      lv_obj_set_style_pad_ver(strip, 10, 0);
+      lv_obj_set_style_pad_hor(strip, 12, 0);
+      lv_obj_set_style_radius(strip, 12, 0);
+      lv_obj_set_style_bg_color(strip, theme::panel(), 0);
+      lv_obj_set_style_bg_opa(strip, LV_OPA_COVER, 0);
       lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
       lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
       lv_obj_set_style_pad_column(strip, 10, 0);
@@ -246,16 +272,16 @@ lv_obj_t * hub_screen() {
       lv_snprintf(abuf, sizeof(abuf), "Active Games: %d", n_active);
       lv_label_set_text(count_lbl, abuf);
       lv_obj_set_style_text_color(count_lbl, theme::ink(), 0);
-      lv_obj_set_style_text_font(count_lbl, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_font(count_lbl, &lv_font_montserrat_16, 0);
 
       if (n_turn > 0) {
         /* Fixed bright green pill — readable on every wallpaper/theme. */
         constexpr uint32_t kTurnGreen = 0x3ddc84;
         lv_obj_t * pill = lv_obj_create(strip);
         lv_obj_remove_style_all(pill);
-        lv_obj_set_height(pill, 28);
-        lv_obj_set_style_pad_hor(pill, 12, 0);
-        lv_obj_set_style_pad_ver(pill, 4, 0);
+        lv_obj_set_height(pill, 32);
+        lv_obj_set_style_pad_hor(pill, 14, 0);
+        lv_obj_set_style_pad_ver(pill, 6, 0);
         lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_color(pill, lv_color_hex(kTurnGreen), 0);
         lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);

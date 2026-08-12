@@ -75,7 +75,7 @@ enum class MsgType : uint8_t {
 
 constexpr int kMaxName = 13;    /* 12 chars + NUL (web clamps to 12) */
 constexpr int kMaxId = 16;      /* "mac-tommy" sim ids; MAC hex on device */
-constexpr int kMaxEmoji = 8;    /* one UTF-8 emoji */
+constexpr int kMaxEmoji = 16;   /* UTF-8 incl. ZWJ (e.g. ❤️‍🌈) + NUL */
 constexpr int kMaxMessage = 23; /* 22 chars + NUL (web clamps canned to 22) */
 constexpr int kMaxStrokePts = 40; /* points per chunk (80 coords) — ESP-NOW budget */
 

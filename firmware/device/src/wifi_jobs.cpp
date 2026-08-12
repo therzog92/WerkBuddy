@@ -110,5 +110,48 @@ bool sync_time(char * err, size_t err_n) {
   return true;
 }
 
+bool join_sta(char * err, size_t err_n) {
+  if (err && err_n) err[0] = 0;
+  app::Desk & d = app::desk();
+  if (!d.wifi_ssid[0]) {
+    if (err && err_n) std::snprintf(err, err_n, "No Wi-Fi saved");
+    return false;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    d.wifi_connected = true;
+    return true;
+  }
+
+  Serial.printf("WiFi join: %s\n", d.wifi_ssid);
+  d.wifi_connected = true;
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.disconnect(false, false);
+  delay(50);
+  WiFi.begin(d.wifi_ssid, d.wifi_pass[0] ? d.wifi_pass : nullptr);
+
+  for (int i = 0; i < kJoinTries; ++i) {
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("WiFi join: IP=%s\n", WiFi.localIP().toString().c_str());
+      return true;
+    }
+    delay(250);
+  }
+
+  d.wifi_connected = false;
+  WiFi.disconnect(false, false);
+  net::restore_espnow_radio();
+  if (err && err_n) std::snprintf(err, err_n, "Could not join %s", d.wifi_ssid);
+  Serial.println("WiFi join: FAILED");
+  return false;
+}
+
+void leave_sta() {
+  app::desk().wifi_connected = false;
+  WiFi.disconnect(false, false);
+  delay(50);
+  net::restore_espnow_radio();
+  Serial.println("WiFi leave: SoftAP restored");
+}
+
 }  // namespace wifi_jobs
 }  // namespace wp

@@ -226,7 +226,7 @@ void drop_stale_match(GameKind kind, const char * peer_id, const char * peer_nam
   ui::toast_fmt("%s ended the match", peer_name && peer_name[0] ? peer_name : "Peer");
   if (was_viewing || was_focus) ui::go_hub();
   else if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
-  else if (ui::current_screen() == ui::Screen::Hub) ui::go_hub();
+  /* Hub: leave alone — strip is stale until next visit; avoids flash. */
 }
 
 void remove_remote_game(GameKind kind, const proto::Msg & m, const char * score_name,
@@ -1090,9 +1090,7 @@ void handle_msg(const proto::Msg & m) {
       ui::doodle_apply_remote_stroke(m);
       /* Never yank the desk to Doodle — pulse the hub icon until they open it. */
       if (ui::current_screen() != ui::Screen::Doodle) {
-        const bool was = d.doodle_unread;
         d.doodle_unread = true;
-        if (!was && ui::current_screen() == ui::Screen::Hub) ui::go_hub();
       }
       return;
     }

@@ -23,7 +23,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "0.67";
+constexpr const char * kFirmwareVersion = "0.68";
 /** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
 const char * firmware_version();
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
@@ -151,6 +151,8 @@ struct Desk {
   uint8_t brightness = 85; /* 10..100; pages force full */
   /** 0 = normal, 1 = rotate UI+touch 180° (stand flipped). */
   uint8_t rotate_180 = 0;
+  /** 0 = 12-hour, 1 = 24-hour (tap clock on Hub to toggle). */
+  uint8_t clock_24h = 0;
   bool setup_done = false; /* false → first-run / post-reset setup */
   int64_t clock_offset_ms = 0;
   /** Last known UTC wall seconds (NVS); restored into RTC after power loss. */

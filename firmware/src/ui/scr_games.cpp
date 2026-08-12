@@ -956,7 +956,14 @@ void c4_challenge(lv_event_t * e) {
   m.color = app::c4().my_color;
   app::send(m);
   /* Defer rebuild — color-picker radials + sync go_c4 froze touch on both desks. */
-  app::schedule(1, [](void * /*p*/) { go_c4(); }, nullptr);
+  app::schedule(1, [](void * /*p*/) {
+    /* Don't yank back if the user already hit Home. */
+    const Screen s = current_screen();
+    if (s == Screen::Hub || s == Screen::ActiveGames || s == Screen::Idle ||
+        s == Screen::GamesFolder)
+      return;
+    go_c4();
+  }, nullptr);
 }
 
 void c4_drop(lv_event_t * e) {
@@ -1206,7 +1213,13 @@ lv_obj_t * game_c4_build(lv_obj_t * into) {
       fill_msg_ids(m, inv.from_id);
       m.color = app::c4().my_color;
       app::send(m);
-      app::schedule(1, [](void * /*p*/) { go_c4(); }, nullptr);
+      app::schedule(1, [](void * /*p*/) {
+        const Screen s = current_screen();
+        if (s == Screen::Hub || s == Screen::ActiveGames || s == Screen::Idle ||
+            s == Screen::GamesFolder)
+          return;
+        go_c4();
+      }, nullptr);
     });
   } else if (app::c4().active && app::c4().waiting) {
     make_wait_block(body, "CHALLENGE SENT", app::c4().opp_name, "Waiting for them to accept...");
@@ -2584,7 +2597,13 @@ void fill_rv_play(lv_obj_t * parent) {
     } else {
       rv_send_pass();
       /* Defer rebuild — sync go_reversi here stacked with the incoming-move refresh. */
-      app::schedule(1, [](void * /*p*/) { go_reversi(); }, nullptr);
+      app::schedule(1, [](void * /*p*/) {
+        const Screen s = current_screen();
+        if (s == Screen::Hub || s == Screen::ActiveGames || s == Screen::Idle ||
+            s == Screen::GamesFolder)
+          return;
+        go_reversi();
+      }, nullptr);
     }
     return;
   }

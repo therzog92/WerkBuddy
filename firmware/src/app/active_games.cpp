@@ -1,5 +1,6 @@
 #include "app/active_games.h"
 
+#include "app/app.h"
 #include "app/score_log.h"
 #include "app/storage.h"
 #include "net/link.h"
@@ -20,6 +21,7 @@ GameSlot g_slots[kMaxActiveGames];
 int g_focus = -1;
 lv_timer_t * g_forfeit_timer = nullptr;
 bool g_persist_dirty = false;
+bool g_persist_scheduled = false;
 
 constexpr uint32_t kGamesMagic = 0x31414757u; /* WGA1 */
 constexpr uint16_t kGamesVersion = 1;
@@ -205,9 +207,18 @@ bool on_game_board_ui() {
          s == S::Rv || s == S::Db;
 }
 
+void schedule_persist() {
+  if (g_persist_scheduled) return;
+  g_persist_scheduled = true;
+  schedule(400, [](void * /*ud*/) {
+    g_persist_scheduled = false;
+    if (g_persist_dirty && !on_game_board_ui()) persist_now();
+  }, nullptr);
+}
+
 void forfeit_tick(lv_timer_t * /*t*/) {
-  /* NVS writes stall the RGB panel — never flush mid-board (caused your-turn glitches). */
-  if (g_persist_dirty && !on_game_board_ui()) persist_now();
+  /* NVS writes stall the RGB panel — defer so Hub/Idle paints settle first. */
+  if (g_persist_dirty && !on_game_board_ui()) schedule_persist();
   const uint32_t now = mono_ms();
   for (int i = 0; i < kMaxActiveGames; ++i) {
     GameSlot & s = g_slots[i];
@@ -318,6 +329,11 @@ uint32_t mono_ms() { return lv_tick_get(); }
 void games_mark_dirty() { g_persist_dirty = true; }
 
 void games_persist() { persist_now(); }
+
+void games_persist_soon() {
+  g_persist_dirty = true;
+  schedule_persist();
+}
 
 bool games_restore() { return restore_now(); }
 
@@ -484,16 +500,14 @@ void notify_your_turn(GameKind kind, const char * opp_name, const char * peer_id
   std::snprintf(toast, sizeof(toast), "%s vs %s: Your Turn", kind_name(kind),
                 opp_name ? opp_name : "peer");
   ui::toast_fmt("%s", toast);
-  /* Hub strip is built once — rebuild so Your Turn pill appears without navigating away. */
-  if (ui::current_screen() == ui::Screen::Hub) ui::go_hub();
-  else if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
+  /* Rebuild Active Games; skip Hub — full go_hub() flashes the wallpaper. */
+  if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
 }
 
 void refresh_viewing(GameKind kind, const char * peer_id) {
   if (is_viewing(kind, peer_id)) go_kind(kind);
-  /* Keep Active Games / hub chrome in sync when not viewing the board. */
+  /* Keep Active Games in sync; never tear down Hub just to refresh chrome. */
   if (ui::current_screen() == ui::Screen::ActiveGames) ui::go_active_games();
-  else if (ui::current_screen() == ui::Screen::Hub) ui::go_hub();
 }
 
 void open_slot(int idx) {

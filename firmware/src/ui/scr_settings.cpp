@@ -1106,14 +1106,19 @@ lv_obj_t * settings_screen() {
          nullptr);
     chip(wifi_acts, "Updates", false,
          [](lv_event_t * /*e*/) {
-#ifdef WP_DEVICE
-           toast("Updates not implemented yet");
-           return;
-#else
            if (!app::desk().wifi_ssid[0]) {
              toast("Save a Wi-Fi network first");
              return;
            }
+#ifdef WP_DEVICE
+           toast("Joining Wi-Fi…");
+           char err[64] = {};
+           if (!wifi_jobs::join_sta(err, sizeof(err))) {
+             toast(err[0] ? err : "Wi-Fi join failed");
+             return;
+           }
+           go_ota_releases();
+#else
            app::desk().wifi_connected = true; /* STA up for Updates UI */
            go_ota_releases();
 #endif
@@ -1542,6 +1547,9 @@ int g_ota_selected_idx = -1;
 
 void ota_leave_disconnect() {
   app::desk().wifi_connected = false;
+#ifdef WP_DEVICE
+  wifi_jobs::leave_sta();
+#endif
 }
 
 void ota_do_install(lv_event_t * /*e*/) {
@@ -1549,7 +1557,20 @@ void ota_do_install(lv_event_t * /*e*/) {
   g_ota_pending_idx = -1;
   if (idx < 0 || idx >= g_ota_cache_n) return;
   const sim::github_ota::Release & r = g_ota_cache[idx];
-  /* Real desks: download .bin + flash OTA partition. Sim: adopt tag. */
+#ifdef WP_DEVICE
+  if (!r.has_bin || !r.asset_url[0]) {
+    toast("No .bin asset for this release");
+    return;
+  }
+  toast("Downloading firmware…");
+  char err[96] = {};
+  /* install_bin reboots on success; on failure we stay here. */
+  if (!sim::github_ota::install_bin(r.asset_url, err, (int)sizeof(err))) {
+    toast(err[0] ? err : "OTA failed");
+    return;
+  }
+#else
+  /* Sim: adopt tag only. */
   app::set_firmware_version(r.tag);
   g_ota_selected_idx = -1;
   ota_leave_disconnect();
@@ -1558,6 +1579,7 @@ void ota_do_install(lv_event_t * /*e*/) {
   else
     toast_fmt("Installed %s (no .bin asset)", r.tag);
   go_hub();
+#endif
 }
 
 void ota_confirm_install(int idx) {
@@ -1731,15 +1753,13 @@ lv_obj_t * g_emoji_confirm_img = nullptr;
 
 void emoji_picker_refresh_confirm() {
   if (!g_emoji_confirm_img) return;
-  if (g_emoji_pending[0]) {
-    if (lv_obj_check_type(g_emoji_confirm_img, &lv_image_class)) {
-      const char * path = emoji_png_path(g_emoji_pending);
-      if (path && path[0]) lv_image_set_src(g_emoji_confirm_img, path);
-    }
-    lv_obj_remove_flag(g_emoji_confirm_img, LV_OBJ_FLAG_HIDDEN);
-  } else {
-    lv_obj_add_flag(g_emoji_confirm_img, LV_OBJ_FLAG_HIDDEN);
-  }
+  lv_obj_t * parent = lv_obj_get_parent(g_emoji_confirm_img);
+  if (!parent) return;
+  /* Rebuild — device uses baked RGB565 descriptors, not FS paths. */
+  lv_obj_delete(g_emoji_confirm_img);
+  g_emoji_confirm_img =
+      make_emoji_image(parent, g_emoji_pending[0] ? g_emoji_pending : "😀", 22);
+  lv_obj_remove_flag(g_emoji_confirm_img, LV_OBJ_FLAG_HIDDEN);
 }
 
 void emoji_picker_confirm(lv_event_t * /*e*/) {
@@ -1971,13 +1991,36 @@ void bg_upload_cleanup(lv_event_t * /*e*/) {
   lv_timer_set_repeat_count(defer, 1);
 }
 
+struct BgFinalizeCtx {
+  bool go_home_on_ok;
+};
+
+void bg_finalize_deferred(lv_timer_t * t) {
+  auto * ctx = static_cast<BgFinalizeCtx *>(lv_timer_get_user_data(t));
+  background::end_upload_job();
+  toast("Saving background…");
+  const bool ok = background::finalize_upload();
+  if (ok) {
+    toast("Background saved");
+    if (!ctx || ctx->go_home_on_ok) go_hub();
+  } else {
+    toast("Could not save photo — try again");
+  }
+  delete ctx;
+  lv_timer_delete(t);
+}
+
 void bg_poll_tick(lv_timer_t * /*t*/) {
   background::upload_poll();
-  if (background::poll_new_upload()) {
-    toast("Background saved");
-    /* Leave SoftAP teardown to DELETE cleanup (deferred). */
-    go_hub();
+  if (!background::poll_new_upload()) return;
+  if (g_bg_poll) {
+    lv_timer_delete(g_bg_poll);
+    g_bg_poll = nullptr;
   }
+  /* Stop SoftAP first, then bake — avoids OOM while HTTP/AP still live. */
+  auto * ctx = new BgFinalizeCtx{true};
+  lv_timer_t * defer = lv_timer_create(bg_finalize_deferred, 100, ctx);
+  lv_timer_set_repeat_count(defer, 1);
 }
 
 void open_upload_url(const char * url) {

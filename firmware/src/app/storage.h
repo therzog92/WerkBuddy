@@ -29,5 +29,9 @@ void wipe();
 bool load_games_blob(void * dst, size_t * len_io);
 bool save_games_blob(const void * src, size_t len);
 
+/** Desk timer snapshot (device NVS; sim: optional file / no-op). */
+bool load_timer_blob(void * dst, size_t * len_io);
+bool save_timer_blob(const void * src, size_t len);
+
 }  // namespace storage
 }  // namespace wp

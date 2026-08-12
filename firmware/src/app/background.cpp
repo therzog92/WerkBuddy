@@ -278,9 +278,13 @@ bool poll_new_upload() {
   if (cur == g_last_stamp) return false;
   const bool first = g_last_stamp.empty();
   g_last_stamp = cur;
-  reload();
   /* Ignore the first observation so opening the screen doesn't toast immediately. */
-  return !first && has();
+  return !first;
+}
+
+bool finalize_upload() {
+  reload();
+  return has();
 }
 
 void upload_poll() {}

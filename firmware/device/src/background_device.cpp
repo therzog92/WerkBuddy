@@ -31,7 +31,7 @@ bool g_fs_ok = false;
 bool g_has = false;
 bool g_checked = false;
 bool g_job = false;
-bool g_new_upload = false;
+bool g_pending_finalize = false; /* JPEG on FS; bake after SoftAP teardown */
 bool g_seeded_poll = false;
 
 constexpr const char * kApSsid = "WerkBuddy-Upload";
@@ -306,8 +306,8 @@ void handle_upload_finish() {
     g_upload.close();
     g_upload = File();
   }
-  refresh_has();
-  if (g_has) g_new_upload = true;
+  /* Do not bake while SoftAP/HTTP are live — that was OOMing and bouncing to Hub. */
+  g_pending_finalize = true;
   g_http.send(200, "text/plain", "OK");
 }
 
@@ -383,7 +383,7 @@ bool start_job() {
   g_http.begin();
 
   g_job = true;
-  g_new_upload = false;
+  g_pending_finalize = false;
   g_seeded_poll = false;
   Serial.printf("BG upload SoftAP %s pass=%s url=%s\n", kApSsid, kApPass, g_http_url);
   return true;
@@ -494,11 +494,15 @@ bool poll_new_upload() {
   if (!g_job) return false;
   if (!g_seeded_poll) {
     g_seeded_poll = true;
-    g_new_upload = false;
+    g_pending_finalize = false;
     return false;
   }
-  if (!g_new_upload) return false;
-  g_new_upload = false;
+  if (!g_pending_finalize) return false;
+  g_pending_finalize = false;
+  return true;
+}
+
+bool finalize_upload() {
   reload();
   return has();
 }

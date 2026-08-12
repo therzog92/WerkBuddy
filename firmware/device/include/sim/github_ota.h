@@ -1,9 +1,7 @@
 #pragma once
-/* Prefer this over firmware/src/sim/github_ota.h on device builds.
- * Layout matches the sim API so scr_settings.cpp compiles; bodies are stubs. */
+/* Device GitHub Releases client — same API as firmware/src/sim/github_ota.h */
 
 #include <cstddef>
-#include <cstdio>
 #include <cstdint>
 
 namespace wp {
@@ -25,15 +23,13 @@ struct Release {
 constexpr const char * kOwner = "therzog92";
 constexpr const char * kRepo = "WerkBuddy";
 
-inline int fetch_releases(Release * /*out*/, int /*max_out*/, char * err, int err_cap) {
-  if (err && err_cap > 0) std::snprintf(err, (size_t)err_cap, "OTA not on device yet");
-  return 0;
-}
+/** HTTPS GET api.github.com/.../releases. Blocking. Returns count or -1. */
+int fetch_releases(Release * out, int max_out, char * err, int err_cap);
 
-inline const char * tag_body(const char * tag) {
-  if (!tag || !tag[0]) return "";
-  return (tag[0] == 'v' || tag[0] == 'V') ? tag + 1 : tag;
-}
+/** Download .bin from browser_download_url and flash OTA slot; reboots on success. */
+bool install_bin(const char * url, char * err, int err_cap);
+
+const char * tag_body(const char * tag);
 
 }  // namespace github_ota
 }  // namespace sim
