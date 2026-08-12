@@ -105,27 +105,6 @@ lv_obj_t * hub_screen() {
   lv_obj_set_style_text_font(brand, font_display(18), 0);
   lv_obj_set_style_text_letter_space(brand, 2, 0);
 
-  lv_obj_t * live = lv_obj_create(top);
-  lv_obj_remove_style_all(live);
-  lv_obj_set_size(live, LV_SIZE_CONTENT, 22);
-  lv_obj_set_flex_flow(live, LV_FLEX_FLOW_ROW);
-  lv_obj_set_flex_align(live, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(live, 6, 0);
-  lv_obj_set_style_pad_hor(live, 10, 0);
-  lv_obj_set_style_bg_color(live, theme::panel(), 0);
-  lv_obj_set_style_bg_opa(live, LV_OPA_COVER, 0);
-  lv_obj_set_style_radius(live, 11, 0);
-  lv_obj_t * dot = lv_obj_create(live);
-  lv_obj_remove_style_all(dot);
-  lv_obj_set_size(dot, 6, 6);
-  lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_color(dot, theme::mint(), 0);
-  lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-  lv_obj_t * live_lbl = lv_label_create(live);
-  lv_label_set_text(live_lbl, "live");
-  lv_obj_set_style_text_color(live_lbl, theme::muted(), 0);
-  lv_obj_set_style_text_font(live_lbl, &lv_font_montserrat_12, 0);
-
   lv_obj_t * body = lv_obj_create(scr);
   lv_obj_remove_style_all(body);
   lv_obj_set_size(body, WP_HOR_RES, WP_VER_RES - 44);
