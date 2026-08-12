@@ -66,12 +66,12 @@ const char * softap_ssid();
 const char * softap_pass();
 
 /** Soft dark wash over wallpaper (0..255). Higher recolor = dimmer photo. */
-constexpr lv_opa_t kWashHub = 90;
+constexpr lv_opa_t kWashHub = 155;  /* darker so hub chrome/text stays readable */
 constexpr lv_opa_t kWashPage = 140; /* readable chrome, photo still visible */
-constexpr lv_opa_t kWashIdle = 150;
+constexpr lv_opa_t kWashIdle = 115; /* clock lock — a bit brighter than hub */
 /** Extra: page screens also lower image opa so text stays readable. */
-constexpr lv_opa_t kImageOpaHub = LV_OPA_COVER;
+constexpr lv_opa_t kImageOpaHub = 200;
 constexpr lv_opa_t kImageOpaPage = 95;  /* ~37% photo — heavily subdued */
-constexpr lv_opa_t kImageOpaIdle = 180;
+constexpr lv_opa_t kImageOpaIdle = 215;
 }  // namespace background
 }  // namespace wp
