@@ -157,6 +157,7 @@ void osk_apply_caps() {
 void add_osk_row(lv_obj_t * parent, const char * keys, int inset, bool letters) {
   lv_obj_t * row = lv_obj_create(parent);
   lv_obj_remove_style_all(row);
+  lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_width(row, lv_pct(100));
   lv_obj_set_height(row, 40);
   lv_obj_set_style_pad_left(row, inset, 0);
@@ -203,6 +204,9 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
                            : "SETTINGS";
   make_topbar(scr, bar, app::desk().name[0] ? app::desk().name : "WerkBuddy");
   lv_obj_t * body = make_body(scr, true);
+  /* OSK must stay fixed — scrolling the page under the keys feels broken. */
+  lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(body, LV_DIR_NONE);
   make_tagline(body, title);
 
   g_osk_value = lv_label_create(body);
@@ -225,6 +229,7 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
 
   lv_obj_t * actions = lv_obj_create(body);
   lv_obj_remove_style_all(actions);
+  lv_obj_remove_flag(actions, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_width(actions, lv_pct(100));
   lv_obj_set_height(actions, 44);
   lv_obj_set_flex_flow(actions, LV_FLEX_FLOW_ROW);
