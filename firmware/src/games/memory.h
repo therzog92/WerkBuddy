@@ -15,9 +15,8 @@ constexpr int kCards = 16;
 constexpr int kPairs = 8;
 
 /**
- * Pair art is loaded from firmware/assets/memory/*.{png,jpg,jpeg}.
- * UI picks kPairs faces from that folder using the match seed (same seed ⇒
- * same faces on both desks if the folder matches). Drop in more anytime.
+ * Pair art: sim loads firmware/assets/memory/*.{png,jpg,jpeg}; device uses
+ * baked RGB565 from bake_memory_assets.py (same stems / seed pick).
  */
 
 /* mulberry32 PRNG — identical constants to the web sim */

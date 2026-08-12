@@ -30,6 +30,7 @@
 #include <filesystem>
 #else
 #include <esp_heap_caps.h>
+#include "memory_pack.h"
 #endif
 
 namespace wp {
@@ -2076,7 +2077,17 @@ uint32_t g_mem_faces_seed = 0;
 bool g_mem_faces_bound = false;
 
 #ifdef WP_DEVICE
-std::vector<std::string> mem_scan_pool() { return {}; }
+/** Stems from the baked RGB565 pack — no FS decode on flip. */
+std::vector<std::string> mem_scan_pool() {
+  std::vector<std::string> out;
+  const int n = memory_pack::count();
+  out.reserve((size_t)n);
+  for (int i = 0; i < n; ++i) {
+    const char * stem = memory_pack::stem_at(i);
+    if (stem && stem[0]) out.push_back(stem);
+  }
+  return out;
+}
 #else
 std::filesystem::path mem_assets_dir() {
   namespace fs = std::filesystem;
@@ -2333,18 +2344,32 @@ void fill_mem_play(lv_obj_t * parent) {
       bool shown = false;
       if (!path.empty()) {
         lv_obj_t * img = lv_image_create(card);
+        int32_t src_w = 96;
+#ifdef WP_DEVICE
+        /* Baked RGB565 descriptors — zero decode cost on flip. */
+        const lv_image_dsc_t * dsc = memory_pack::find_dsc(path.c_str());
+        if (dsc) {
+          lv_image_set_src(img, dsc);
+          if (dsc->header.w > 0) src_w = (int32_t)dsc->header.w;
+          shown = true;
+        }
+#else
         lv_image_set_src(img, path.c_str());
         /* Scale whatever source size to the card inset (authoring target 96px
          * via tools/memory-crop). Avoid set_size — can clip/blank in LVGL 9. */
-        int32_t src_w = 96;
         lv_image_header_t hdr{};
         if (lv_image_decoder_get_info(path.c_str(), &hdr) == LV_RESULT_OK && hdr.w > 0)
           src_w = (int32_t)hdr.w;
-        const int32_t scale = ((kCard - 8) * 256) / src_w;
-        lv_image_set_scale(img, scale);
-        lv_obj_center(img);
-        lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
         shown = true;
+#endif
+        if (shown) {
+          const int32_t scale = ((kCard - 8) * 256) / src_w;
+          lv_image_set_scale(img, scale);
+          lv_obj_center(img);
+          lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+        } else {
+          lv_obj_delete(img);
+        }
       }
       if (!shown) {
         static const uint32_t kPairTint[] = {0xff4fa3, 0xf0c24b, 0x5dffc2, 0x4fa3ff,

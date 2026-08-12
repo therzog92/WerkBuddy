@@ -25,7 +25,7 @@ The **full LVGL desk app** runs on glass (shared UI from `firmware/src` + device
 | Device drive USB `shot`/`tap` | **Code present, compiled OFF** (`WERKPAGER_DEVICE_DRIVE=0`) |
 | OTA Updates on device | **Stub** — toast only; sim lists GitHub Releases |
 | Sound / battery % / DS3231 RTC | Not started |
-| Memory face JPEGs on LittleFS | Sim uses `firmware/assets/memory/`; device pack not finished |
+| Memory face art | **Baked RGB565 in flash** (`bake_memory_assets.py` → `memory_assets_gen.cpp`) — no LittleFS decode |
 
 ---
 
@@ -33,7 +33,7 @@ The **full LVGL desk app** runs on glass (shared UI from `firmware/src` + device
 
 1. **Flash both desks** with `v0.67` if they still have an older build (`pio run -t upload --upload-port COM5` / `COM6` from `firmware/device`).
 2. **Device OTA** — Settings → Updates should download GitHub Release `.bin` and flash (port plan §8b). Sim already lists releases.
-3. Optional: Memory assets on LittleFS; sound; retail checklist soak.
+3. Optional: sound; retail checklist soak.
 4. Re-enable **device drive** only when an agent needs glass QA (see below).
 
 Do **not** revive the archived web sim. UX source of truth remains `firmware/` LVGL (PC sim + device).
