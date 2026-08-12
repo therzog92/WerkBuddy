@@ -785,7 +785,7 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_set_style_pad_row(body, 8, 0);
   /* Bias content upward so the name sits in the pulse center. */
   lv_obj_set_style_pad_top(body, 8, 0);
-  lv_obj_set_style_pad_bottom(body, 110, 0); /* dock bar + captions */
+  lv_obj_set_style_pad_bottom(body, 48, 0); /* room for tap hint */
   lv_obj_remove_flag(body, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_move_foreground(body);
@@ -836,19 +836,15 @@ lv_obj_t * pager_incoming_screen() {
   lv_obj_set_style_text_font(msg, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
 
-  /* Single green Acknowledge pill (product: one clear action, not Shantay/Sashay pair). */
-  lv_obj_t * dock = make_dock(scr);
-  lv_obj_set_height(dock, 64);
-  lv_obj_set_style_pad_ver(dock, 8, 0);
-  lv_obj_move_foreground(dock);
-  lv_obj_t * ack = dock_btn(dock, "Acknowledge", false, false, on_shantay);
-  lv_obj_set_height(ack, 48);
-  lv_obj_set_style_bg_color(ack, lv_color_hex(0x22c55e), 0);
-  lv_obj_set_style_bg_opa(ack, LV_OPA_COVER, 0);
-  if (lv_obj_t * lbl = lv_obj_get_child(ack, 0)) {
-    lv_obj_set_style_text_color(lbl, lv_color_hex(0x0a1a10), 0);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
-  }
+  /* Full-screen flash — no dock. Same quiet hint style as idle "tap to wake". */
+  lv_obj_t * hint = lv_label_create(scr);
+  lv_label_set_text(hint, "tap to acknowledge");
+  lv_obj_set_style_text_color(hint, lv_color_hex(0xffffff), 0);
+  lv_obj_set_style_text_opa(hint, LV_OPA_50, 0);
+  lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+  lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -28);
+  lv_obj_remove_flag(hint, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_move_foreground(hint);
 
   return scr;
 }
