@@ -229,78 +229,101 @@ bool install_bin(const char * url, char * err, int err_cap) {
     return false;
   }
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  http.setTimeout(60000);
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setUserAgent("WerkBuddy-OTA/1.0");
-  if (!http.begin(client, url)) {
-    set_err(err, err_cap, "HTTP begin failed");
-    return false;
-  }
+  /* GitHub release assets redirect github.com -> release-assets.githubusercontent.com.
+   * ESP32 HTTPClient's cross-host redirect reconnect reuses the same TLS client for a
+   * different host and fails (returns -1 / connection refused). Resolve each redirect
+   * manually with a fresh TLS connection per hop instead. */
+  String target(url);
+  for (int hop = 0; hop < 5; ++hop) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setTimeout(60000);
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    http.setUserAgent("WerkBuddy-OTA/1.0");
+    if (!http.begin(client, target)) {
+      set_err(err, err_cap, "HTTP begin failed");
+      return false;
+    }
 
-  const int code = http.GET();
-  if (code != HTTP_CODE_OK) {
-    char msg[48];
-    std::snprintf(msg, sizeof(msg), "HTTP %d", code);
-    set_err(err, err_cap, msg);
-    http.end();
-    return false;
-  }
-
-  const int content_len = http.getSize();
-  constexpr size_t kMaxFw = 0x300000 - 0x10000; /* slot size minus margin */
-  if (content_len > 0 && (size_t)content_len > kMaxFw) {
-    set_err(err, err_cap, "firmware too large");
-    http.end();
-    return false;
-  }
-
-  if (!Update.begin(content_len > 0 ? (size_t)content_len : UPDATE_SIZE_UNKNOWN)) {
-    set_err(err, err_cap, "Update.begin failed");
-    http.end();
-    return false;
-  }
-
-  WiFiClient * stream = http.getStreamPtr();
-  if (!stream) {
-    set_err(err, err_cap, "no stream");
-    Update.abort();
-    http.end();
-    return false;
-  }
-
-  size_t written = 0;
-  uint8_t buf[4096];
-  const int expected = content_len;
-  while (http.connected() || stream->available()) {
-    const size_t avail = stream->available();
-    if (!avail) {
-      delay(1);
+    const int code = http.GET();
+    if (code == HTTP_CODE_MOVED_PERMANENTLY || code == HTTP_CODE_FOUND ||
+        code == HTTP_CODE_SEE_OTHER || code == HTTP_CODE_TEMPORARY_REDIRECT) {
+      const String loc = http.header("Location");
+      http.end();
+      client.stop();
+      if (!loc.length() || !loc.startsWith("https://")) {
+        set_err(err, err_cap, "bad redirect URL");
+        return false;
+      }
+      target = loc;
       continue;
     }
-    const size_t n = stream->readBytes(buf, avail > sizeof(buf) ? sizeof(buf) : avail);
-    if (!n) break;
-    if (Update.write(buf, n) != n) {
-      set_err(err, err_cap, "flash write failed");
+
+    if (code != HTTP_CODE_OK) {
+      char msg[48];
+      std::snprintf(msg, sizeof(msg), "HTTP %d", code);
+      set_err(err, err_cap, msg);
+      http.end();
+      return false;
+    }
+
+    const int content_len = http.getSize();
+    constexpr size_t kMaxFw = 0x300000 - 0x10000; /* slot size minus margin */
+    if (content_len > 0 && (size_t)content_len > kMaxFw) {
+      set_err(err, err_cap, "firmware too large");
+      http.end();
+      return false;
+    }
+
+    if (!Update.begin(content_len > 0 ? (size_t)content_len : UPDATE_SIZE_UNKNOWN)) {
+      set_err(err, err_cap, "Update.begin failed");
+      http.end();
+      return false;
+    }
+
+    WiFiClient * stream = http.getStreamPtr();
+    if (!stream) {
+      set_err(err, err_cap, "no stream");
       Update.abort();
       http.end();
       return false;
     }
-    written += n;
-    if (expected > 0 && (int)written >= expected) break;
-  }
-  http.end();
 
-  if (!Update.end(true)) {
-    set_err(err, err_cap, "Update.end failed");
-    return false;
+    size_t written = 0;
+    uint8_t buf[4096];
+    const int expected = content_len;
+    while (http.connected() || stream->available()) {
+      const size_t avail = stream->available();
+      if (!avail) {
+        delay(1);
+        continue;
+      }
+      const size_t n = stream->readBytes(buf, avail > sizeof(buf) ? sizeof(buf) : avail);
+      if (!n) break;
+      if (Update.write(buf, n) != n) {
+        set_err(err, err_cap, "flash write failed");
+        Update.abort();
+        http.end();
+        return false;
+      }
+      written += n;
+      if (expected > 0 && (int)written >= expected) break;
+    }
+    http.end();
+
+    if (!Update.end(true)) {
+      set_err(err, err_cap, "Update.end failed");
+      return false;
+    }
+    Serial.printf("OTA written %u bytes — rebooting\n", (unsigned)written);
+    delay(200);
+    ESP.restart();
+    return true; /* unreachable */
   }
-  Serial.printf("OTA written %u bytes — rebooting\n", (unsigned)written);
-  delay(200);
-  ESP.restart();
-  return true; /* unreachable */
+
+  set_err(err, err_cap, "too many redirects");
+  return false;
 }
 
 }  // namespace github_ota
