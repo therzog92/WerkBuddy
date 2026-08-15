@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WerkBuddy Flash</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0c0a0f;
+    color: #f7f2ea;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 520px;
+    background: #1a1224;
+    border: 1px solid #3d2a55;
+    border-radius: 18px;
+    padding: 28px;
+    text-align: center;
+  }
+  h1 {
+    color: #f0c24b;
+    letter-spacing: 0.05em;
+    margin: 0 0 6px;
+    font-size: 1.7rem;
+  }
+  .sub { color: #b9a8c9; margin: 0 0 20px; font-size: 0.95rem; }
+  button {
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 14px 28px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: linear-gradient(90deg, #ff4fa3, #f0c24b);
+    color: #1a1224;
+    margin: 6px 0 16px;
+  }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .bar {
+    height: 12px;
+    background: #2b1b3d;
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 14px 0;
+    display: none;
+  }
+  .bar > div {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ff4fa3, #f0c24b);
+    transition: width 0.15s;
+  }
+  #status {
+    text-align: left;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+    color: #b9a8c9;
+    background: #120c18;
+    border-radius: 10px;
+    padding: 12px;
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    display: none;
+  }
+  .steps { text-align: left; color: #b9a8c9; font-size: 0.9rem; margin: 0 auto 18px; max-width: 400px; }
+  .steps li { margin: 6px 0; }
+  .ok { color: #5dffc2; }
+  .err { color: #ff5c7a; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>WERKBUDDY</h1>
+    <p class="sub">Flash your desk from the browser — no installs, no code.</p>
+
+    <ul class="steps">
+      <li>Plug the board in with a <b>USB-C data cable</b>.</li>
+      <li>Click <b>Connect & Flash</b>.</li>
+      <li>Pick the <b>USB-Serial</b> device in the popup.</li>
+      <li>Wait for the progress bar to fill — the desk reboots on its own.</li>
+    </ul>
+
+    <button id="flashBtn">Connect & Flash</button>
+    <div class="bar" id="bar"><div id="fill"></div></div>
+    <pre id="status"></pre>
+  </div>
+
+  <script type="module">
+    import { ESPLoader, Transport } from "https://unpkg.com/esptool-js@0.6.1/bundle.js";
+
+    const btn = document.getElementById("flashBtn");
+    const bar = document.getElementById("bar");
+    const fill = document.getElementById("fill");
+    const statusEl = document.getElementById("status");
+
+    function log(msg, cls = "") {
+      statusEl.style.display = "block";
+      const line = document.createElement("div");
+      if (cls) line.className = cls;
+      line.textContent = msg;
+      statusEl.appendChild(line);
+      statusEl.scrollTop = statusEl.scrollHeight;
+    }
+
+    async function flash() {
+      btn.disabled = true;
+      bar.style.display = "block";
+      fill.style.width = "0%";
+      statusEl.innerHTML = "";
+      log("Fetching firmware…");
+
+      try {
+        const resp = await fetch("./werkbuddy-factory.bin");
+        if (!resp.ok) throw new Error("Could not load firmware (HTTP " + resp.status + ")");
+        const firmware = new Uint8Array(await resp.arrayBuffer());
+        log("Firmware loaded (" + (firmware.length / 1048576).toFixed(2) + " MB)");
+
+        log("Requesting serial port… pick the board in the popup");
+        const port = await navigator.serial.requestPort();
+        log("Opening port…");
+
+        const transport = new Transport(port, false);
+        const esploader = new ESPLoader({
+          transport,
+          baudrate: 921600,
+          terminal: {
+            clean() {},
+            writeLine(d) { log(d.replace(/\s+$/, "")); },
+            write(d) {
+              const el = statusEl.lastElementChild;
+              if (el) el.textContent += d;
+            },
+          },
+        });
+
+        log("Connecting to the board…");
+        await esploader.main();
+
+        log("Flashing (this takes a couple of minutes)…");
+        await esploader.writeFlash({
+          fileArray: [{ data: firmware, address: 0x0 }],
+          flashMode: "keep",
+          flashFreq: "keep",
+          flashSize: "keep",
+          eraseAll: false,
+          compress: true,
+          reportProgress: (fileIndex, written, total) => {
+            const pct = total ? (written / total) * 100 : 0;
+            fill.style.width = pct.toFixed(1) + "%";
+          },
+        });
+
+        fill.style.width = "100%";
+        log("Flashing complete. Resetting…", "ok");
+        await esploader.after("hard_reset");
+        await new Promise((r) => setTimeout(r, 1200));
+        await transport.disconnect();
+
+        log("Done! The desk is rebooting into Setup.", "ok");
+        log("You can unplug it and pick a desk name on the screen.");
+      } catch (err) {
+        log("Something went wrong: " + (err && err.message ? err.message : err), "err");
+        log("Tips: use Chrome or Edge, a data (not charge-only) USB-C cable, and try again. If the board isn't detected, hold its BOOT button while plugging it in.");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    btn.addEventListener("click", flash);
+  </script>
+</body>
+</html>

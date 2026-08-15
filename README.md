@@ -28,13 +28,23 @@ More screens — pager, games, utilities, and settings — are in [`docs/screens
 
 ## Flashing a fresh board (first time)
 
-The `.bin` on the [Releases](https://github.com/therzog92/WerkBuddy/releases) page is **only the app** — it does **not** include the bootloader or the partition table. That's fine for *updating* a board that already runs WerkBuddy (see "Updating" below), but a brand-new board needs the bootloader and partition table too.
+**Easiest — flash from the browser, nothing to install:**
 
-The simplest way to put everything on in one step is **PlatformIO**:
+1. Open **https://therzog92.github.io/WerkBuddy/** in **Chrome** or **Edge**.
+2. Plug the board in with a USB-C **data cable**.
+3. Click **Connect & Flash** and pick the **USB-Serial** device in the popup.
+4. Wait for the progress bar — the desk reboots into Setup on its own.
+
+That page writes the **bootloader**, **partition table**, and **WerkBuddy** together in one go, so a brand-new board works with just a browser. No Python, no COM-port guessing.
+
+<details>
+<summary>Prefer a command line (developers)?</summary>
+
+The release `.bin` is **only the app** — not the bootloader or partition table — so it's for *updating* an already-flashed board. A fresh board needs the full flash, which **PlatformIO** does in one step:
 
 1. Install **Python 3** and **PlatformIO Core** (`pip install platformio`).
 2. Download or clone this repository.
-3. Plug the board in with a **data** cable. It appears as a COM port (for example `COM5`). Check with `pio device list`.
+3. Plug the board in with a **data** cable. Check the port with `pio device list`.
 4. Flash it:
 
    ```powershell
@@ -44,11 +54,11 @@ The simplest way to put everything on in one step is **PlatformIO**:
 
    (replace `COMx` with your actual port — `COM6`, `COM7`, etc.)
 
-   This writes the **bootloader**, **partition table**, and **WerkBuddy app** together — which is why a fresh board uses this instead of the release `.bin`.
+</details>
 
 After it reboots it walks you through **Setup**: pick a desk name (that's how other desks see you). You'll land on the Home screen and you're ready.
 
-> **Adding more desks:** flash each board the same way on its own COM port, then on each one go **Settings → Paging → Scan desks** and add the others.
+> **Adding more desks:** flash each board the same way, then on each one go **Settings → Paging → Scan desks** and add the others.
 
 ## Updating over the air (board already on WerkBuddy)
 
