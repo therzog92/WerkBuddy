@@ -129,7 +129,9 @@
       log("Fetching firmware…");
 
       try {
-        const resp = await fetch("./werkbuddy-factory.bin");
+        const resp = await fetch("./werkbuddy-factory.bin?cb=" + Date.now(), {
+          cache: "no-store",
+        });
         if (!resp.ok) throw new Error("Could not load firmware (HTTP " + resp.status + ")");
         const firmware = new Uint8Array(await resp.arrayBuffer());
         log("Firmware loaded (" + (firmware.length / 1048576).toFixed(2) + " MB)");
