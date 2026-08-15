@@ -81,22 +81,22 @@
 <body>
   <div class="card">
     <h1>WERKBUDDY</h1>
-    <p class="sub">Flash your desk from the browser — no installs, no code.</p>
+    <p class="sub">Flash your WerkBuddy from the browser — no installs, no code.</p>
 
     <ul class="steps">
       <li>Plug the board in with a <b>USB-C data cable</b>.</li>
       <li>Click <b>Connect & Flash</b>.</li>
       <li>Pick the <b>USB-SERIAL CH340</b> device in the popup.</li>
-      <li>Wait for the progress bar to fill — the desk reboots on its own.</li>
+      <li>Wait for the progress bar to fill — the WerkBuddy reboots on its own.</li>
     </ul>
 
     <p class="sub" style="margin-top: -4px;">
-      We only show the desk's <b>CH340</b> chip — Bluetooth and other entries are hidden.
+      We only show the WerkBuddy's <b>CH340</b> chip — Bluetooth and other entries are hidden.
     </p>
 
     <p class="sub" style="margin-top: -4px;">
       This flashes the factory image, which may not be the very latest release.
-      After setup, check <b>Settings → Network → Updates</b> on the desk.
+      After setup, check <b>Settings → Network → Updates</b> on the WerkBuddy.
     </p>
 
     <button id="flashBtn">Connect & Flash</button>
@@ -183,7 +183,7 @@
         await new Promise((r) => setTimeout(r, 800));
         await transport.disconnect();
 
-        log("Done! The desk is rebooting into Setup.", "ok");
+        log("Done! The WerkBuddy is rebooting into Setup.", "ok");
         log("You can unplug it and pick a desk name on the screen.");
       } catch (err) {
         log("Something went wrong: " + (err && err.message ? err.message : err), "err");

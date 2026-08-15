@@ -32,12 +32,12 @@ More screens — pager, games, utilities, and settings — are in [`docs/screens
 
 1. Open **https://therzog92.github.io/WerkBuddy/** in **Chrome** or **Edge**.
 2. Plug the board in with a USB-C **data cable**.
-3. Click **Connect & Flash** and pick the **USB-SERIAL CH340** device in the popup (the flasher hides Bluetooth/other ports, so only the desk shows up).
-4. Wait for the progress bar — the desk reboots into Setup on its own.
+3. Click **Connect & Flash** and pick the **USB-SERIAL CH340** device in the popup (the flasher hides Bluetooth/other ports, so only the WerkBuddy shows up).
+4. Wait for the progress bar — the WerkBuddy reboots into Setup on its own.
 
 That page writes the **bootloader**, **partition table**, and **WerkBuddy** together in one go, so a brand-new board works with just a browser. No Python, no COM-port guessing.
 
-> The browser flasher uses a single **factory image**, which may not be the very latest release. After setup, check **Settings → Network → Updates** on the desk to jump to the newest version.
+> The browser flasher uses a single **factory image**, which may not be the very latest release. After setup, check **Settings → Network → Updates** on the WerkBuddy to jump to the newest version.
 
 <details>
 <summary>Prefer a command line (developers)?</summary>
