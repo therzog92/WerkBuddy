@@ -2,37 +2,40 @@
 
 PlatformIO project that links the shared LVGL UI (`../src`) onto real glass + ESP-NOW.
 
-**Current shipping version:** see `kFirmwareVersion` in `../src/app/app.h` (v0.67).
+**Current shipping version:** `kFirmwareVersion` in `../src/app/app.h`.
 
-## Flash
+## Flash a fresh board
+
+This writes the **bootloader**, **partition table**, and **app** together — use this for a brand-new board (the release `.bin` is app-only and relies on these already being present):
 
 ```powershell
 cd firmware/device
-pio run -t upload --upload-port COM5   # desk A (Tommy)
-pio run -t upload --upload-port COM6   # desk B (Will)
+pio run -t upload --upload-port COMx   # replace COMx with your port (e.g. COM6)
 ```
 
-Leave-off / handoff notes: [`docs/STATUS_v0.67.md`](../../docs/STATUS_v0.67.md).
+Check the port with `pio device list`.
+
+## Update an existing board
+
+No cable needed — see the main `README.md`:
+
+1. **Settings → Network → Wi-Fi** to save a network (used only for updates/time sync).
+2. **Settings → Network → Updates** to pick a release and install it.
+
+The release asset (`werkbuddy-vX.Y.Z.bin`) is produced by building this project and renaming `firmware.bin`.
 
 ## Device drive (optional, OFF by default)
 
-USB `shot` / `tap` / `swipe` for agent glass QA. **Compiled out** when:
+USB `shot` / `tap` / `swipe` for automated glass QA. Compiled out when `-DWERKPAGER_DEVICE_DRIVE=0` in `platformio.ini` (shipping default). Enable with `-DWERKPAGER_DEVICE_DRIVE=1`, rebuild, then use `../scripts/drive-device.ps1`.
 
-```ini
--DWERKPAGER_DEVICE_DRIVE=0
-```
-
-in `platformio.ini` (shipping default). Header stubs in `src/device_drive.h` mean **zero runtime cost**.
-
-To turn on for a debug flash: set `-DWERKPAGER_DEVICE_DRIVE=1`, rebuild, then use `../scripts/drive-device.ps1`. See port plan §8c.
-
-## Important sources
+## Key sources
 
 | File | Role |
 |------|------|
-| `src/main.cpp` | LCD flush, touch, TZ, UI boot |
-| `src/wifi_jobs.cpp` | Ephemeral STA scan + SNTP |
-| `src/msg_codec.cpp` / `espnow_app_link.cpp` | Binary ESP-NOW |
-| `src/storage_app_nvs.cpp` | Preferences / NVS |
+| `src/main.cpp` | LCD flush, touch, timezone, UI boot |
+| `src/wifi_jobs.cpp` | Ephemeral Wi-Fi scan + SNTP time sync |
+| `src/github_ota_device.cpp` | GitHub Releases list + OTA flash |
+| `src/msg_codec.cpp` / `espnow_app_link.cpp` | Binary ESP-NOW link |
+| `src/storage_app_nvs.cpp` | Preferences / NVS persistence |
 | `src/emoji_assets_gen.cpp` | Baked emoji (regen via `scripts/bake_emoji_assets.py`) |
 | `scripts/pio_shared_src.py` | Pulls `firmware/src` into the build |
