@@ -309,6 +309,21 @@ void init() {
   }
 #endif
 
+  /* Fresh/reset desk with no valid wall time: start at 08/01/2026 noon instead
+   * of the 1969/1970 epoch (so Setup/idle don't show a broken date). */
+  if (wall_unix() < kMinValidEpoch) {
+    std::tm t{};
+    t.tm_year = 2026 - 1900;
+    t.tm_mon = 7; /* August */
+    t.tm_mday = 1;
+    t.tm_hour = 12;
+    t.tm_min = 0;
+    t.tm_sec = 0;
+    t.tm_isdst = -1;
+    const std::time_t want = std::mktime(&t);
+    if (want > 0) apply_wall_unix((uint32_t)want);
+  }
+
   net::link_init();
   games_init();
 

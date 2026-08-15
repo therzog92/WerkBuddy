@@ -561,7 +561,7 @@ void open_date_picker() {
   lv_obj_set_style_bg_color(ydown, theme::bg0(), 0);
   lv_obj_set_style_shadow_width(ydown, 0, 0);
   lv_obj_t * ydl = lv_label_create(ydown);
-  lv_label_set_text(ydl, "«");
+  lv_label_set_text(ydl, "<<");
   lv_obj_center(ydl);
   lv_obj_add_event_cb(
       ydown,
@@ -625,7 +625,7 @@ void open_date_picker() {
   lv_obj_set_style_bg_color(yup, theme::bg0(), 0);
   lv_obj_set_style_shadow_width(yup, 0, 0);
   lv_obj_t * yul = lv_label_create(yup);
-  lv_label_set_text(yul, "»");
+  lv_label_set_text(yul, ">>");
   lv_obj_center(yul);
   lv_obj_add_event_cb(
       yup,
