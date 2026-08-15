@@ -375,9 +375,9 @@ void on_scan(lv_event_t * /*e*/) {
 }
 
 /* Draft clock values while editing (web dateInput / clockInput). */
-int g_y = 2026, g_mo = 8, g_d = 4, g_hh = 12, g_mm = 0;
+int g_y = 2026, g_mo = 8, g_d = 1, g_hh = 12, g_mm = 0;
 /* Snapshot at picker open — restored if user hits X (cancel). */
-int g_snap_y = 2026, g_snap_mo = 8, g_snap_d = 4, g_snap_hh = 12, g_snap_mm = 0;
+int g_snap_y = 2026, g_snap_mo = 8, g_snap_d = 1, g_snap_hh = 12, g_snap_mm = 0;
 
 void sync_draft_from_desk() {
   std::tm tm{};
@@ -387,6 +387,14 @@ void sync_draft_from_desk() {
   g_d = tm.tm_mday;
   g_hh = tm.tm_hour;
   g_mm = tm.tm_min;
+  /* Before first sync the clock reads the epoch (1969/1970). Default a sane date. */
+  if (g_y < 2023) {
+    g_y = 2026;
+    g_mo = 8;
+    g_d = 1;
+    g_hh = 12;
+    g_mm = 0;
+  }
 }
 
 void snapshot_draft() {
@@ -547,6 +555,24 @@ void open_date_picker() {
   lv_obj_set_flex_flow(nav, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(nav, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
+  /* Year jump (fast — avoids 60 taps from the epoch default). */
+  lv_obj_t * ydown = lv_button_create(nav);
+  lv_obj_set_size(ydown, 32, 32);
+  lv_obj_set_style_bg_color(ydown, theme::bg0(), 0);
+  lv_obj_set_style_shadow_width(ydown, 0, 0);
+  lv_obj_t * ydl = lv_label_create(ydown);
+  lv_label_set_text(ydl, "«");
+  lv_obj_center(ydl);
+  lv_obj_add_event_cb(
+      ydown,
+      [](lv_event_t * /*e*/) {
+        if (g_y > 2023) g_y--;
+        if (g_d > days_in_month(g_y, g_mo)) g_d = days_in_month(g_y, g_mo);
+        refresh_date_title();
+        rebuild_date_grid();
+      },
+      LV_EVENT_CLICKED, nullptr);
+
   lv_obj_t * prev = lv_button_create(nav);
   lv_obj_set_size(prev, 40, 32);
   lv_obj_set_style_bg_color(prev, theme::bg0(), 0);
@@ -587,6 +613,24 @@ void open_date_picker() {
           g_mo = 1;
           g_y++;
         }
+        if (g_d > days_in_month(g_y, g_mo)) g_d = days_in_month(g_y, g_mo);
+        refresh_date_title();
+        rebuild_date_grid();
+      },
+      LV_EVENT_CLICKED, nullptr);
+
+  /* Year jump forward. */
+  lv_obj_t * yup = lv_button_create(nav);
+  lv_obj_set_size(yup, 32, 32);
+  lv_obj_set_style_bg_color(yup, theme::bg0(), 0);
+  lv_obj_set_style_shadow_width(yup, 0, 0);
+  lv_obj_t * yul = lv_label_create(yup);
+  lv_label_set_text(yul, "»");
+  lv_obj_center(yul);
+  lv_obj_add_event_cb(
+      yup,
+      [](lv_event_t * /*e*/) {
+        g_y++;
         if (g_d > days_in_month(g_y, g_mo)) g_d = days_in_month(g_y, g_mo);
         refresh_date_title();
         rebuild_date_grid();
