@@ -226,9 +226,8 @@ lv_obj_t * make_dock(lv_obj_t * scr) {
   lv_obj_align(dock, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_pad_hor(dock, 12, 0);
   lv_obj_set_style_pad_ver(dock, 6, 0);
-  /* Opaque strip so scrolled page chrome never peeks through dock buttons. */
-  lv_obj_set_style_bg_color(dock, theme::grad_bot(), 0);
-  lv_obj_set_style_bg_opa(dock, LV_OPA_COVER, 0);
+  /* Transparent dock — buttons float over the page content. */
+  lv_obj_set_style_bg_opa(dock, LV_OPA_TRANSP, 0);
   lv_obj_set_flex_flow(dock, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(dock, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(dock, 8, 0);
