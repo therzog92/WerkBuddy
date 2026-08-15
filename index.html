@@ -173,8 +173,14 @@
 
         fill.style.width = "100%";
         log("Flashing complete. Resetting…", "ok");
-        await esploader.after("hard_reset");
-        await new Promise((r) => setTimeout(r, 1200));
+        // Release the chip out of reset like esptool's hard_reset:
+        // DTR=GPIO0 -> HIGH (normal boot), then pulse EN (RTS) low->high to run the app.
+        // esptool-js's HardReset only toggles RTS and leaves the board held in reset.
+        await transport.setDTR(false);   // GPIO0 HIGH = normal boot
+        await transport.setRTS(true);    // EN LOW = assert reset
+        await new Promise((r) => setTimeout(r, 120));
+        await transport.setRTS(false);   // EN HIGH = release reset -> app runs
+        await new Promise((r) => setTimeout(r, 800));
         await transport.disconnect();
 
         log("Done! The desk is rebooting into Setup.", "ok");
