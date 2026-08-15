@@ -86,9 +86,13 @@
     <ul class="steps">
       <li>Plug the board in with a <b>USB-C data cable</b>.</li>
       <li>Click <b>Connect & Flash</b>.</li>
-      <li>Pick the <b>USB-Serial</b> device in the popup.</li>
+      <li>Pick the <b>USB-SERIAL CH340</b> device in the popup.</li>
       <li>Wait for the progress bar to fill — the desk reboots on its own.</li>
     </ul>
+
+    <p class="sub" style="margin-top: -4px;">
+      We only show the desk's <b>CH340</b> chip — Bluetooth and other entries are hidden.
+    </p>
 
     <p class="sub" style="margin-top: -4px;">
       This flashes the factory image, which may not be the very latest release.
@@ -131,7 +135,9 @@
         log("Firmware loaded (" + (firmware.length / 1048576).toFixed(2) + " MB)");
 
         log("Requesting serial port… pick the board in the popup");
-        const port = await navigator.serial.requestPort();
+        const port = await navigator.serial.requestPort({
+          filters: [{ usbVendorId: 0x1a86, usbProductId: 0x7523 }],
+        });
         log("Opening port…");
 
         const transport = new Transport(port, false);
@@ -175,7 +181,8 @@
         log("You can unplug it and pick a desk name on the screen.");
       } catch (err) {
         log("Something went wrong: " + (err && err.message ? err.message : err), "err");
-        log("Tips: use Chrome or Edge, a data (not charge-only) USB-C cable, and try again. If the board isn't detected, hold its BOOT button while plugging it in.");
+        log("Tips: use Chrome or Edge, a data (not charge-only) USB-C cable, and try again.");
+        log("If the board isn't listed, hold its BOOT button while plugging it in. Its entry is 'USB-SERIAL CH340' — not Bluetooth.");
       } finally {
         btn.disabled = false;
       }
