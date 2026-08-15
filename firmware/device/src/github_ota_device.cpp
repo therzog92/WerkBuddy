@@ -247,14 +247,24 @@ bool install_bin(const char * url, char * err, int err_cap) {
     }
 
     const int code = http.GET();
+    Serial.printf("OTA hop %d code=%d len=%d\n", hop, code, (int)http.getLocation().length());
     if (code == HTTP_CODE_MOVED_PERMANENTLY || code == HTTP_CODE_FOUND ||
         code == HTTP_CODE_SEE_OTHER || code == HTTP_CODE_TEMPORARY_REDIRECT) {
       /* ESP32 stores the redirect target in _location (getLocation()), not header(). */
-      const String loc = http.getLocation();
+      String loc = http.getLocation();
       http.end();
       client.stop();
-      if (!loc.length() || !loc.startsWith("https://")) {
-        set_err(err, err_cap, "bad redirect URL");
+
+      /* Resolve a relative Location against the current absolute URL. */
+      if (loc.length() && loc[0] == '/') {
+        const int s = target.indexOf("://") + 3;
+        const int e = target.indexOf('/', s);
+        loc = (e < 0 ? target : target.substring(0, e)) + loc;
+      }
+      if (!loc.length() || !(loc.startsWith("https://") || loc.startsWith("http://"))) {
+        char msg[64];
+        std::snprintf(msg, sizeof(msg), "bad redirect URL (len %d)", (int)loc.length());
+        set_err(err, err_cap, msg);
         return false;
       }
       target = loc;
