@@ -29,6 +29,8 @@ bool load(app::Desk & d) {
   d.idle_mode = (uint8_t)prefs.getUChar("idle_mode", d.idle_mode) ? 1 : 0;
   d.brightness = (uint8_t)prefs.getUChar("brightness", d.brightness);
   if (d.brightness < 10) d.brightness = 10;
+  d.flash_id = (uint8_t)prefs.getUChar("flash_id", d.flash_id);
+  if (d.flash_id >= app::kFlashCount) d.flash_id = 1;
   d.rotate_180 = prefs.getUChar("rot180", d.rotate_180) ? 1 : 0;
   d.clock_24h = prefs.getUChar("clk24", d.clock_24h) ? 1 : 0;
   if (prefs.isKey("setup_done")) {
@@ -107,6 +109,7 @@ void save(const app::Desk & d) {
   prefs.putUChar("timeout", d.timeout_id);
   prefs.putUChar("idle_mode", d.idle_mode);
   prefs.putUChar("brightness", d.brightness);
+  prefs.putUChar("flash_id", d.flash_id);
   prefs.putUChar("rot180", d.rotate_180 ? 1 : 0);
   prefs.putUChar("clk24", d.clock_24h ? 1 : 0);
   prefs.putBool("setup_done", d.setup_done);

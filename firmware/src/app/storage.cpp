@@ -70,6 +70,11 @@ bool load(app::Desk & d) {
       if (b < 10) b = 10;
       if (b > 100) b = 100;
       d.brightness = (uint8_t)b;
+    } else if (!std::strcmp(key, "flash_id")) {
+      int f = std::atoi(val);
+      if (f < 0) f = 0;
+      if (f >= app::kFlashCount) f = 1;
+      d.flash_id = (uint8_t)f;
     } else if (!std::strcmp(key, "rotate_180")) {
       d.rotate_180 = std::atoi(val) != 0 ? 1 : 0;
     } else if (!std::strcmp(key, "clock_24h")) {
@@ -136,6 +141,7 @@ void save(const app::Desk & d) {
   put_int(f, "timeout_v", kTimeoutScheme);
   put_int(f, "idle_mode", d.idle_mode);
   put_int(f, "brightness", d.brightness);
+  put_int(f, "flash_id", d.flash_id);
   put_int(f, "rotate_180", d.rotate_180 ? 1 : 0);
   put_int(f, "clock_24h", d.clock_24h ? 1 : 0);
   put_int(f, "setup_done", d.setup_done ? 1 : 0);

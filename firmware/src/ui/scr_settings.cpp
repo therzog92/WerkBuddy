@@ -1263,6 +1263,30 @@ lv_obj_t * settings_screen() {
   }
 
   if (g_settings_tab == SettingsTab::Paging) {
+  add_section(body, "Pager flash");
+  {
+    lv_obj_t * row = lv_obj_create(body);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, 40);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(row, 6, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+    const app::TimeoutSpec * fs = app::flash_specs();
+    for (int i = 0; i < app::kFlashCount; ++i) {
+      chip(row, fs[i].label, d.flash_id == (uint8_t)i,
+           [](lv_event_t * e) {
+             const auto id = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+             app::desk().flash_id = id;
+             app::save();
+             chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))),
+                             (int)id);
+           },
+           (void *)(intptr_t)i);
+    }
+  }
+
   add_section(body, "Edit canned messages & emojis");
   lv_obj_t * emos = lv_obj_create(body);
   lv_obj_remove_style_all(emos);

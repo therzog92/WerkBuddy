@@ -70,25 +70,17 @@ void on_demo_ring() {
   app::handle_msg(m);
 }
 
-/** Easter egg: WERKPAGER title, then name, three times quickly → demo incoming. */
+/** Easter egg: tap WERKPAGER title 3 times quickly → demo incoming. */
 constexpr uint32_t kDemoEggGapMs = 900;
-constexpr int kDemoEggNeed = 6; /* title,name × 3 */
+constexpr int kDemoEggNeed = 3; /* three title taps */
 int g_demo_egg_step = 0;
 uint32_t g_demo_egg_last = 0;
 
-void demo_egg_tap(int which) {
-  /* which: 0 = title, 1 = name */
+void demo_egg_tap() {
   const uint32_t now = lv_tick_get();
-  if (g_demo_egg_step > 0 && now - g_demo_egg_last > kDemoEggGapMs) g_demo_egg_step = 0;
-  const int expect = (g_demo_egg_step % 2 == 0) ? 0 : 1;
-  if (which != expect) {
-    g_demo_egg_step = (which == 0) ? 1 : 0;
-    g_demo_egg_last = now;
-    return;
-  }
-  ++g_demo_egg_step;
+  if (now - g_demo_egg_last > kDemoEggGapMs) g_demo_egg_step = 0;
   g_demo_egg_last = now;
-  if (g_demo_egg_step >= kDemoEggNeed) {
+  if (++g_demo_egg_step >= kDemoEggNeed) {
     g_demo_egg_step = 0;
     on_demo_ring();
   }
@@ -97,35 +89,20 @@ void demo_egg_tap(int which) {
 void wire_demo_egg(lv_obj_t * topbar) {
   if (!topbar) return;
   lv_obj_t * left = static_cast<lv_obj_t *>(lv_obj_get_user_data(topbar));
+  if (!left) return;
   lv_obj_t * brand = nullptr;
-  lv_obj_t * me = nullptr;
-  if (left) {
-    const uint32_t n = lv_obj_get_child_count(left);
-    for (uint32_t i = 0; i < n; ++i) {
-      lv_obj_t * c = lv_obj_get_child(left, i);
-      if (reinterpret_cast<intptr_t>(lv_obj_get_user_data(c)) == 1) brand = c;
+  const uint32_t n = lv_obj_get_child_count(left);
+  for (uint32_t i = 0; i < n; ++i) {
+    lv_obj_t * c = lv_obj_get_child(left, i);
+    if (reinterpret_cast<intptr_t>(lv_obj_get_user_data(c)) == 1) {
+      brand = c;
+      break;
     }
   }
-  const uint32_t tn = lv_obj_get_child_count(topbar);
-  for (uint32_t i = 0; i < tn; ++i) {
-    lv_obj_t * c = lv_obj_get_child(topbar, i);
-    if (reinterpret_cast<intptr_t>(lv_obj_get_user_data(c)) != 3) continue;
-    if (lv_obj_get_child_count(c) > 0) me = lv_obj_get_child(c, 0);
-    break;
-  }
-  auto bind = [](lv_obj_t * obj, int which) {
-    if (!obj) return;
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(obj, 8);
-    lv_obj_add_event_cb(
-        obj,
-        [](lv_event_t * e) {
-          demo_egg_tap((int)(intptr_t)lv_event_get_user_data(e));
-        },
-        LV_EVENT_CLICKED, (void *)(intptr_t)which);
-  };
-  bind(brand, 0);
-  bind(me, 1);
+  if (!brand) return;
+  lv_obj_add_flag(brand, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(brand, 8);
+  lv_obj_add_event_cb(brand, [](lv_event_t * /*e*/) { demo_egg_tap(); }, LV_EVENT_CLICKED, nullptr);
 }
 
 void refresh_compose_styles() {
@@ -694,9 +671,10 @@ lv_obj_t * pager_incoming_screen() {
     lv_anim_t a;
     lv_anim_init(&a);
     lv_anim_set_var(&a, wash);
+    const uint32_t wash_dur = app::flash_ms();
     lv_anim_set_values(&a, 0, 255);
-    lv_anim_set_duration(&a, 550);
-    lv_anim_set_reverse_duration(&a, 550);
+    lv_anim_set_duration(&a, wash_dur);
+    lv_anim_set_reverse_duration(&a, wash_dur);
     lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
     lv_anim_set_exec_cb(&a, anim_bg_mix);

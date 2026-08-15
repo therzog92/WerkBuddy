@@ -370,6 +370,20 @@ const TimeoutSpec * timeout_specs() {
   return specs;
 }
 
+const TimeoutSpec * flash_specs() {
+  /* Half-cycle ms per incoming-flash style. Strobe = arcade/CRT strobe. */
+  static const TimeoutSpec specs[kFlashCount] = {
+      {"Relaxed", 900}, {"Classic", 550}, {"Strobe", 140},
+  };
+  return specs;
+}
+
+uint32_t flash_ms() {
+  uint8_t id = g_desk.flash_id;
+  if (id >= kFlashCount) id = 1;
+  return flash_specs()[id].ms;
+}
+
 bool busy() {
   const Desk & d = g_desk;
   return d.incoming.active || d.outgoing.active;

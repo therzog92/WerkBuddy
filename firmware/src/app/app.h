@@ -23,7 +23,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "0.70";
+constexpr const char * kFirmwareVersion = "0.71";
 /** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
 const char * firmware_version();
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
@@ -149,6 +149,11 @@ struct Desk {
   uint8_t timeout_id = 2;  /* 0=1m 1=3m 2=5m 3=10m 4=off — default 5m */
   uint8_t idle_mode = 1;   /* 0=black 1=clock */
   uint8_t brightness = 85; /* 10..100; pages force full */
+  /**
+   * Pager incoming-flash speed: 0=Relaxed 1=Classic 2=Strobe (CRT-like).
+   * Stored as an index; map to ms via flash_specs().
+   */
+  uint8_t flash_id = 1;
   /** 0 = normal, 1 = rotate UI+touch 180° (stand flipped). */
   uint8_t rotate_180 = 0;
   /** 0 = 12-hour, 1 = 24-hour (tap clock on Hub to toggle). */
@@ -223,6 +228,12 @@ struct TimeoutSpec {
 };
 constexpr int kTimeoutCount = 5;
 const TimeoutSpec * timeout_specs(); /* 1m / 3m / 5m / 10m / Off */
+
+/* Pager incoming-flash speed options. */
+constexpr int kFlashCount = 3;
+const TimeoutSpec * flash_specs(); /* Relaxed / Classic / Strobe */
+/** Half-cycle ms for the incoming wash at the current flash_id (Strobe = fast). */
+uint32_t flash_ms();
 
 /** Send a message through the link (sim bot now, ESP-NOW later). */
 void send(const proto::Msg & msg);
