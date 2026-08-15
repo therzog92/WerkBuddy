@@ -98,17 +98,36 @@ void settings_scroll_cue_update(lv_event_t * e) {
   else lv_obj_remove_flag(cue, LV_OBJ_FLAG_HIDDEN);
 }
 
+void settings_scroll_cue_refresh(lv_obj_t * body, lv_obj_t * cue) {
+  if (!body || !cue) return;
+  if (lv_obj_get_scroll_bottom(body) <= 12) lv_obj_add_flag(cue, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_remove_flag(cue, LV_OBJ_FLAG_HIDDEN);
+}
+
 lv_obj_t * g_settings_body = nullptr;
 int32_t g_settings_restore_scroll_y = -1;
 
+/* Settings is split into tabs so the old long list is easier to scan. */
+enum class SettingsTab : uint8_t { Desk = 0, Display, Paging, Network, About, Count };
+const char * const kSettingsTabLabels[] = {"Desk", "Display", "Paging", "Network", "About"};
+SettingsTab g_settings_tab = SettingsTab::Desk;
+SettingsTab g_restore_tab = SettingsTab::Desk;
+constexpr int kSettingsTabH = 38;
+lv_obj_t * g_tab_btns[(int)SettingsTab::Count] = {};
+
 void settings_remember_scroll() {
-  if (g_settings_body) g_settings_restore_scroll_y = lv_obj_get_scroll_y(g_settings_body);
+  if (g_settings_body) {
+    g_settings_restore_scroll_y = lv_obj_get_scroll_y(g_settings_body);
+    g_restore_tab = g_settings_tab;
+  }
 }
 
 void settings_apply_scroll_restore(lv_obj_t * body) {
   if (!body || g_settings_restore_scroll_y < 0) return;
   const int32_t y = g_settings_restore_scroll_y;
   g_settings_restore_scroll_y = -1;
+  /* Scroll restore is only meaningful on the tab it was captured from. */
+  if (g_restore_tab != g_settings_tab) return;
   lv_obj_update_layout(body);
   lv_obj_scroll_to_y(body, y, LV_ANIM_OFF);
 }
@@ -340,6 +359,8 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
 
 void on_scan(lv_event_t * /*e*/) {
   app::desk().nearby_count = 0;
+  /* Discover results are shown under the Paging tab — jump there. */
+  g_settings_tab = SettingsTab::Paging;
 #ifdef WP_DEVICE
   /* Wi‑Fi scan/sync can leave the radio off channel 1 — re-home before discover. */
   net::restore_espnow_radio();
@@ -785,7 +806,50 @@ lv_obj_t * settings_screen() {
 
   lv_obj_t * scr = make_screen();
   make_topbar(scr, "SETTINGS", d.name);
+
+  /* Tab bar — split the long list into five short pages. */
+  lv_obj_t * tabbar = lv_obj_create(scr);
+  lv_obj_remove_style_all(tabbar);
+  lv_obj_set_size(tabbar, WP_HOR_RES, kSettingsTabH);
+  lv_obj_set_pos(tabbar, 0, kTopbarH);
+  lv_obj_set_style_pad_hor(tabbar, 10, 0);
+  lv_obj_set_style_pad_ver(tabbar, 5, 0);
+  lv_obj_set_flex_flow(tabbar, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(tabbar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(tabbar, 6, 0);
+  lv_obj_remove_flag(tabbar, LV_OBJ_FLAG_SCROLLABLE);
+
+  for (int i = 0; i < (int)SettingsTab::Count; ++i) {
+    lv_obj_t * b = lv_button_create(tabbar);
+    lv_obj_set_flex_grow(b, 1);
+    lv_obj_set_height(b, 28);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_border_width(b, 0, 0);
+    lv_obj_t * l = lv_label_create(b);
+    lv_label_set_text(l, kSettingsTabLabels[i]);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_12, 0);
+    lv_obj_center(l);
+    const bool selected = g_settings_tab == static_cast<SettingsTab>(i);
+    lv_obj_set_style_bg_color(b, selected ? theme::gold() : lv_color_hex(0x4a4558), 0);
+    lv_obj_set_style_bg_opa(b, selected ? LV_OPA_COVER : LV_OPA_50, 0);
+    lv_obj_set_style_text_color(l, selected ? lv_color_hex(0x1a1224) : theme::ink(), 0);
+    g_tab_btns[i] = b;
+    lv_obj_add_event_cb(
+        b,
+        [](lv_event_t * e) {
+          const SettingsTab t = static_cast<SettingsTab>((intptr_t)lv_event_get_user_data(e));
+          if (t == g_settings_tab) return;
+          g_settings_tab = t;
+          go_settings();
+        },
+        LV_EVENT_CLICKED, (void *)(intptr_t)i);
+  }
+
   lv_obj_t * body = make_body(scr, true);
+  lv_obj_set_y(body, kTopbarH + kSettingsTabH);
+  lv_obj_set_height(body, WP_VER_RES - kTopbarH - kSettingsTabH - kDockH);
   g_settings_body = body;
   lv_obj_add_event_cb(
       body,
@@ -796,14 +860,7 @@ lv_obj_t * settings_screen() {
   lv_obj_set_style_pad_bottom(body, 20, 0);
   lv_obj_set_style_pad_row(body, 6, 0);
 
-  lv_obj_t * ver = lv_label_create(body);
-  char ver_lbl[40];
-  lv_snprintf(ver_lbl, sizeof(ver_lbl), "Release %s", app::firmware_version());
-  lv_label_set_text(ver, ver_lbl);
-  lv_obj_set_style_text_color(ver, theme::muted(), 0);
-  lv_obj_set_style_text_font(ver, &lv_font_montserrat_12, 0);
-  lv_obj_set_width(ver, lv_pct(100));
-
+  if (g_settings_tab == SettingsTab::Desk) {
   add_section(body, "My name");
   lv_obj_t * name = lv_button_create(body);
   lv_obj_set_width(name, lv_pct(100));
@@ -819,7 +876,9 @@ lv_obj_t * settings_screen() {
   lv_obj_set_style_text_font(nl, &lv_font_montserrat_14, 0);
   lv_obj_align(nl, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_add_event_cb(name, [](lv_event_t * /*e*/) { go_keyboard_name(); }, LV_EVENT_CLICKED, nullptr);
+  }
 
+  if (g_settings_tab == SettingsTab::Display) {
   add_section(body, "Theme");
   lv_obj_t * themes = lv_obj_create(body);
   lv_obj_remove_style_all(themes);
@@ -1021,6 +1080,9 @@ lv_obj_t * settings_screen() {
          nullptr);
   }
 
+  }
+
+  if (g_settings_tab == SettingsTab::Network) {
   add_section(body, "Wi-Fi (optional)");
   {
     lv_obj_t * wifi_status = lv_obj_create(body);
@@ -1126,6 +1188,9 @@ lv_obj_t * settings_screen() {
          nullptr);
   }
 
+  }
+
+  if (g_settings_tab == SettingsTab::Display) {
   add_section(body, "Screen timeout");
   lv_obj_t * to = lv_obj_create(body);
   lv_obj_remove_style_all(to);
@@ -1169,6 +1234,9 @@ lv_obj_t * settings_screen() {
        },
        nullptr);
 
+  }
+
+  if (g_settings_tab == SettingsTab::Desk) {
   add_section(body, "Date & time (saved; keeps ticking vs wall clock)");
   sync_draft_from_desk();
   {
@@ -1192,7 +1260,10 @@ lv_obj_t * settings_screen() {
     chip(dt, time_lbl, false, [](lv_event_t * /*e*/) { open_time_picker(); }, nullptr);
   }
 
-  add_section(body, "Werk emojis (tap to change)");
+  }
+
+  if (g_settings_tab == SettingsTab::Paging) {
+  add_section(body, "Edit canned messages & emojis");
   lv_obj_t * emos = lv_obj_create(body);
   lv_obj_remove_style_all(emos);
   lv_obj_set_width(emos, lv_pct(100));
@@ -1216,7 +1287,7 @@ lv_obj_t * settings_screen() {
         LV_EVENT_CLICKED, (void *)(intptr_t)i);
   }
 
-  add_section(body, "Canned messages (tap to edit)");
+  add_section(body, "Messages");
   for (int i = 0; i < app::kCannedCount; ++i) {
     lv_obj_t * b = lv_button_create(body);
     lv_obj_set_width(b, lv_pct(100));
@@ -1303,6 +1374,17 @@ lv_obj_t * settings_screen() {
     }
   }
 
+  }
+
+  if (g_settings_tab == SettingsTab::About) {
+  lv_obj_t * ver = lv_label_create(body);
+  char ver_lbl[40];
+  lv_snprintf(ver_lbl, sizeof(ver_lbl), "WerkBuddy v%s", app::firmware_version());
+  lv_label_set_text(ver, ver_lbl);
+  lv_obj_set_style_text_color(ver, theme::muted(), 0);
+  lv_obj_set_style_text_font(ver, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(ver, lv_pct(100));
+
   add_section(body, "Danger zone");
   lv_obj_t * reset = lv_button_create(body);
   lv_obj_set_width(reset, lv_pct(100));
@@ -1315,6 +1397,7 @@ lv_obj_t * settings_screen() {
   lv_obj_center(rl);
   lv_obj_add_event_cb(reset, [](lv_event_t * /*e*/) { go_keyboard_factory_reset(); }, LV_EVENT_CLICKED,
                       nullptr);
+  }
 
   lv_obj_t * scroll_cue = lv_label_create(scr);
   lv_label_set_text(scroll_cue, LV_SYMBOL_DOWN "  more");
@@ -1332,8 +1415,7 @@ lv_obj_t * settings_screen() {
   lv_obj_add_event_cb(body, settings_scroll_cue_update, LV_EVENT_SIZE_CHANGED, scroll_cue);
   lv_obj_update_layout(body);
   settings_apply_scroll_restore(body);
-  if (lv_obj_get_scroll_bottom(body) <= 12) lv_obj_add_flag(scroll_cue, LV_OBJ_FLAG_HIDDEN);
-  else lv_obj_remove_flag(scroll_cue, LV_OBJ_FLAG_HIDDEN);
+  settings_scroll_cue_refresh(body, scroll_cue);
 
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) { go_hub(); });

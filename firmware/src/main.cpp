@@ -226,7 +226,8 @@ int main() {
     else if (is("settings")) go_settings();
     else if (is("settings-scrolled")) {
       go_settings();
-      lv_obj_t * body = lv_obj_get_child(lv_screen_active(), 1);
+      /* 0 topbar, 1 tabbar, 2 body */
+      lv_obj_t * body = lv_obj_get_child(lv_screen_active(), 2);
       if (body) lv_obj_scroll_to_y(body, 900, LV_ANIM_OFF);
     }
     else if (is("keyboard")) go_keyboard_name();
