@@ -37,6 +37,8 @@ More screens — pager, games, utilities, and settings — are in [`docs/screens
 
 That page writes the **bootloader**, **partition table**, and **WerkBuddy** together in one go, so a brand-new board works with just a browser. No Python, no COM-port guessing.
 
+> The browser flasher uses a single **factory image**, which may not be the very latest release. After setup, check **Settings → Network → Updates** on the desk to jump to the newest version.
+
 <details>
 <summary>Prefer a command line (developers)?</summary>
 

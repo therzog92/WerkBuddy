@@ -47,6 +47,9 @@ enum class BgWash : uint8_t {
 
 void apply_screen_bg(lv_obj_t * scr, BgWash wash);
 
+/** Idle/lock background (shared dithered gradient on device); `deep` = black idle. */
+void apply_idle_bg(lv_obj_t * scr, bool deep);
+
 /** Rebuild gradient stops for incoming burst (call after set()). */
 void refresh_incoming_grads(lv_grad_dsc_t * hot_g, lv_grad_dsc_t * gold_g, lv_grad_dsc_t * mint_g);
 

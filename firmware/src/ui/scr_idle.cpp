@@ -85,32 +85,6 @@ void on_deleted(lv_event_t * /*e*/) {
   }
 }
 
-void apply_idle_bg(lv_obj_t * scr, bool deep) {
-  lv_obj_set_style_pad_all(scr, 0, 0);
-  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(scr, theme::bg0(), 0);
-
-  /* Clock lock: show wallpaper dimmed. Black idle: solid / gradient only. */
-  if (!deep && background::has() && background::lv_src()) {
-    theme::apply_screen_bg(scr, theme::BgWash::Idle);
-    return;
-  }
-
-  lv_obj_set_style_bg_image_src(scr, nullptr, 0);
-  static lv_grad_dsc_t grad;
-  const lv_color_t colors[] = {
-      deep ? theme::bg0() : theme::grad_top(),
-      theme::bg1(),
-      theme::panel(),
-      deep ? theme::bg0() : theme::grad_bot(),
-  };
-  const lv_opa_t opas[] = {LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER};
-  const uint8_t fracs[] = {0, 70, 160, 255};
-  lv_grad_init_stops(&grad, colors, opas, fracs, 4);
-  lv_grad_vertical_init(&grad);
-  lv_obj_set_style_bg_grad(scr, &grad, 0);
-}
-
 }  // namespace
 
 lv_obj_t * idle_screen() {
@@ -127,7 +101,7 @@ lv_obj_t * idle_screen() {
 
   /* Pre-setup always blacks out (and kills backlight) — no clock drain in a bag. */
   const bool clock_mode = app::desk().setup_done && app::desk().idle_mode == 1;
-  apply_idle_bg(scr, !clock_mode);
+  theme::apply_idle_bg(scr, !clock_mode);
   brightness::set_panel_on(clock_mode);
 
   if (clock_mode) {

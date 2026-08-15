@@ -175,6 +175,28 @@ bool bake_gradient(const uint32_t * stops, const uint8_t fracs[4]) {
 }
 #endif
 
+/* Paint a vertical 4-stop gradient. On device it's a one-time dithered PSRAM bake;
+ * on the PC sim it falls back to a plain LVGL gradient. */
+void apply_vertical_gradient(lv_obj_t * scr, const uint32_t stops[4], const uint8_t fracs[4]) {
+  lv_obj_set_style_bg_grad(scr, nullptr, 0);
+#ifdef WP_DEVICE
+  if (!g_baked.valid || std::memcmp(stops, g_baked.stops, sizeof(g_baked.stops)) != 0) {
+    bake_gradient(stops, fracs);
+  }
+  if (g_baked.valid) {
+    lv_obj_set_style_bg_image_src(scr, &g_baked.img, 0);
+    return;
+  }
+#endif
+  static lv_grad_dsc_t grad;
+  const lv_color_t colors[] = {lv_color_hex(stops[0]), lv_color_hex(stops[1]),
+                               lv_color_hex(stops[2]), lv_color_hex(stops[3])};
+  const lv_opa_t opas[] = {LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER};
+  lv_grad_init_stops(&grad, colors, opas, fracs, 4);
+  lv_grad_vertical_init(&grad);
+  lv_obj_set_style_bg_grad(scr, &grad, 0);
+}
+
 }  // namespace
 
 void set(Id id) {
@@ -269,28 +291,29 @@ void apply_screen_bg(lv_obj_t * scr, BgWash wash) {
     s3 = bot;
   }
 
-#ifdef WP_DEVICE
-  {
-    const uint32_t stops[4] = {s0, s1, s2, s3};
-    if (!g_baked.valid || std::memcmp(stops, g_baked.stops, sizeof(stops)) != 0) {
-      bake_gradient(stops, fracs);
-    }
-    if (g_baked.valid) {
-      lv_obj_set_style_bg_grad(scr, nullptr, 0);
-      lv_obj_set_style_bg_image_src(scr, &g_baked.img, 0);
-      return;
-    }
-    /* Bake failed — fall through to the plain gradient. */
-  }
-#endif
+  const uint32_t stops[4] = {s0, s1, s2, s3};
+  apply_vertical_gradient(scr, stops, fracs);
+}
 
-  static lv_grad_dsc_t grad;
-  const lv_color_t colors[] = {lv_color_hex(s0), lv_color_hex(s1), lv_color_hex(s2),
-                               lv_color_hex(s3)};
-  const lv_opa_t opas[] = {LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER, LV_OPA_COVER};
-  lv_grad_init_stops(&grad, colors, opas, fracs, 4);
-  lv_grad_vertical_init(&grad);
-  lv_obj_set_style_bg_grad(scr, &grad, 0);
+void apply_idle_bg(lv_obj_t * scr, bool deep) {
+  lv_obj_set_style_pad_all(scr, 0, 0);
+  lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(scr, bg0(), 0);
+
+  if (!deep && background::has() && background::lv_src()) {
+    apply_screen_bg(scr, BgWash::Idle);
+    return;
+  }
+
+  lv_obj_set_style_bg_image_src(scr, nullptr, 0);
+  const uint8_t fracs[4] = {0, 70, 160, 255};
+  const uint32_t stops[4] = {
+      deep ? pal().bg0 : pal().grad_top,
+      pal().bg1,
+      pal().panel,
+      deep ? pal().bg0 : pal().grad_bot,
+  };
+  apply_vertical_gradient(scr, stops, fracs);
 }
 
 void refresh_incoming_grads(lv_grad_dsc_t * hot_g, lv_grad_dsc_t * gold_g, lv_grad_dsc_t * mint_g) {

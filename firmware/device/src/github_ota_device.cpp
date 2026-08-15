@@ -269,7 +269,7 @@ bool install_bin(const char * url, char * err, int err_cap) {
     }
 
     const int content_len = http.getSize();
-    constexpr size_t kMaxFw = 0x300000 - 0x10000; /* slot size minus margin */
+    constexpr size_t kMaxFw = 0x600000 - 0x10000; /* OTA slot size (6MB) minus margin */
     if (content_len > 0 && (size_t)content_len > kMaxFw) {
       set_err(err, err_cap, "firmware too large");
       http.end();
