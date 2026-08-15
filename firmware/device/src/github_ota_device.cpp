@@ -249,7 +249,8 @@ bool install_bin(const char * url, char * err, int err_cap) {
     const int code = http.GET();
     if (code == HTTP_CODE_MOVED_PERMANENTLY || code == HTTP_CODE_FOUND ||
         code == HTTP_CODE_SEE_OTHER || code == HTTP_CODE_TEMPORARY_REDIRECT) {
-      const String loc = http.header("Location");
+      /* ESP32 stores the redirect target in _location (getLocation()), not header(). */
+      const String loc = http.getLocation();
       http.end();
       client.stop();
       if (!loc.length() || !loc.startsWith("https://")) {
