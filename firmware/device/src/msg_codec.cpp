@@ -38,35 +38,27 @@ bool is_peer_ctrl(proto::MsgType t) {
     case T::Ack:
     case T::Clear:
     case T::Status:
-    case T::TttInvite:
     case T::TttAccept:
     case T::TttDecline:
     case T::TttForfeit:
-    case T::C4Invite:
-    case T::C4Accept:
     case T::C4Decline:
     case T::C4Forfeit:
-    case T::BsInvite:
     case T::BsAccept:
     case T::BsDecline:
     case T::BsReady:
     case T::BsForfeit:
-    case T::CkInvite:
     case T::CkAccept:
     case T::CkDecline:
     case T::CkForfeit:
     case T::MemAccept:
     case T::MemDecline:
     case T::MemForfeit:
-    case T::StttInvite:
     case T::StttAccept:
     case T::StttDecline:
     case T::StttForfeit:
-    case T::RvInvite:
     case T::RvAccept:
     case T::RvDecline:
     case T::RvForfeit:
-    case T::DbInvite:
     case T::DbAccept:
     case T::DbDecline:
     case T::DbForfeit:
@@ -168,7 +160,32 @@ int pack_msg(const proto::Msg & msg, const uint8_t own_mac[6], uint8_t * out, si
     if (out_len < kMemInviteSize) return -1;
     if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
     write_u32_le(out + 26, msg.seed);
+    out[30] = msg.first ? 1 : 0;
     return (int)kMemInviteSize;
+  }
+
+  /* Game invites carry who goes first (challenger coin flip). */
+  if (type == T::TttInvite || type == T::StttInvite || type == T::BsInvite ||
+      type == T::CkInvite || type == T::RvInvite || type == T::DbInvite) {
+    if (out_len < kInviteFirstSize) return -1;
+    if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
+    out[26] = msg.first ? 1 : 0;
+    return (int)kInviteFirstSize;
+  }
+
+  if (type == T::C4Invite) {
+    if (out_len < kC4InviteSize) return -1;
+    if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
+    out[26] = (uint8_t)(msg.color >= 0 ? msg.color : 0);
+    out[27] = msg.first ? 1 : 0;
+    return (int)kC4InviteSize;
+  }
+
+  if (type == T::C4Accept) {
+    if (out_len < kC4AcceptSize) return -1;
+    if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
+    out[26] = (uint8_t)(msg.color >= 0 ? msg.color : 0);
+    return (int)kC4AcceptSize;
   }
 
   if (is_peer_ctrl(type)) {
@@ -318,9 +335,39 @@ bool unpack_msg(const uint8_t * data, size_t len, proto::Msg * out) {
   }
 
   if (m.type == T::MemInvite) {
-    /* accept peer-only (26) or +seed (30) */
     if (len < kPeerHdrSize || !unpack_peer_hdr(data, len, &m)) return false;
-    if (len >= kMemInviteSize) m.seed = read_u32_le(data + 26);
+    if (len >= kMemInviteSize) {
+      m.seed = read_u32_le(data + 26);
+      if (len >= kMemInviteSize) m.first = data[30] != 0;
+    }
+    *out = m;
+    return true;
+  }
+
+  if (m.type == T::TttInvite || m.type == T::StttInvite || m.type == T::BsInvite ||
+      m.type == T::CkInvite || m.type == T::RvInvite || m.type == T::DbInvite) {
+    if (len < kInviteFirstSize || !unpack_peer_hdr(data, len, &m)) return false;
+    m.first = data[26] != 0;
+    *out = m;
+    return true;
+  }
+
+  if (m.type == T::C4Invite) {
+    if (len < kC4InviteSize || !unpack_peer_hdr(data, len, &m)) return false;
+    m.color = (int8_t)data[26];
+    m.first = data[27] != 0;
+    *out = m;
+    return true;
+  }
+
+  if (m.type == T::C4Accept) {
+    if (len >= kC4AcceptSize && unpack_peer_hdr(data, len, &m)) {
+      m.color = (int8_t)data[26];
+      *out = m;
+      return true;
+    }
+    /* fall through to peer-only for backward compat */
+    if (len < kPeerHdrSize || !unpack_peer_hdr(data, len, &m)) return false;
     *out = m;
     return true;
   }

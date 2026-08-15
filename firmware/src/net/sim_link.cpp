@@ -55,41 +55,49 @@ struct Bot {
 
   /* ttt */
   bool ttt_on = false;
+  char ttt_mark = 'O';
   char ttt_board[9] = {};
 
   /* super ttt */
   bool sttt_on = false;
+  char sttt_mark = 'O';
   char sttt_boards[9][9] = {};
   char sttt_meta[9] = {};
   int8_t sttt_next = -1;
 
   /* c4 */
   bool c4_on = false;
+  bool c4_first = false;
   int8_t c4_color = 1;
   int8_t c4_board[games::c4::kRows][games::c4::kCols] = {};
 
-  /* checkers — bot is always the acceptor → black */
+  /* checkers */
   bool ck_on = false;
+  char ck_side = 'b';
   char ck_board[games::ck::kSize][games::ck::kSize] = {};
 
   /* battleship */
   bool bs_on = false;
   bool bs_battle = false;
+  bool bs_first = false;
   games::bs::Fleet bs_fleet;
   int8_t bs_tracking[games::bs::kGrid][games::bs::kGrid] = {};
 
   /* memory */
   bool mem_on = false;
+  bool mem_first = false;
   uint8_t mem_deck[games::mem::kCards] = {};
   bool mem_matched[games::mem::kCards] = {};
 
-  /* reversi — bot is acceptor → white */
+  /* reversi */
   bool rv_on = false;
+  bool rv_first = false;
   int8_t rv_board[games::rv::kN][games::rv::kN] = {};
   int8_t rv_color = games::rv::kWhite;
 
-  /* dots & boxes — bot is acceptor → P2 */
+  /* dots & boxes */
   bool db_on = false;
+  bool db_first = false;
   games::db::State db_state;
   int8_t db_side = games::db::kP2;
 
@@ -124,10 +132,10 @@ void bot_ttt_move(Bot & b) {
       if (!b.ttt_board[i]) empties[n++] = i;
     if (!n) return;
     const int cell = empties[std::rand() % n];
-    b.ttt_board[cell] = 'O';
+    b.ttt_board[cell] = b.ttt_mark;
     Msg m = base_msg(b, MsgType::TttMove);
     m.cell = (int8_t)cell;
-    m.mark = 'O';
+    m.mark = b.ttt_mark;
     deliver(m);
     if (games::ttt::winner(b.ttt_board) || games::ttt::full(b.ttt_board)) b.ttt_on = false;
   });
@@ -155,11 +163,11 @@ void bot_sttt_move(Bot & b) {
       return;
     }
     const Move & pick = opts[std::rand() % n];
-    games::sttt::play(b.sttt_boards, b.sttt_meta, b.sttt_next, pick.board, pick.cell, 'O');
+    games::sttt::play(b.sttt_boards, b.sttt_meta, b.sttt_next, pick.board, pick.cell, b.sttt_mark);
     Msg m = base_msg(b, MsgType::StttMove);
     m.col = (int8_t)pick.board;
     m.cell = (int8_t)pick.cell;
-    m.mark = 'O';
+    m.mark = b.sttt_mark;
     deliver(m);
     if (games::sttt::over(b.sttt_meta)) b.sttt_on = false;
   });
@@ -191,7 +199,7 @@ void bot_ck_turn(Bot & b) {
   later(1000, [&b]() {
     if (!b.ck_on) return;
     games::ck::Move moves[64];
-    const int n = games::ck::legal_moves(b.ck_board, 'b', -1, -1, moves, 64);
+    const int n = games::ck::legal_moves(b.ck_board, b.ck_side, -1, -1, moves, 64);
     if (!n) {
       b.ck_on = false; /* stuck — player side detects game over */
       return;
@@ -207,7 +215,7 @@ void bot_ck_turn(Bot & b) {
 
     if (mv.jump) {
       games::ck::Move more[16];
-      const int nm = games::ck::legal_moves(b.ck_board, 'b', mv.tx, mv.ty, more, 16);
+      const int nm = games::ck::legal_moves(b.ck_board, b.ck_side, mv.tx, mv.ty, more, 16);
       bool has_jump = false;
       for (int i = 0; i < nm; ++i)
         if (more[i].jump) has_jump = true;
@@ -216,7 +224,41 @@ void bot_ck_turn(Bot & b) {
         return;
       }
     }
-    if (games::ck::count_side(b.ck_board, 'r') == 0) b.ck_on = false;
+    if (games::ck::count_side(b.ck_board, b.ck_side == 'r' ? 'b' : 'r') == 0) b.ck_on = false;
+  });
+}
+
+/* ================= Reversi bot ================= */
+
+void bot_rv_play(Bot & b) {
+  later(800, [&b]() {
+    if (!b.rv_on) return;
+    if (!games::rv::any_move(b.rv_board, b.rv_color)) {
+      Msg pass = base_msg(b, MsgType::RvMove);
+      pass.x = -1;
+      pass.y = -1;
+      deliver(pass);
+      if (games::rv::check_over(b.rv_board) != 0) b.rv_on = false;
+      return;
+    }
+    int best_r = -1, best_c = -1, best_n = -1;
+    for (int r = 0; r < games::rv::kN; ++r) {
+      for (int c = 0; c < games::rv::kN; ++c) {
+        const int n = games::rv::would_flip(b.rv_board, r, c, b.rv_color);
+        if (n > best_n) {
+          best_n = n;
+          best_r = r;
+          best_c = c;
+        }
+      }
+    }
+    if (best_n <= 0) return;
+    games::rv::apply(b.rv_board, best_r, best_c, b.rv_color);
+    Msg out = base_msg(b, MsgType::RvMove);
+    out.x = (int8_t)best_r;
+    out.y = (int8_t)best_c;
+    deliver(out);
+    if (games::rv::check_over(b.rv_board) != 0) b.rv_on = false;
   });
 }
 
@@ -329,10 +371,12 @@ void bot_receive(Bot & b, const Msg & m) {
     }
 
     case MsgType::TttInvite: {
-      later(1100, [&b]() {
+      later(1100, [&b, m]() {
         b.ttt_on = true;
+        b.ttt_mark = m.first ? 'O' : 'X';
         std::memset(b.ttt_board, 0, sizeof(b.ttt_board));
         deliver(base_msg(b, MsgType::TttAccept));
+        if (b.ttt_mark == 'X') bot_ttt_move(b); /* bot goes first */
       });
       return;
     }
@@ -352,10 +396,12 @@ void bot_receive(Bot & b, const Msg & m) {
     }
 
     case MsgType::StttInvite: {
-      later(1100, [&b]() {
+      later(1100, [&b, m]() {
         b.sttt_on = true;
+        b.sttt_mark = m.first ? 'O' : 'X';
         games::sttt::init(b.sttt_boards, b.sttt_meta, b.sttt_next);
         deliver(base_msg(b, MsgType::StttAccept));
+        if (b.sttt_mark == 'X') bot_sttt_move(b); /* bot goes first */
       });
       return;
     }
@@ -379,9 +425,11 @@ void bot_receive(Bot & b, const Msg & m) {
         b.c4_on = true;
         games::c4::init(b.c4_board);
         b.c4_color = m.color == 0 ? 1 : 0; /* web otherDefaultC4Color */
+        b.c4_first = !m.first;
         Msg acc = base_msg(b, MsgType::C4Accept);
         acc.color = b.c4_color;
         deliver(acc);
+        if (b.c4_first) bot_c4_move(b); /* bot drops first */
       });
       return;
     }
@@ -401,26 +449,30 @@ void bot_receive(Bot & b, const Msg & m) {
     }
 
     case MsgType::CkInvite: {
-      later(1100, [&b]() {
+      later(1200, [&b, m]() {
         b.ck_on = true;
         games::ck::init(b.ck_board);
+        /* Red moves first. Challenger side depends on `first`. */
+        b.ck_side = m.first ? 'b' : 'r';
         deliver(base_msg(b, MsgType::CkAccept));
+        if (b.ck_side == 'r') bot_ck_turn(b); /* bot (red) moves first */
       });
       return;
     }
     case MsgType::CkMove: {
       if (!b.ck_on) return;
+      const char player = (b.ck_side == 'r') ? 'b' : 'r';
       const bool jump = (m.to_x - m.from_x == 2) || (m.from_x - m.to_x == 2);
       games::ck::Move mv{m.from_x, m.from_y, m.to_x, m.to_y, jump};
       games::ck::apply_move(b.ck_board, mv);
       if (jump) {
         games::ck::Move more[16];
-        const int n = games::ck::legal_moves(b.ck_board, 'r', mv.tx, mv.ty, more, 16);
+        const int n = games::ck::legal_moves(b.ck_board, player, mv.tx, mv.ty, more, 16);
         for (int i = 0; i < n; ++i) {
           if (more[i].jump) return; /* player continues their multi-jump */
         }
       }
-      if (games::ck::count_side(b.ck_board, 'b') == 0) {
+      if (games::ck::count_side(b.ck_board, b.ck_side) == 0) {
         b.ck_on = false;
         return;
       }
@@ -433,9 +485,10 @@ void bot_receive(Bot & b, const Msg & m) {
     }
 
     case MsgType::BsInvite: {
-      later(1100, [&b]() {
+      later(1100, [&b, m]() {
         b.bs_on = true;
         b.bs_battle = false;
+        b.bs_first = !m.first;
         games::bs::random_fleet(b.bs_fleet);
         std::memset(b.bs_tracking, 0, sizeof(b.bs_tracking));
         deliver(base_msg(b, MsgType::BsAccept));
@@ -450,6 +503,13 @@ void bot_receive(Bot & b, const Msg & m) {
     case MsgType::BsReady: {
       if (!b.bs_on) return;
       b.bs_battle = true; /* both fleets down once player is ready too */
+      /* Battle starts when both ready; if bot is the first player it fires. */
+      if (b.bs_first) {
+        later(1200, [&b]() {
+          if (!b.bs_on || !b.bs_battle) return;
+          bot_bs_fire(b);
+        });
+      }
       return;
     }
     case MsgType::BsFire: {
@@ -486,7 +546,9 @@ void bot_receive(Bot & b, const Msg & m) {
         b.mem_on = true;
         games::mem::build_deck(m.seed, b.mem_deck);
         std::memset(b.mem_matched, 0, sizeof(b.mem_matched));
+        b.mem_first = !m.first;
         deliver(base_msg(b, MsgType::MemAccept));
+        if (b.mem_first) bot_mem_turn(b); /* bot flips first */
       });
       return;
     }
@@ -513,17 +575,19 @@ void bot_receive(Bot & b, const Msg & m) {
     }
 
     case MsgType::RvInvite: {
-      later(1100, [&b]() {
+      later(1100, [&b, m]() {
         b.rv_on = true;
         games::rv::init(b.rv_board);
-        b.rv_color = games::rv::kWhite;
+        b.rv_color = m.first ? games::rv::kWhite : games::rv::kBlack;
         deliver(base_msg(b, MsgType::RvAccept));
+        if (!m.first) bot_rv_play(b); /* bot (black) moves first */
       });
       return;
     }
     case MsgType::RvMove: {
       if (!b.rv_on) return;
-      const int8_t player = games::rv::kBlack;
+      const int8_t player = (b.rv_color == games::rv::kBlack) ? games::rv::kWhite
+                                                              : games::rv::kBlack;
       if (m.x < 0 && m.y < 0) {
         /* player passed */
       } else if (!games::rv::apply(b.rv_board, m.x, m.y, player)) {
@@ -533,36 +597,7 @@ void bot_receive(Bot & b, const Msg & m) {
         b.rv_on = false;
         return;
       }
-      later(700, [&b]() {
-        if (!b.rv_on) return;
-        if (!games::rv::any_move(b.rv_board, b.rv_color)) {
-          Msg pass = base_msg(b, MsgType::RvMove);
-          pass.x = -1;
-          pass.y = -1;
-          deliver(pass);
-          if (games::rv::check_over(b.rv_board) != 0) b.rv_on = false;
-          return;
-        }
-        /* pick a legal move (prefer higher flips) */
-        int best_r = -1, best_c = -1, best_n = -1;
-        for (int r = 0; r < games::rv::kN; ++r) {
-          for (int c = 0; c < games::rv::kN; ++c) {
-            const int n = games::rv::would_flip(b.rv_board, r, c, b.rv_color);
-            if (n > best_n) {
-              best_n = n;
-              best_r = r;
-              best_c = c;
-            }
-          }
-        }
-        if (best_n <= 0) return;
-        games::rv::apply(b.rv_board, best_r, best_c, b.rv_color);
-        Msg out = base_msg(b, MsgType::RvMove);
-        out.x = (int8_t)best_r;
-        out.y = (int8_t)best_c;
-        deliver(out);
-        if (games::rv::check_over(b.rv_board) != 0) b.rv_on = false;
-      });
+      bot_rv_play(b);
       return;
     }
     case MsgType::RvForfeit: {
@@ -571,17 +606,33 @@ void bot_receive(Bot & b, const Msg & m) {
     }
 
     case MsgType::DbInvite: {
-      later(1100, [&b]() {
+      later(1100, [&b, m]() {
         b.db_on = true;
         games::db::init(b.db_state);
-        b.db_side = games::db::kP2;
+        b.db_side = m.first ? games::db::kP2 : games::db::kP1;
         deliver(base_msg(b, MsgType::DbAccept));
+        /* bot is P1? it must play the first edge. */
+        if (!m.first) {
+          later(600, [&b]() {
+            if (!b.db_on) return;
+            const int cl = games::db::claim(b.db_state, 0, 0, 0, b.db_side);
+            if (cl >= 0) {
+              Msg out = base_msg(b, MsgType::DbLine);
+              out.y = 0;
+              out.x = 0;
+              out.col = 0;
+              deliver(out);
+            }
+          });
+        }
       });
       return;
     }
     case MsgType::DbLine: {
       if (!b.db_on) return;
-      const int claimed = games::db::claim(b.db_state, m.y, m.x, m.col, games::db::kP1);
+      const int8_t player = (b.db_side == games::db::kP1) ? games::db::kP2
+                                                          : games::db::kP1;
+      const int claimed = games::db::claim(b.db_state, m.y, m.x, m.col, player);
       if (claimed < 0) return;
       if (games::db::over(b.db_state)) {
         b.db_on = false;

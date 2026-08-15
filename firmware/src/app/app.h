@@ -23,7 +23,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "0.71";
+constexpr const char * kFirmwareVersion = "0.72";
 /** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
 const char * firmware_version();
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
@@ -52,11 +52,15 @@ struct OutgoingCall {
 
 struct Invite {
   bool active = false;
+  bool first = false; /* challenger is the first player */
   char from_id[proto::kMaxId] = {};
   char from_name[proto::kMaxName] = {};
   int8_t color = -1;  /* c4 */
   uint32_t seed = 0;  /* memory */
 };
+
+/** Coin flip for who goes first when we are the challenger. */
+bool roll_first();
 
 struct TttGame {
   bool active = false, waiting = false, over = false, result_dismissed = false;
@@ -79,6 +83,7 @@ struct StttGame {
 
 struct C4Game {
   bool active = false, waiting = false, over = false, result_dismissed = false;
+  bool first = false; /* challenger: we drop first */
   char opp_id[proto::kMaxId] = {};
   char opp_name[proto::kMaxName] = {};
   int8_t my_color = 0, opp_color = -1, turn = 0;

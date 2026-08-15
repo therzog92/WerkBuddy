@@ -270,13 +270,15 @@ void ttt_challenge(lv_event_t * e) {
   app::ttt() = {};
   app::ttt().active = true;
   app::ttt().waiting = true;
-  app::ttt().mark = 'X';
+  const bool first = app::roll_first();
+  app::ttt().mark = first ? 'X' : 'O';
   app::ttt().turn = 'X';
   std::snprintf(app::ttt().opp_id, sizeof(app::ttt().opp_id), "%s", p.id);
   std::snprintf(app::ttt().opp_name, sizeof(app::ttt().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::TttInvite;
   fill_msg_ids(m, p.id);
+  m.first = first;
   app::send(m);
   go_ttt();
 }
@@ -457,12 +459,12 @@ lv_obj_t * game_ttt_build(lv_obj_t * into) {
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Desk & desk = app::desk();
-      const auto inv = app::invite_ref(app::GameKind::Ttt);
-      app::accept_invite(app::GameKind::Ttt);
-      app::ttt() = {};
-      app::ttt().active = true;
-      app::ttt().mark = 'O';
-      app::ttt().turn = 'X';
+  const auto inv = app::invite_ref(app::GameKind::Ttt);
+  app::accept_invite(app::GameKind::Ttt);
+  app::ttt() = {};
+  app::ttt().active = true;
+  app::ttt().mark = inv.first ? 'O' : 'X';
+  app::ttt().turn = 'X';
       std::snprintf(app::ttt().opp_id, sizeof(app::ttt().opp_id), "%s", inv.from_id);
       std::snprintf(app::ttt().opp_name, sizeof(app::ttt().opp_name), "%s", inv.from_name);
       proto::Msg m;
@@ -487,13 +489,15 @@ lv_obj_t * game_ttt_build(lv_obj_t * into) {
             app::ttt() = {};
             app::ttt().active = true;
             app::ttt().waiting = true;
-            app::ttt().mark = 'X';
+            const bool first = app::roll_first();
+            app::ttt().mark = first ? 'X' : 'O';
             app::ttt().turn = 'X';
             std::snprintf(app::ttt().opp_id, sizeof(app::ttt().opp_id), "%s", p.id);
             std::snprintf(app::ttt().opp_name, sizeof(app::ttt().opp_name), "%s", p.name);
             proto::Msg m;
             m.type = proto::MsgType::TttInvite;
             fill_msg_ids(m, p.id);
+            m.first = first;
             app::send(m);
             go_ttt();
           },
@@ -531,7 +535,8 @@ void sttt_challenge(lv_event_t * e) {
   app::sttt() = {};
   app::sttt().active = true;
   app::sttt().waiting = true;
-  app::sttt().mark = 'X';
+  const bool first = app::roll_first();
+  app::sttt().mark = first ? 'X' : 'O';
   app::sttt().turn = 'X';
   games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
   std::snprintf(app::sttt().opp_id, sizeof(app::sttt().opp_id), "%s", p.id);
@@ -539,6 +544,7 @@ void sttt_challenge(lv_event_t * e) {
   proto::Msg m;
   m.type = proto::MsgType::StttInvite;
   fill_msg_ids(m, p.id);
+  m.first = first;
   app::send(m);
   go_sttt();
 }
@@ -819,7 +825,7 @@ lv_obj_t * game_sttt_build(lv_obj_t * into) {
       app::accept_invite(app::GameKind::Sttt);
       app::sttt() = {};
       app::sttt().active = true;
-      app::sttt().mark = 'O';
+      app::sttt().mark = inv.first ? 'O' : 'X';
       app::sttt().turn = 'X';
       games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
       std::snprintf(app::sttt().opp_id, sizeof(app::sttt().opp_id), "%s", inv.from_id);
@@ -851,7 +857,8 @@ lv_obj_t * game_sttt_build(lv_obj_t * into) {
             app::sttt() = {};
             app::sttt().active = true;
             app::sttt().waiting = true;
-            app::sttt().mark = 'X';
+            const bool first = app::roll_first();
+            app::sttt().mark = first ? 'X' : 'O';
             app::sttt().turn = 'X';
             games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
             std::snprintf(app::sttt().opp_id, sizeof(app::sttt().opp_id), "%s", p.id);
@@ -859,6 +866,7 @@ lv_obj_t * game_sttt_build(lv_obj_t * into) {
             proto::Msg m;
             m.type = proto::MsgType::StttInvite;
             fill_msg_ids(m, p.id);
+            m.first = first;
             app::send(m);
             go_sttt();
           },
@@ -946,7 +954,8 @@ void c4_challenge(lv_event_t * e) {
   app::c4().active = true;
   app::c4().waiting = true;
   app::c4().my_color = (int8_t)g_c4_pick_color;
-  app::c4().turn = app::c4().my_color;
+  const bool first = app::roll_first();
+  app::c4().first = first;
   games::c4::init(app::c4().board);
   std::snprintf(app::c4().opp_id, sizeof(app::c4().opp_id), "%s", p.id);
   std::snprintf(app::c4().opp_name, sizeof(app::c4().opp_name), "%s", p.name);
@@ -954,6 +963,7 @@ void c4_challenge(lv_event_t * e) {
   m.type = proto::MsgType::C4Invite;
   fill_msg_ids(m, p.id);
   m.color = app::c4().my_color;
+  m.first = first;
   app::send(m);
   /* Defer rebuild — color-picker radials + sync go_c4 froze touch on both desks. */
   app::schedule(1, [](void * /*p*/) {
@@ -1204,7 +1214,7 @@ lv_obj_t * game_c4_build(lv_obj_t * into) {
       app::c4().active = true;
       app::c4().opp_color = inv.color >= 0 ? inv.color : 0;
       app::c4().my_color = app::c4().opp_color == 0 ? 1 : 0;
-      app::c4().turn = app::c4().opp_color; /* challenger goes first with their color */
+      app::c4().turn = inv.first ? app::c4().opp_color : app::c4().my_color;
       games::c4::init(app::c4().board);
       std::snprintf(app::c4().opp_id, sizeof(app::c4().opp_id), "%s", inv.from_id);
       std::snprintf(app::c4().opp_name, sizeof(app::c4().opp_name), "%s", inv.from_name);
@@ -1238,8 +1248,9 @@ lv_obj_t * game_c4_build(lv_obj_t * into) {
             app::c4() = {};
             app::c4().active = true;
             app::c4().waiting = true;
+            const bool first = app::roll_first();
+            app::c4().first = first;
             app::c4().my_color = color;
-            app::c4().turn = color;
             games::c4::init(app::c4().board);
             std::snprintf(app::c4().opp_id, sizeof(app::c4().opp_id), "%s", oid);
             std::snprintf(app::c4().opp_name, sizeof(app::c4().opp_name), "%s", oname);
@@ -1247,6 +1258,7 @@ lv_obj_t * game_c4_build(lv_obj_t * into) {
             m.type = proto::MsgType::C4Invite;
             fill_msg_ids(m, oid);
             m.color = color;
+            m.first = first;
             app::send(m);
             go_c4();
           },
@@ -1314,12 +1326,14 @@ void bs_challenge(lv_event_t * e) {
   app::bs() = {};
   app::bs().active = true;
   app::bs().waiting = true;
-  app::bs().i_am_first = true;
+  const bool first = app::roll_first();
+  app::bs().i_am_first = first;
   std::snprintf(app::bs().opp_id, sizeof(app::bs().opp_id), "%s", p.id);
   std::snprintf(app::bs().opp_name, sizeof(app::bs().opp_name), "%s", p.name);
   proto::Msg m;
   m.type = proto::MsgType::BsInvite;
   fill_msg_ids(m, p.id);
+  m.first = first;
   app::send(m);
   go_battleship();
 }
@@ -1617,7 +1631,7 @@ lv_obj_t * game_bs_build(lv_obj_t * into) {
       app::bs() = {};
       app::bs().active = true;
       app::bs().setup = true;
-      app::bs().i_am_first = false;
+      app::bs().i_am_first = !inv.first;
       games::bs::clear_fleet(app::bs().fleet);
       std::snprintf(app::bs().opp_id, sizeof(app::bs().opp_id), "%s", inv.from_id);
       std::snprintf(app::bs().opp_name, sizeof(app::bs().opp_name), "%s", inv.from_name);
@@ -1751,12 +1765,14 @@ app::Desk & desk = app::desk();
             app::bs() = {};
             app::bs().active = true;
             app::bs().waiting = true;
-            app::bs().i_am_first = true;
+            const bool first = app::roll_first();
+            app::bs().i_am_first = first;
             std::snprintf(app::bs().opp_id, sizeof(app::bs().opp_id), "%s", oid);
             std::snprintf(app::bs().opp_name, sizeof(app::bs().opp_name), "%s", oname);
             proto::Msg m;
             m.type = proto::MsgType::BsInvite;
             fill_msg_ids(m, oid);
+            m.first = first;
             app::send(m);
             go_battleship();
           },
@@ -1794,7 +1810,8 @@ void ck_challenge(lv_event_t * e) {
   app::ck() = {};
   app::ck().active = true;
   app::ck().waiting = true;
-  app::ck().side = 'r';
+  const bool first = app::roll_first();
+  app::ck().side = first ? 'r' : 'b';
   app::ck().turn = 'r';
   games::ck::init(app::ck().board);
   std::snprintf(app::ck().opp_id, sizeof(app::ck().opp_id), "%s", p.id);
@@ -1802,6 +1819,7 @@ void ck_challenge(lv_event_t * e) {
   proto::Msg m;
   m.type = proto::MsgType::CkInvite;
   fill_msg_ids(m, p.id);
+  m.first = first;
   app::send(m);
   go_checkers();
 }
@@ -2021,7 +2039,7 @@ lv_obj_t * game_ck_build(lv_obj_t * into) {
       app::accept_invite(app::GameKind::Ck);
       app::ck() = {};
       app::ck().active = true;
-      app::ck().side = 'b';
+      app::ck().side = inv.first ? 'b' : 'r';
       app::ck().turn = 'r';
       games::ck::init(app::ck().board);
       std::snprintf(app::ck().opp_id, sizeof(app::ck().opp_id), "%s", inv.from_id);
@@ -2048,7 +2066,8 @@ lv_obj_t * game_ck_build(lv_obj_t * into) {
             app::ck() = {};
             app::ck().active = true;
             app::ck().waiting = true;
-            app::ck().side = 'r';
+            const bool first = app::roll_first();
+            app::ck().side = first ? 'r' : 'b';
             app::ck().turn = 'r';
             games::ck::init(app::ck().board);
             std::snprintf(app::ck().opp_id, sizeof(app::ck().opp_id), "%s", oid);
@@ -2056,6 +2075,7 @@ lv_obj_t * game_ck_build(lv_obj_t * into) {
             proto::Msg m;
             m.type = proto::MsgType::CkInvite;
             fill_msg_ids(m, oid);
+            m.first = first;
             app::send(m);
             go_checkers();
           },
@@ -2258,7 +2278,8 @@ void mem_challenge(lv_event_t * e) {
   app::mem().active = true;
   app::mem().waiting = true;
   app::mem().seed = (uint32_t)std::rand();
-  app::mem().my_turn = true;
+  const bool first = app::roll_first();
+  app::mem().my_turn = first;
   mem_prepare_deck(app::mem().seed, app::mem().deck);
   std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", p.id);
   std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", p.name);
@@ -2266,6 +2287,7 @@ void mem_challenge(lv_event_t * e) {
   m.type = proto::MsgType::MemInvite;
   fill_msg_ids(m, p.id);
   m.seed = app::mem().seed;
+  m.first = first;
   app::send(m);
   go_memory();
 }
@@ -2449,7 +2471,7 @@ lv_obj_t * game_mem_build(lv_obj_t * into) {
       app::mem() = {};
       app::mem().active = true;
       app::mem().seed = inv.seed;
-      app::mem().my_turn = false;
+      app::mem().my_turn = !inv.first;
       mem_prepare_deck(app::mem().seed, app::mem().deck);
       std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", inv.from_id);
       std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", inv.from_name);
@@ -2481,7 +2503,8 @@ lv_obj_t * game_mem_build(lv_obj_t * into) {
             app::mem().active = true;
             app::mem().waiting = true;
             app::mem().seed = (uint32_t)std::rand();
-            app::mem().my_turn = true;
+            const bool first = app::roll_first();
+            app::mem().my_turn = first;
             mem_prepare_deck(app::mem().seed, app::mem().deck);
             std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", oid);
             std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", oname);
@@ -2489,6 +2512,7 @@ lv_obj_t * game_mem_build(lv_obj_t * into) {
             m.type = proto::MsgType::MemInvite;
             fill_msg_ids(m, oid);
             m.seed = app::mem().seed;
+            m.first = first;
             app::send(m);
             go_memory();
           },
@@ -2543,7 +2567,8 @@ void rv_challenge(lv_event_t * e) {
   app::rv() = {};
   app::rv().active = true;
   app::rv().waiting = true;
-  app::rv().my_color = games::rv::kBlack;
+  const bool first = app::roll_first();
+  app::rv().my_color = first ? games::rv::kBlack : games::rv::kWhite;
   app::rv().turn = games::rv::kBlack;
   games::rv::init(app::rv().board);
   std::snprintf(app::rv().opp_id, sizeof(app::rv().opp_id), "%s", p.id);
@@ -2551,6 +2576,7 @@ void rv_challenge(lv_event_t * e) {
   proto::Msg m;
   m.type = proto::MsgType::RvInvite;
   fill_msg_ids(m, p.id);
+  m.first = first;
   app::send(m);
   go_reversi();
 }
@@ -2744,7 +2770,7 @@ lv_obj_t * game_rv_build(lv_obj_t * into) {
       app::accept_invite(app::GameKind::Rv);
       app::rv() = {};
       app::rv().active = true;
-      app::rv().my_color = games::rv::kWhite;
+      app::rv().my_color = inv.first ? games::rv::kWhite : games::rv::kBlack;
       app::rv().turn = games::rv::kBlack;
       games::rv::init(app::rv().board);
       std::snprintf(app::rv().opp_id, sizeof(app::rv().opp_id), "%s", inv.from_id);
@@ -2780,7 +2806,8 @@ lv_obj_t * game_rv_build(lv_obj_t * into) {
             app::rv() = {};
             app::rv().active = true;
             app::rv().waiting = true;
-            app::rv().my_color = color;
+            const bool first = app::roll_first();
+            app::rv().my_color = first ? games::rv::kBlack : games::rv::kWhite;
             app::rv().turn = games::rv::kBlack;
             games::rv::init(app::rv().board);
             std::snprintf(app::rv().opp_id, sizeof(app::rv().opp_id), "%s", oid);
@@ -2788,6 +2815,7 @@ lv_obj_t * game_rv_build(lv_obj_t * into) {
             proto::Msg m;
             m.type = proto::MsgType::RvInvite;
             fill_msg_ids(m, oid);
+            m.first = first;
             app::send(m);
             go_reversi();
           },
@@ -2825,7 +2853,8 @@ void db_challenge(lv_event_t * e) {
   app::db() = {};
   app::db().active = true;
   app::db().waiting = true;
-  app::db().my_side = games::db::kP1;
+  const bool first = app::roll_first();
+  app::db().my_side = first ? games::db::kP1 : games::db::kP2;
   app::db().turn = games::db::kP1;
   games::db::init(app::db().state);
   std::snprintf(app::db().opp_id, sizeof(app::db().opp_id), "%s", p.id);
@@ -2833,6 +2862,7 @@ void db_challenge(lv_event_t * e) {
   proto::Msg m;
   m.type = proto::MsgType::DbInvite;
   fill_msg_ids(m, p.id);
+  m.first = first;
   app::send(m);
   go_dots();
 }
@@ -3039,7 +3069,7 @@ lv_obj_t * game_db_build(lv_obj_t * into) {
       app::accept_invite(app::GameKind::Db);
       app::db() = {};
       app::db().active = true;
-      app::db().my_side = games::db::kP2;
+      app::db().my_side = inv.first ? games::db::kP2 : games::db::kP1;
       app::db().turn = games::db::kP1;
       games::db::init(app::db().state);
       std::snprintf(app::db().opp_id, sizeof(app::db().opp_id), "%s", inv.from_id);
@@ -3075,7 +3105,8 @@ lv_obj_t * game_db_build(lv_obj_t * into) {
             app::db() = {};
             app::db().active = true;
             app::db().waiting = true;
-            app::db().my_side = side;
+            const bool first = app::roll_first();
+            app::db().my_side = first ? games::db::kP1 : games::db::kP2;
             app::db().turn = games::db::kP1;
             games::db::init(app::db().state);
             std::snprintf(app::db().opp_id, sizeof(app::db().opp_id), "%s", oid);
@@ -3083,6 +3114,7 @@ lv_obj_t * game_db_build(lv_obj_t * into) {
             proto::Msg m;
             m.type = proto::MsgType::DbInvite;
             fill_msg_ids(m, oid);
+            m.first = first;
             app::send(m);
             go_dots();
           },
@@ -3408,7 +3440,7 @@ bool accept_incoming_slot(int idx) {
     case app::GameKind::Ttt:
       app::ttt() = {};
       app::ttt().active = true;
-      app::ttt().mark = 'O';
+      app::ttt().mark = inv.first ? 'O' : 'X';
       app::ttt().turn = 'X';
       std::snprintf(app::ttt().opp_id, sizeof(app::ttt().opp_id), "%s", inv.from_id);
       std::snprintf(app::ttt().opp_name, sizeof(app::ttt().opp_name), "%s", inv.from_name);
@@ -3420,7 +3452,7 @@ bool accept_incoming_slot(int idx) {
     case app::GameKind::Sttt:
       app::sttt() = {};
       app::sttt().active = true;
-      app::sttt().mark = 'O';
+      app::sttt().mark = inv.first ? 'O' : 'X';
       app::sttt().turn = 'X';
       games::sttt::init(app::sttt().boards, app::sttt().meta, app::sttt().next_board);
       std::snprintf(app::sttt().opp_id, sizeof(app::sttt().opp_id), "%s", inv.from_id);
@@ -3435,7 +3467,7 @@ bool accept_incoming_slot(int idx) {
       app::c4().active = true;
       app::c4().opp_color = inv.color >= 0 ? inv.color : 0;
       app::c4().my_color = app::c4().opp_color == 0 ? 1 : 0;
-      app::c4().turn = app::c4().opp_color;
+      app::c4().turn = inv.first ? app::c4().opp_color : app::c4().my_color;
       games::c4::init(app::c4().board);
       std::snprintf(app::c4().opp_id, sizeof(app::c4().opp_id), "%s", inv.from_id);
       std::snprintf(app::c4().opp_name, sizeof(app::c4().opp_name), "%s", inv.from_name);
@@ -3449,7 +3481,7 @@ bool accept_incoming_slot(int idx) {
       app::bs() = {};
       app::bs().active = true;
       app::bs().setup = true;
-      app::bs().i_am_first = false;
+      app::bs().i_am_first = !inv.first;
       games::bs::clear_fleet(app::bs().fleet);
       std::snprintf(app::bs().opp_id, sizeof(app::bs().opp_id), "%s", inv.from_id);
       std::snprintf(app::bs().opp_name, sizeof(app::bs().opp_name), "%s", inv.from_name);
@@ -3462,7 +3494,7 @@ bool accept_incoming_slot(int idx) {
     case app::GameKind::Ck:
       app::ck() = {};
       app::ck().active = true;
-      app::ck().side = 'b';
+      app::ck().side = inv.first ? 'b' : 'r';
       app::ck().turn = 'r';
       games::ck::init(app::ck().board);
       std::snprintf(app::ck().opp_id, sizeof(app::ck().opp_id), "%s", inv.from_id);
@@ -3476,7 +3508,7 @@ bool accept_incoming_slot(int idx) {
       app::mem() = {};
       app::mem().active = true;
       app::mem().seed = inv.seed;
-      app::mem().my_turn = false;
+      app::mem().my_turn = !inv.first;
       mem_prepare_deck(app::mem().seed, app::mem().deck);
       std::snprintf(app::mem().opp_id, sizeof(app::mem().opp_id), "%s", inv.from_id);
       std::snprintf(app::mem().opp_name, sizeof(app::mem().opp_name), "%s", inv.from_name);
@@ -3488,7 +3520,7 @@ bool accept_incoming_slot(int idx) {
     case app::GameKind::Rv:
       app::rv() = {};
       app::rv().active = true;
-      app::rv().my_color = games::rv::kWhite;
+      app::rv().my_color = inv.first ? games::rv::kWhite : games::rv::kBlack;
       app::rv().turn = games::rv::kBlack;
       games::rv::init(app::rv().board);
       std::snprintf(app::rv().opp_id, sizeof(app::rv().opp_id), "%s", inv.from_id);
@@ -3501,7 +3533,7 @@ bool accept_incoming_slot(int idx) {
     case app::GameKind::Db:
       app::db() = {};
       app::db().active = true;
-      app::db().my_side = games::db::kP2;
+      app::db().my_side = inv.first ? games::db::kP2 : games::db::kP1;
       app::db().turn = games::db::kP1;
       games::db::init(app::db().state);
       std::snprintf(app::db().opp_id, sizeof(app::db().opp_id), "%s", inv.from_id);

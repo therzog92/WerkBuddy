@@ -126,6 +126,10 @@ struct Msg {
   uint8_t n_pts = 0;       /* point count (pairs in pts) */
   uint8_t pts[kMaxStrokePts * 2] = {}; /* quantized 0..120 */
 
+  /* multi-game invite — true when the challenger (inviter) is the first player,
+   * so the acceptor derives their role without a second negotiation round. */
+  bool first = false;
+
   /* time_sync — UTC unix seconds + generation (authoritative set time) */
   uint32_t unix_sec = 0;
   uint32_t sync_gen = 0;

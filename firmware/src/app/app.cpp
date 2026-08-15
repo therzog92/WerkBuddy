@@ -17,10 +17,12 @@
 #include "lvgl/lvgl.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #if defined(WP_DEVICE)
 #include <sys/time.h>
+#include "esp_random.h"
 #endif
 
 namespace wp {
@@ -176,6 +178,7 @@ GameSlot * receive_invite(GameKind kind, const proto::Msg & m, int & idx) {
   slot->invite.color =
       (m.color >= 0 && m.color < games::c4::kColorCount) ? m.color : 0;
   slot->invite.seed = m.seed;
+  slot->invite.first = m.first;
   set_focus(idx);
   /* Build game UI next tick — sync go_* from ESP-NOW poll nested too deep and
    * froze touch (especially when the desk was on the idle lock screen). */
@@ -290,7 +293,22 @@ void schedule(uint32_t delay_ms, void (*fn)(void *), void * user_data) {
   lv_timer_set_repeat_count(t, 1);
 }
 
+bool roll_first() {
+#ifdef WP_DEVICE
+  return (esp_random() & 1u) != 0;
+#else
+  return (std::rand() & 1) != 0;
+#endif
+}
+
 void init() {
+  /* Seed RNG — memory deck seed + random first-player coin flips. */
+#ifdef WP_DEVICE
+  std::srand((unsigned)esp_random());
+#else
+  std::srand((unsigned)std::time(nullptr));
+#endif
+
   apply_runtime_defaults(g_desk);
 
   storage::load(g_desk);
@@ -721,6 +739,7 @@ void handle_msg(const proto::Msg & m) {
       g.waiting = false;
       copy_str(g.opp_name, proto::kMaxName, m.from_name);
       g.opp_color = (m.color >= 0 && m.color < games::c4::kColorCount) ? m.color : 1;
+      g.turn = g.first ? g.my_color : g.opp_color;
       if (g.turn == g.my_color) note_turn_start(idx);
       refresh_viewing(GameKind::C4, m.from_id);
       return;

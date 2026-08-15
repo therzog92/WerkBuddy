@@ -316,48 +316,7 @@ void on_sashay(lv_event_t * /*e*/) {
   sync_ui();
 }
 
-void build_pulse(lv_obj_t * parent) {
-  /*
-   * Web .outgoing-pulse: fixed 72px element, ring scales 0.7→1.35 via transform
-   * (no layout shift): fixed holder in the flex flow, animated overflow child.
-   */
-  lv_obj_t * holder = lv_obj_create(parent);
-  lv_obj_remove_style_all(holder);
-  lv_obj_set_size(holder, 76, 76);
-  lv_obj_set_style_margin_top(holder, 8, 0);
-  lv_obj_add_flag(holder, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
-  lv_obj_remove_flag(holder, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_remove_flag(holder, LV_OBJ_FLAG_SCROLLABLE);
-
-  lv_obj_t * pulse = lv_obj_create(holder);
-  lv_obj_remove_style_all(pulse);
-  lv_obj_set_size(pulse, 50, 50);
-  lv_obj_set_style_radius(pulse, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_bg_opa(pulse, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(pulse, 3, 0);
-  lv_obj_set_style_border_color(pulse, theme::hot(), 0);
-  lv_obj_set_style_border_opa(pulse, LV_OPA_COVER, 0);
-  lv_obj_center(pulse);
-  lv_obj_remove_flag(pulse, LV_OBJ_FLAG_CLICKABLE);
-
-  lv_anim_t a;
-  lv_anim_init(&a);
-  lv_anim_set_var(&a, pulse);
-  lv_anim_set_values(&a, 50, 97);
-  lv_anim_set_duration(&a, 1100);
-  lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
-  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-  lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
-    auto * o = static_cast<lv_obj_t *>(obj);
-    lv_obj_set_size(o, v, v);
-    lv_obj_center(o);
-    const lv_opa_t opa = (lv_opa_t)(LV_OPA_COVER - (v - 50) * LV_OPA_COVER / (97 - 50));
-    lv_obj_set_style_border_opa(o, opa, 0);
-  });
-  lv_anim_start(&a);
-}
-
-/* Incoming FX stage — rings + glow share this center (50% / 42%). */
+/* Incoming/outgoing FX stage — rings + glow share this center. */
 constexpr lv_coord_t kIncomingStage = 360;
 
 void anim_ring_size(void * obj, int32_t v) {
@@ -599,8 +558,85 @@ lv_obj_t * pager_outgoing_screen() {
   lv_obj_t * scr = make_screen();
   make_topbar(scr, "WERKPAGER", d.name);
 
+  /* Radiating rings behind the name — same FX as the incoming screen. */
+  constexpr lv_coord_t kStage = kIncomingStage;
+  constexpr lv_coord_t kRing = 100;
+  lv_obj_t * stage = lv_obj_create(scr);
+  lv_obj_remove_style_all(stage);
+  lv_obj_set_size(stage, kStage, kStage);
+  lv_obj_set_style_bg_opa(stage, LV_OPA_TRANSP, 0);
+  lv_obj_align(stage, LV_ALIGN_CENTER, 0, -10);
+  lv_obj_remove_flag(stage, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(stage, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t * glow = lv_obj_create(stage);
+  lv_obj_remove_style_all(glow);
+  lv_obj_set_size(glow, 220, 220);
+  lv_obj_set_pos(glow, kStage / 2 - 110, kStage / 2 - 110);
+  lv_obj_set_style_radius(glow, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(glow, 0, 0);
+  lv_obj_set_style_bg_color(glow, theme::hot(), 0);
+  lv_obj_set_style_bg_opa(glow, LV_OPA_COVER, 0);
+  lv_obj_set_style_opa(glow, LV_OPA_30, 0);
+  lv_obj_remove_flag(glow, LV_OBJ_FLAG_CLICKABLE);
+  {
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, glow);
+    lv_anim_set_values(&a, 0, 100);
+    lv_anim_set_duration(&a, 1100);
+    lv_anim_set_reverse_duration(&a, 1100);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_set_exec_cb(&a, anim_glow);
+    lv_anim_start(&a);
+  }
+
+  const lv_color_t ring_colors[3] = {lv_color_hex(0xffffff), theme::gold(), theme::mint()};
+  const int32_t ring_delays[3] = {0, 420, 840};
+  for (int i = 0; i < 3; ++i) {
+    lv_obj_t * ring = lv_obj_create(stage);
+    lv_obj_remove_style_all(ring);
+    const int32_t start = (kRing * 60) / 100;
+    const int32_t end = kRing * 3;
+    lv_obj_set_size(ring, start, start);
+    lv_obj_set_pos(ring, kStage / 2 - start / 2, kStage / 2 - start / 2);
+    lv_obj_set_style_radius(ring, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(ring, 4, 0);
+    lv_obj_set_style_border_color(ring, ring_colors[i], 0);
+    lv_obj_set_style_border_opa(ring, LV_OPA_TRANSP, 0);
+    lv_obj_remove_flag(ring, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_anim_t as;
+    lv_anim_init(&as);
+    lv_anim_set_var(&as, ring);
+    lv_anim_set_values(&as, start, end);
+    lv_anim_set_duration(&as, 1250);
+    lv_anim_set_delay(&as, ring_delays[i]);
+    lv_anim_set_early_apply(&as, false);
+    lv_anim_set_repeat_count(&as, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&as, lv_anim_path_linear);
+    lv_anim_set_exec_cb(&as, anim_ring_size);
+    lv_anim_start(&as);
+
+    lv_anim_t ao;
+    lv_anim_init(&ao);
+    lv_anim_set_var(&ao, ring);
+    lv_anim_set_values(&ao, (int32_t)(255 * 85 / 100), LV_OPA_TRANSP);
+    lv_anim_set_duration(&ao, 1250);
+    lv_anim_set_delay(&ao, ring_delays[i]);
+    lv_anim_set_early_apply(&ao, false);
+    lv_anim_set_repeat_count(&ao, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&ao, lv_anim_path_linear);
+    lv_anim_set_exec_cb(&ao, anim_ring_opa);
+    lv_anim_start(&ao);
+  }
+
   lv_obj_t * body = make_body(scr, true);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_move_foreground(body);
 
   lv_obj_t * eye = lv_label_create(body);
   lv_label_set_text(eye, "Calling");
@@ -624,17 +660,19 @@ lv_obj_t * pager_outgoing_screen() {
   const bool has_msg = d.outgoing.message[0] != '\0';
   if (has_emoji) make_emoji_image(sub_row, d.outgoing.emoji, 18);
   lv_obj_t * sub = lv_label_create(sub_row);
-  lv_label_set_text(sub, has_msg ? d.outgoing.message : "Waiting for them to notice...");
+  lv_label_set_text(sub, has_msg ? d.outgoing.message : "");
   lv_obj_set_style_text_color(sub, theme::muted(), 0);
   lv_obj_set_style_text_align(sub, LV_TEXT_ALIGN_CENTER, 0);
 
-  build_pulse(body);
-
-  lv_obj_t * hint = lv_label_create(body);
+  /* Progress hint pinned just above the Cancel button. */
+  lv_obj_t * hint = lv_label_create(scr);
   lv_label_set_text(hint, "Waiting for them to notice...");
   lv_obj_set_style_text_color(hint, theme::muted(), 0);
   lv_obj_set_style_text_font(hint, font_body_italic(14), 0);
   lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -(kDockH + 4));
+  lv_obj_remove_flag(hint, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_move_foreground(hint);
 
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Cancel ping", false, true, on_cancel_ping);
@@ -728,7 +766,7 @@ lv_obj_t * pager_incoming_screen() {
     lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(ring, 4, 0);
     lv_obj_set_style_border_color(ring, ring_colors[i], 0);
-    lv_obj_set_style_border_opa(ring, (lv_opa_t)(255 * 85 / 100), 0);
+    lv_obj_set_style_border_opa(ring, LV_OPA_TRANSP, 0);
     lv_obj_remove_flag(ring, LV_OBJ_FLAG_CLICKABLE);
 
     lv_anim_t as;
@@ -737,6 +775,7 @@ lv_obj_t * pager_incoming_screen() {
     lv_anim_set_values(&as, start, end);
     lv_anim_set_duration(&as, 1250);
     lv_anim_set_delay(&as, ring_delays[i]);
+    lv_anim_set_early_apply(&as, false);
     lv_anim_set_repeat_count(&as, LV_ANIM_REPEAT_INFINITE);
     lv_anim_set_path_cb(&as, lv_anim_path_linear);
     lv_anim_set_exec_cb(&as, anim_ring_size);
@@ -748,6 +787,7 @@ lv_obj_t * pager_incoming_screen() {
     lv_anim_set_values(&ao, (int32_t)(255 * 85 / 100), LV_OPA_TRANSP);
     lv_anim_set_duration(&ao, 1250);
     lv_anim_set_delay(&ao, ring_delays[i]);
+    lv_anim_set_early_apply(&ao, false);
     lv_anim_set_repeat_count(&ao, LV_ANIM_REPEAT_INFINITE);
     lv_anim_set_path_cb(&ao, lv_anim_path_linear);
     lv_anim_set_exec_cb(&ao, anim_ring_opa);

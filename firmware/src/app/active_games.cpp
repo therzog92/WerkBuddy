@@ -25,7 +25,7 @@ bool g_persist_dirty = false;
 bool g_persist_scheduled = false;
 
 constexpr uint32_t kGamesMagic = 0x31414757u; /* WGA1 */
-constexpr uint16_t kGamesVersion = 1;
+constexpr uint16_t kGamesVersion = 2;
 
 #pragma pack(push, 1)
 struct GamesHdr {
