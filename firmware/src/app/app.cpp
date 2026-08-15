@@ -166,6 +166,14 @@ void go_game(GameKind kind) {
 void go_game_deferred(void * p) { go_game(static_cast<GameKind>((intptr_t)p)); }
 
 GameSlot * receive_invite(GameKind kind, const proto::Msg & m, int & idx) {
+  /* A finished match can be reused for a "Play again" rematch instead of being
+   * rejected as a duplicate while the peer is still sitting on the result. */
+  const int old_idx = find_slot(kind, m.from_id);
+  if (old_idx >= 0) {
+    GameSlot * old = slot_at(old_idx);
+    if (old && slot_is_over(*old)) free_slot(old_idx);
+  }
+
   if (!can_start(kind, m.from_id)) return nullptr;
   touch_peer_name(m.from_id, m.from_name);
   idx = alloc_slot(kind);

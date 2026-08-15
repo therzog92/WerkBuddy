@@ -63,6 +63,8 @@ GameSlot * focused_kind(GameKind kind);
 const char * slot_peer_id(const GameSlot & s);
 const char * slot_peer_name(const GameSlot & s);
 bool slot_is_live(const GameSlot & s);
+/** True if a live match has finished (over) — eligible to be reused by a rematch invite. */
+bool slot_is_over(const GameSlot & s);
 
 const char * kind_name(GameKind kind);
 bool is_my_turn(const GameSlot & s);

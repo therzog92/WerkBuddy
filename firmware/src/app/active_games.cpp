@@ -325,6 +325,21 @@ const char * slot_peer_id(const GameSlot & s) { return opp_id_of(s); }
 const char * slot_peer_name(const GameSlot & s) { return opp_name_of(s); }
 bool slot_is_live(const GameSlot & s) { return slot_live(s); }
 
+bool slot_is_over(const GameSlot & s) {
+  if (!slot_live(s) || s.invite_pending) return false;
+  switch (s.kind) {
+    case GameKind::Ttt: return s.g.ttt.over;
+    case GameKind::Sttt: return s.g.sttt.over;
+    case GameKind::C4: return s.g.c4.over;
+    case GameKind::Bs: return s.g.bs.over;
+    case GameKind::Ck: return s.g.ck.over;
+    case GameKind::Mem: return s.g.mem.over;
+    case GameKind::Rv: return s.g.rv.over;
+    case GameKind::Db: return s.g.db.over;
+    default: return false;
+  }
+}
+
 uint32_t mono_ms() { return lv_tick_get(); }
 
 void games_mark_dirty() { g_persist_dirty = true; }
