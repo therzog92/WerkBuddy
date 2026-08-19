@@ -5,6 +5,7 @@
 #include "app/checklist.h"
 #include "app/page_log.h"
 #include "app/score_log.h"
+#include "app/desk_timer.h"
 #include "app/storage.h"
 #include "games/sttt.h"
 #include "games/ttt.h"
@@ -32,6 +33,7 @@ constexpr uint32_t kMinValidEpoch = 1700000000u; /* ~2023-11 */
 
 void persist_wall_clock();
 void broadcast_time_sync();
+void apply_wall_unix(uint32_t utc_sec);
 
 namespace {
 
@@ -65,7 +67,62 @@ bool same(const char * a, const char * b) { return std::strcmp(a, b) == 0; }
 
 void clock_snapshot_cb(lv_timer_t * /*t*/) { persist_wall_clock(); }
 
-void time_sync_boot_cb(void * /*ud*/) { broadcast_time_sync(); }
+constexpr uint32_t kPageAutoDismissMs = 2u * 60u * 1000u;
+
+uint32_t g_clock_offer_unix = 0;
+uint32_t g_clock_offer_gen = 0;
+
+void format_clock_when(uint32_t unix_sec, char * buf, size_t n) {
+  std::time_t t = (std::time_t)unix_sec;
+  std::tm tm{};
+#if defined(_WIN32)
+  localtime_s(&tm, &t);
+#else
+  localtime_r(&t, &tm);
+#endif
+  if (g_desk.clock_24h) {
+    std::snprintf(buf, n, "%02d/%02d/%04d %02d:%02d", tm.tm_mon + 1, tm.tm_mday, tm.tm_year + 1900,
+                  tm.tm_hour, tm.tm_min);
+  } else {
+    int hour = tm.tm_hour % 12;
+    if (hour == 0) hour = 12;
+    std::snprintf(buf, n, "%02d/%02d/%04d %d:%02d %s", tm.tm_mon + 1, tm.tm_mday, tm.tm_year + 1900,
+                  hour, tm.tm_min, tm.tm_hour >= 12 ? "PM" : "AM");
+  }
+}
+
+void on_clock_offer_yes(lv_event_t * /*e*/) {
+  if (g_clock_offer_unix < kMinValidEpoch) return;
+  apply_wall_unix(g_clock_offer_unix);
+  g_desk.clock_sync_gen = g_clock_offer_gen;
+  save();
+  g_clock_offer_unix = 0;
+  ui::toast("Clock synced");
+}
+
+void on_clock_offer_no(lv_event_t * /*e*/) {
+  if (g_clock_offer_gen) {
+    g_desk.clock_sync_gen = g_clock_offer_gen;
+    save();
+  }
+  g_clock_offer_unix = 0;
+}
+
+void page_timeout_cb(lv_timer_t * /*t*/) {
+  Desk & d = g_desk;
+  if (!d.incoming.active) return;
+  if (lv_tick_elaps(d.incoming.started_ms) < kPageAutoDismissMs) return;
+  proto::Msg m{};
+  m.type = proto::MsgType::Ack;
+  copy_str(m.from_id, sizeof(m.from_id), d.id);
+  copy_str(m.from_name, sizeof(m.from_name), d.name);
+  copy_str(m.to_id, sizeof(m.to_id), d.incoming.from_id);
+  copy_str(m.for_call_from_id, sizeof(m.for_call_from_id), d.incoming.from_id);
+  send(m);
+  d.incoming.active = false;
+  ui::sync_ui();
+  ui::toast("Page dismissed");
+}
 
 /* —— schedule helper —— */
 struct Scheduled {
@@ -263,9 +320,10 @@ void remove_remote_game(GameKind kind, const proto::Msg & m, const char * score_
   const bool was_focus = focus_index() == idx;
   const bool was_viewing = is_viewing(kind, m.from_id);
   free_slot(idx);
-  char toast[proto::kMaxName + 40];
-  std::snprintf(toast, sizeof(toast), "%s left %s", m.from_name, toast_name);
-  ui::toast_fmt("%s", toast);
+  char toast[proto::kMaxName + 48];
+  std::snprintf(toast, sizeof(toast), "%s declared defeat, condragulations!", m.from_name);
+  ui::toast(toast);
+  (void)toast_name;
   if (was_focus || was_viewing) ui::go_hub();
 }
 
@@ -294,6 +352,7 @@ void apply_wall_unix(uint32_t utc_sec) {
   d.clock_offset_ms = (int64_t)((std::time_t)utc_sec - now) * 1000;
 #endif
   d.wall_epoch = utc_sec;
+  desk_timer::rebase_wall();
 }
 
 void schedule(uint32_t delay_ms, void (*fn)(void *), void * user_data) {
@@ -355,9 +414,7 @@ void init() {
 
   /* Keep NVS wall_epoch fresh so a dead desk resumes near last-on time. */
   lv_timer_create(clock_snapshot_cb, 30000, nullptr);
-  /* Announce (and invite overwrite) after link is up. */
-  schedule(400, time_sync_boot_cb, nullptr);
-  schedule(2500, time_sync_boot_cb, nullptr);
+  lv_timer_create(page_timeout_cb, 1000, nullptr);
 }
 
 void save() { storage::save(g_desk); }
@@ -585,6 +642,7 @@ void handle_msg(const proto::Msg & m) {
 
     case proto::MsgType::Call: {
       d.incoming.active = true;
+      d.incoming.started_ms = lv_tick_get();
       copy_str(d.incoming.from_id, proto::kMaxId, m.from_id);
       copy_str(d.incoming.from_name, proto::kMaxName, m.from_name);
       copy_str(d.incoming.emoji, proto::kMaxEmoji, m.emoji);
@@ -1139,32 +1197,35 @@ void handle_msg(const proto::Msg & m) {
 
     /* —— Doodle —— */
     case proto::MsgType::DoodleStroke: {
-      if (!d.doodle_peer_id[0]) {
-        copy_str(d.doodle_peer_id, proto::kMaxId, m.from_id);
-        copy_str(d.doodle_peer_name, proto::kMaxName, m.from_name);
-      }
       ui::doodle_apply_remote_stroke(m);
       /* Never yank the desk to Doodle — pulse the hub icon until they open it. */
       if (ui::current_screen() != ui::Screen::Doodle) {
+        d.doodle_unread = true;
+      } else if (d.doodle_peer_id[0] && std::strcmp(d.doodle_peer_id, m.from_id) != 0) {
         d.doodle_unread = true;
       }
       return;
     }
     case proto::MsgType::DoodleClear: {
       /* Always wipe session — even if not currently on the doodle screen. */
-      ui::doodle_remote_clear();
+      ui::doodle_remote_clear(m.from_id);
       return;
     }
 
     case proto::MsgType::TimeSync: {
       if (m.unix_sec < kMinValidEpoch) return;
+      if (same(m.from_id, d.id)) return;
       const uint32_t their_gen = m.sync_gen ? m.sync_gen : m.unix_sec;
       if (their_gen <= d.clock_sync_gen) return;
-      apply_wall_unix(m.unix_sec);
-      d.clock_sync_gen = their_gen;
-      save();
-      /* Relay so a third desk (or one that missed the first blast) catches up. */
-      broadcast_time_sync();
+      g_clock_offer_unix = m.unix_sec;
+      g_clock_offer_gen = their_gen;
+      char when[40];
+      format_clock_when(m.unix_sec, when, sizeof(when));
+      char line[160];
+      std::snprintf(line, sizeof(line),
+                    "%s changed their system clock to %s, would you like to sync to this time?",
+                    m.from_name[0] ? m.from_name : "A desk", when);
+      ui::show_confirm(line, "Sync", false, on_clock_offer_yes, on_clock_offer_no);
       return;
     }
 

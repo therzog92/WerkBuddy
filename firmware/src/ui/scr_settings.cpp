@@ -14,6 +14,7 @@
 #include "ui/scr_pager.h"
 #include "ui/theme.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -45,8 +46,9 @@ char g_wifi_ssid_draft[33] = "";
 void add_section(lv_obj_t * body, const char * title) {
   lv_obj_t * t = lv_label_create(body);
   lv_label_set_text(t, title);
-  lv_obj_set_style_text_color(t, theme::muted(), 0);
-  lv_obj_set_style_text_font(t, &lv_font_montserrat_12, 0);
+  lv_obj_set_style_text_color(t, theme::ink(), 0);
+  lv_obj_set_style_text_font(t, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_pad_top(t, 8, 0);
   lv_obj_set_width(t, lv_pct(100));
 }
 
@@ -68,6 +70,7 @@ void chip_row_select(lv_obj_t * row, int selected_idx) {
 lv_obj_t * chip(lv_obj_t * row, const char * label, bool selected, lv_event_cb_t cb, void * ud) {
   lv_obj_t * b = lv_button_create(row);
   lv_obj_set_height(b, 34);
+  lv_obj_set_ext_click_area(b, 8);
   lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_shadow_width(b, 0, 0);
   lv_obj_set_style_border_width(b, 0, 0);
@@ -88,6 +91,43 @@ lv_obj_t * chip_sm(lv_obj_t * row, const char * label, bool selected, lv_event_c
   lv_obj_t * l = lv_obj_get_child(b, 0);
   if (l) lv_obj_set_style_text_font(l, &lv_font_montserrat_12, 0);
   return b;
+}
+
+void chrome_toggle_bit(lv_event_t * e) {
+  const uint8_t packed = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+  const uint8_t bit = packed & 0x0f;
+  const bool hide = (packed & 0x10) != 0;
+  app::Desk & d = app::desk();
+  if (hide) d.chrome_hide = (uint8_t)(d.chrome_hide | bit);
+  else d.chrome_hide = (uint8_t)(d.chrome_hide & ~bit);
+  app::save();
+  chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))), hide ? 1 : 0);
+}
+
+void chrome_show_hide_row(lv_obj_t * body, const char * where, uint8_t bit) {
+  lv_obj_t * row = lv_obj_create(body);
+  lv_obj_remove_style_all(row);
+  lv_obj_set_width(row, lv_pct(100));
+  lv_obj_set_height(row, 40);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t * lab = lv_label_create(row);
+  lv_label_set_text(lab, where);
+  lv_obj_set_style_text_color(lab, theme::muted(), 0);
+  lv_obj_set_style_text_font(lab, &lv_font_montserrat_14, 0);
+
+  lv_obj_t * chips = lv_obj_create(row);
+  lv_obj_remove_style_all(chips);
+  lv_obj_set_size(chips, LV_SIZE_CONTENT, 40);
+  lv_obj_set_flex_flow(chips, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(chips, 6, 0);
+  lv_obj_remove_flag(chips, LV_OBJ_FLAG_SCROLLABLE);
+
+  const bool hidden = (app::desk().chrome_hide & bit) != 0;
+  chip(chips, "Show", !hidden, chrome_toggle_bit, (void *)(intptr_t)bit);
+  chip(chips, "Hide", hidden, chrome_toggle_bit, (void *)(intptr_t)(bit | 0x10));
 }
 
 void settings_scroll_cue_update(lv_event_t * e) {
@@ -112,7 +152,7 @@ enum class SettingsTab : uint8_t { Desk = 0, Display, Paging, Network, About, Co
 const char * const kSettingsTabLabels[] = {"Desk", "Display", "Paging", "Network", "About"};
 SettingsTab g_settings_tab = SettingsTab::Desk;
 SettingsTab g_restore_tab = SettingsTab::Desk;
-constexpr int kSettingsTabH = 38;
+constexpr int kSettingsTabH = 52;
 lv_obj_t * g_tab_btns[(int)SettingsTab::Count] = {};
 
 void settings_remember_scroll() {
@@ -139,6 +179,19 @@ void osk_refresh() {
   lv_label_set_text(g_osk_value, shown);
 }
 
+void osk_apply_caps();
+
+bool osk_is_name() { return g_osk_canned_index == -1 || g_osk_canned_index == -7; }
+
+void osk_name_shift_from_buf() {
+  if (!osk_is_name()) return;
+  const size_t n = std::strlen(g_osk_buf);
+  const bool want_caps = (n == 0 || g_osk_buf[n - 1] == ' ');
+  if (g_caps == want_caps) return;
+  g_caps = want_caps;
+  osk_apply_caps();
+}
+
 void osk_type(const char * ch) {
   int max = 22;
   if (g_osk_canned_index == -1 || g_osk_canned_index == -7) max = 12;
@@ -153,6 +206,7 @@ void osk_type(const char * ch) {
   g_osk_buf[n] = c;
   g_osk_buf[n + 1] = '\0';
   osk_refresh();
+  osk_name_shift_from_buf();
 }
 
 void osk_apply_caps() {
@@ -206,8 +260,13 @@ void add_osk_row(lv_obj_t * parent, const char * keys, int inset, bool letters) 
 
 lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_index) {
   g_osk_canned_index = canned_index;
-  g_caps = (canned_index == -1 || canned_index == -6 || canned_index == -7);
   std::snprintf(g_osk_buf, sizeof(g_osk_buf), "%s", initial ? initial : "");
+  if (osk_is_name()) {
+    const size_t n = std::strlen(g_osk_buf);
+    g_caps = (n == 0 || g_osk_buf[n - 1] == ' ');
+  } else {
+    g_caps = (canned_index == -6);
+  }
 
   lv_obj_t * scr = make_screen();
   /* Solid fill — wallpaper bg-image makes every keystroke redraw the photo. */
@@ -293,6 +352,7 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
         const size_t n = std::strlen(g_osk_buf);
         if (n > 0) g_osk_buf[n - 1] = '\0';
         osk_refresh();
+        osk_name_shift_from_buf();
       },
       LV_EVENT_CLICKED, nullptr);
 
@@ -857,7 +917,7 @@ lv_obj_t * settings_screen() {
   lv_obj_set_size(tabbar, WP_HOR_RES, kSettingsTabH);
   lv_obj_set_pos(tabbar, 0, kTopbarH);
   lv_obj_set_style_pad_hor(tabbar, 10, 0);
-  lv_obj_set_style_pad_ver(tabbar, 5, 0);
+  lv_obj_set_style_pad_ver(tabbar, 4, 0);
   lv_obj_set_flex_flow(tabbar, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(tabbar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                         LV_FLEX_ALIGN_CENTER);
@@ -867,7 +927,8 @@ lv_obj_t * settings_screen() {
   for (int i = 0; i < (int)SettingsTab::Count; ++i) {
     lv_obj_t * b = lv_button_create(tabbar);
     lv_obj_set_flex_grow(b, 1);
-    lv_obj_set_height(b, 28);
+    lv_obj_set_height(b, 44);
+    lv_obj_set_ext_click_area(b, 10);
     lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_border_width(b, 0, 0);
@@ -908,7 +969,8 @@ lv_obj_t * settings_screen() {
   add_section(body, "My name");
   lv_obj_t * name = lv_button_create(body);
   lv_obj_set_width(name, lv_pct(100));
-  lv_obj_set_height(name, 32);
+  lv_obj_set_height(name, 40);
+  lv_obj_set_ext_click_area(name, 8);
   lv_obj_set_style_radius(name, 12, 0);
   lv_obj_set_style_bg_color(name, theme::gold(), 0);
   lv_obj_set_style_bg_opa(name, LV_OPA_COVER, 0);
@@ -927,7 +989,7 @@ lv_obj_t * settings_screen() {
   lv_obj_t * themes = lv_obj_create(body);
   lv_obj_remove_style_all(themes);
   lv_obj_set_width(themes, lv_pct(100));
-  lv_obj_set_height(themes, 36);
+  lv_obj_set_height(themes, 44);
   lv_obj_set_flex_flow(themes, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_column(themes, 6, 0);
   lv_obj_set_scroll_dir(themes, LV_DIR_HOR);
@@ -936,7 +998,8 @@ lv_obj_t * settings_screen() {
     const auto id = static_cast<theme::Id>(i);
     lv_obj_t * s = lv_obj_create(themes);
     lv_obj_remove_style_all(s);
-    lv_obj_set_size(s, 42, 32);
+    lv_obj_set_size(s, 50, 40);
+    lv_obj_set_ext_click_area(s, 8);
     lv_obj_set_style_radius(s, 10, 0);
     theme::Id prev = theme::current();
     theme::set(id);
@@ -1077,7 +1140,7 @@ lv_obj_t * settings_screen() {
 
     lv_obj_t * slider = lv_slider_create(row);
     lv_obj_set_flex_grow(slider, 1);
-    lv_obj_set_height(slider, 12);
+    lv_obj_set_height(slider, 22);
     lv_slider_set_range(slider, 10, 100);
     lv_slider_set_value(slider, brightness::percent(), LV_ANIM_OFF);
     lv_obj_set_style_bg_color(slider, theme::panel(), LV_PART_MAIN);
@@ -1123,6 +1186,38 @@ lv_obj_t * settings_screen() {
          },
          nullptr);
   }
+
+  add_section(body, "Clock format");
+  {
+    lv_obj_t * row = lv_obj_create(body);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, 40);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(row, 8, 0);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    chip(row, "12-hour", d.clock_24h == 0,
+         [](lv_event_t * e) {
+           app::desk().clock_24h = 0;
+           app::save();
+           chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))), 0);
+         },
+         nullptr);
+    chip(row, "24-hour", d.clock_24h != 0,
+         [](lv_event_t * e) {
+           app::desk().clock_24h = 1;
+           app::save();
+           chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))), 1);
+         },
+         nullptr);
+  }
+
+  add_section(body, "Clock");
+  chrome_show_hide_row(body, "Home", app::Desk::kHideHubClock);
+  chrome_show_hide_row(body, "Idle", app::Desk::kHideIdleClock);
+  add_section(body, "Desk name");
+  chrome_show_hide_row(body, "Home", app::Desk::kHideHubName);
+  chrome_show_hide_row(body, "Idle", app::Desk::kHideIdleName);
 
   }
 

@@ -41,7 +41,45 @@ struct SavedStroke {
   uint8_t n;
   uint8_t pts[proto::kMaxStrokePts * 2];
 };
-std::vector<SavedStroke> g_history;
+
+constexpr int kMaxPads = app::kMaxPeers;
+constexpr int kMaxStrokes = 400;
+
+struct PeerPad {
+  char id[proto::kMaxId] = {};
+  std::vector<SavedStroke> strokes;
+};
+
+PeerPad g_pads[kMaxPads];
+int g_pad_n = 0;
+char g_bound_peer[proto::kMaxId] = {};
+
+PeerPad * pad_for(const char * id, bool create) {
+  if (!id || !id[0]) return nullptr;
+  for (int i = 0; i < g_pad_n; ++i) {
+    if (std::strcmp(g_pads[i].id, id) == 0) return &g_pads[i];
+  }
+  if (!create || g_pad_n >= kMaxPads) return nullptr;
+  PeerPad & p = g_pads[g_pad_n++];
+  std::snprintf(p.id, sizeof(p.id), "%s", id);
+  p.strokes.clear();
+  return &p;
+}
+
+void remember_pts(const char * peer_id, const uint8_t * pts, uint8_t n, int8_t color, uint8_t w) {
+  if (n < 1) return;
+  PeerPad * pad = pad_for(peer_id, true);
+  if (!pad) return;
+  if ((int)pad->strokes.size() >= kMaxStrokes) {
+    pad->strokes.erase(pad->strokes.begin(), pad->strokes.begin() + 40);
+  }
+  SavedStroke s;
+  s.color = color;
+  s.w = w;
+  s.n = n;
+  std::memcpy(s.pts, pts, (size_t)n * 2);
+  pad->strokes.push_back(s);
+}
 
 /* Aligned canvas buffer — stride-aware size required by LVGL 9.
  * On device this is ~470 KB — keep it out of internal DRAM (PSRAM heap). */
@@ -139,22 +177,11 @@ void clear_canvas() {
   refresh_canvas();
 }
 
-void remember_pts(const uint8_t * pts, uint8_t n, int8_t color, uint8_t w) {
-  if (n < 1) return;
-  SavedStroke s;
-  s.color = color;
-  s.w = w;
-  s.n = n;
-  std::memcpy(s.pts, pts, (size_t)n * 2);
-  g_history.push_back(s);
-}
-
 void flush_stroke(bool last) {
   if (g_n_pts < 1) return;
   const int8_t col = g_erase ? (int8_t)-1 : (int8_t)g_color;
-  remember_pts(g_pts, g_n_pts, col, (uint8_t)g_width);
-
   app::Desk & d = app::desk();
+  remember_pts(d.doodle_peer_id, g_pts, g_n_pts, col, (uint8_t)g_width);
   if (d.doodle_peer_id[0]) {
     proto::Msg m;
     m.type = proto::MsgType::DoodleStroke;
@@ -244,11 +271,12 @@ void on_canvas(lv_event_t * e) {
 void rebuild_tools();
 
 void on_clear(lv_event_t * /*e*/) {
-  g_history.clear();
+  app::Desk & d = app::desk();
+  PeerPad * pad = pad_for(d.doodle_peer_id, false);
+  if (pad) pad->strokes.clear();
   g_n_pts = 0;
   g_drawing = false;
   clear_canvas();
-  app::Desk & d = app::desk();
   if (d.doodle_peer_id[0]) {
     proto::Msg m;
     m.type = proto::MsgType::DoodleClear;
@@ -285,7 +313,7 @@ void rebuild_tools() {
       lv_obj_set_style_border_color(sw, theme::gold(), 0);
     }
     lv_obj_add_flag(sw, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(sw, 4);
+    lv_obj_set_ext_click_area(sw, 10);
     lv_obj_add_event_cb(
         sw,
         [](lv_event_t * e) {
@@ -302,7 +330,7 @@ void rebuild_tools() {
   lv_obj_set_style_bg_color(eras, g_erase ? theme::gold() : theme::panel(), 0);
   lv_obj_set_style_shadow_width(eras, 0, 0);
   lv_obj_set_style_pad_all(eras, 2, 0);
-  lv_obj_set_ext_click_area(eras, 4);
+  lv_obj_set_ext_click_area(eras, 10);
 
   /* Classic pink rubber eraser (no Unicode eraser glyph). */
   lv_obj_t * eras_ico = lv_obj_create(eras);
@@ -351,7 +379,7 @@ void rebuild_tools() {
     lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(b, g_width == w ? theme::gold() : theme::panel(), 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_set_ext_click_area(b, 4);
+    lv_obj_set_ext_click_area(b, 10);
     lv_obj_t * l = lv_label_create(b);
     lv_label_set_text(l, lab);
     lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
@@ -397,7 +425,6 @@ lv_obj_t * doodle_screen() {
           std::snprintf(desk.doodle_peer_id, sizeof(desk.doodle_peer_id), "%s", desk.peers[idx].id);
           std::snprintf(desk.doodle_peer_name, sizeof(desk.doodle_peer_name), "%s",
                         desk.peers[idx].name);
-          /* Keep shared canvas across peer re-entry; only Clear wipes ink. */
           go_doodle();
         },
         (void *)(intptr_t)i);
@@ -443,10 +470,20 @@ lv_obj_t * doodle_screen() {
   lv_obj_add_event_cb(g_canvas, on_canvas, LV_EVENT_RELEASED, nullptr);
   lv_obj_add_event_cb(g_canvas, on_canvas, LV_EVENT_PRESS_LOST, nullptr);
 
+  if (d.doodle_peer_id[0] && std::strcmp(g_bound_peer, d.doodle_peer_id) != 0) {
+    g_buf_dirty = true;
+  }
+  if (d.doodle_peer_id[0]) {
+    std::snprintf(g_bound_peer, sizeof(g_bound_peer), "%s", d.doodle_peer_id);
+  }
+
   if (g_buf_dirty) {
     clear_canvas();
     g_buf_dirty = false;
-    for (const auto & s : g_history) apply_pts(s.pts, s.n, s.color, s.w);
+    PeerPad * pad = pad_for(d.doodle_peer_id, false);
+    if (pad) {
+      for (const auto & s : pad->strokes) apply_pts(s.pts, s.n, s.color, s.w);
+    }
   } else {
     /* Re-bind existing pixels — do not re-quantize/redraw (keeps smooth local ink). */
     refresh_canvas();
@@ -476,16 +513,25 @@ lv_obj_t * doodle_screen() {
 }
 
 void doodle_apply_remote_stroke(const proto::Msg & msg) {
-  remember_pts(msg.pts, msg.n_pts, msg.stroke_color, msg.stroke_w);
-  apply_pts(msg.pts, msg.n_pts, msg.stroke_color, msg.stroke_w);
+  remember_pts(msg.from_id, msg.pts, msg.n_pts, msg.stroke_color, msg.stroke_w);
+  const char * cur = app::desk().doodle_peer_id;
+  if (cur[0] && std::strcmp(cur, msg.from_id) == 0) {
+    apply_pts(msg.pts, msg.n_pts, msg.stroke_color, msg.stroke_w);
+  } else if (std::strcmp(g_bound_peer, msg.from_id) == 0) {
+    g_buf_dirty = true;
+  }
 }
 
-void doodle_remote_clear() {
-  g_history.clear();
-  g_n_pts = 0;
-  g_drawing = false;
-  if (g_canvas) clear_canvas();
-  else g_buf_dirty = true;
+void doodle_remote_clear(const char * from_id) {
+  PeerPad * pad = pad_for(from_id, false);
+  if (pad) pad->strokes.clear();
+  const char * cur = app::desk().doodle_peer_id;
+  if (from_id && cur[0] && std::strcmp(cur, from_id) == 0) {
+    g_n_pts = 0;
+    g_drawing = false;
+    if (g_canvas) clear_canvas();
+    else g_buf_dirty = true;
+  }
 }
 
 void doodle_debug_show_draw() {

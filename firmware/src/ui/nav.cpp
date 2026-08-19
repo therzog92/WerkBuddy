@@ -107,6 +107,19 @@ Screen current_screen() { return g_screen; }
 
 void go_splash() { load(splash_screen(), Screen::Splash); }
 void go_hub() { load(hub_screen(), Screen::Hub); }
+
+void go_game_back() {
+  const int focus = app::focus_index();
+  for (int i = 0; i < app::kMaxActiveGames; ++i) {
+    if (i == focus) continue;
+    app::GameSlot * s = app::slot_at(i);
+    if (s && app::is_my_turn(*s)) {
+      go_active_games();
+      return;
+    }
+  }
+  go_hub();
+}
 void go_werk() { load(pager_werk_screen(), Screen::Werk); }
 
 void go_compose(const app::Peer & peer) {

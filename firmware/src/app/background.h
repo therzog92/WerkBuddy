@@ -67,11 +67,13 @@ const char * softap_pass();
 
 /** Soft dark wash over wallpaper (0..255). Higher recolor = dimmer photo. */
 constexpr lv_opa_t kWashHub = 155;  /* darker so hub chrome/text stays readable */
+constexpr lv_opa_t kWashHubOpen = 70; /* both clock+name hidden — let the photo through */
 constexpr lv_opa_t kWashPage = 140; /* readable chrome, photo still visible */
-constexpr lv_opa_t kWashIdle = 115; /* clock lock — a bit brighter than hub */
+constexpr lv_opa_t kWashIdle = 40;  /* photo-frame idle — keep the picture bright */
 /** Extra: page screens also lower image opa so text stays readable. */
 constexpr lv_opa_t kImageOpaHub = 200;
+constexpr lv_opa_t kImageOpaHubOpen = 255;
 constexpr lv_opa_t kImageOpaPage = 95;  /* ~37% photo — heavily subdued */
-constexpr lv_opa_t kImageOpaIdle = 215;
+constexpr lv_opa_t kImageOpaIdle = 255;
 }  // namespace background
 }  // namespace wp

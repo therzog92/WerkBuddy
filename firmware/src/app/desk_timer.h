@@ -52,6 +52,9 @@ void dismiss();         /* first finished slot */
 void format_remaining(int slot, char * buf, uint32_t n);
 void format_remaining(char * buf, uint32_t n);
 
+/** Wall clock changed (Settings / peer sync) — keep remaining time, don't fire. */
+void rebase_wall();
+
 /** UI refresh hook — scr_timer registers while visible. */
 using ListenFn = void (*)();
 void set_listener(ListenFn fn);

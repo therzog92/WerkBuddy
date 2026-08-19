@@ -251,6 +251,10 @@ void apply_screen_bg(lv_obj_t * scr, BgWash wash) {
         dim = background::kWashHub;
         img_opa = background::kImageOpaHub;
         break;
+      case BgWash::HubOpen:
+        dim = background::kWashHubOpen;
+        img_opa = background::kImageOpaHubOpen;
+        break;
       case BgWash::Idle:
         dim = background::kWashIdle;
         img_opa = background::kImageOpaIdle;

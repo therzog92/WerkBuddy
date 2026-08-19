@@ -618,6 +618,7 @@ lv_obj_t * make_app_icon_sized(lv_obj_t * parent, AppIcon icon, const char * lab
   lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(col, glyph_vis >= 72 ? 8 : 4, 0);
   lv_obj_add_flag(col, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(col, 14);
   lv_obj_remove_flag(col, LV_OBJ_FLAG_SCROLLABLE);
   if (cb) lv_obj_add_event_cb(col, cb, LV_EVENT_CLICKED, user_data);
 

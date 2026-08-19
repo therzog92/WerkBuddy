@@ -69,7 +69,7 @@ enum class MsgType : uint8_t {
   GameProbe,
   /** Reply: cell = GameKind, hit = still active on this desk. */
   GameProbeReply,
-  /** Broadcast wall clock; peers adopt if sync_gen is newer. */
+  /** Offer wall clock; peer may accept via popup (does not auto-apply). */
   TimeSync,
 };
 

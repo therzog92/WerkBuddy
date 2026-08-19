@@ -23,7 +23,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "0.73";
+constexpr const char * kFirmwareVersion = "0.74";
 /** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
 const char * firmware_version();
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
@@ -36,6 +36,7 @@ struct Peer {
 
 struct IncomingCall {
   bool active = false;
+  uint32_t started_ms = 0;
   char from_id[proto::kMaxId] = {};
   char from_name[proto::kMaxName] = {};
   char emoji[proto::kMaxEmoji] = {};
@@ -161,8 +162,14 @@ struct Desk {
   uint8_t flash_id = 1;
   /** 0 = normal, 1 = rotate UI+touch 180° (stand flipped). */
   uint8_t rotate_180 = 0;
-  /** 0 = 12-hour, 1 = 24-hour (tap clock on Hub to toggle). */
+  /** 0 = 12-hour, 1 = 24-hour (Settings → Display, or tap Hub clock). */
   uint8_t clock_24h = 0;
+  /** Hide chrome bits: hub clock, hub name, idle clock, idle name. 0 = show all. */
+  static constexpr uint8_t kHideHubClock = 1 << 0;
+  static constexpr uint8_t kHideHubName = 1 << 1;
+  static constexpr uint8_t kHideIdleClock = 1 << 2;
+  static constexpr uint8_t kHideIdleName = 1 << 3;
+  uint8_t chrome_hide = 0;
   bool setup_done = false; /* false → first-run / post-reset setup */
   int64_t clock_offset_ms = 0;
   /** Last known UTC wall seconds (NVS); restored into RTC after power loss. */

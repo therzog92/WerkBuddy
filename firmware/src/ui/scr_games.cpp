@@ -247,7 +247,7 @@ bool begin_kind(app::GameKind kind, const app::Peer & p) {
 
 void dock_forfeit_home(lv_obj_t * dock, lv_event_cb_t on_confirm) {
   dock_forfeit_btn(dock, on_confirm);
-  dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) { go_hub(); });
+  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_game_back(); });
 }
 
 void peer_list(lv_obj_t * parent, lv_event_cb_t on_peer) {
@@ -1075,6 +1075,28 @@ void fill_c4_play(lv_obj_t * parent) {
     lv_snprintf(buf, sizeof(buf), "Waiting on %s...", g.opp_name);
     make_status(parent, buf);
   }
+
+  lv_obj_t * yourow = lv_obj_create(parent);
+  lv_obj_remove_style_all(yourow);
+  lv_obj_set_size(yourow, LV_SIZE_CONTENT, 28);
+  lv_obj_set_flex_flow(yourow, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(yourow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(yourow, 6, 0);
+  lv_obj_remove_flag(yourow, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t * you = lv_label_create(yourow);
+  lv_label_set_text(you, "you are");
+  lv_obj_set_style_text_color(you, theme::muted(), 0);
+  lv_obj_set_style_text_font(you, &lv_font_montserrat_12, 0);
+  lv_obj_t * badge = lv_obj_create(yourow);
+  lv_obj_remove_style_all(badge);
+  lv_obj_set_size(badge, 22, 22);
+  lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(badge, lv_color_hex(kDiscs[g.my_color >= 0 ? g.my_color % 6 : 0].main), 0);
+  lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(badge, 2, 0);
+  lv_obj_set_style_border_color(badge, lv_color_hex(0xf7f2ea), 0);
+  lv_obj_remove_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_remove_flag(badge, LV_OBJ_FLAG_CLICKABLE);
 
   /* Discs behind a solid rainbow frame with punched circular holes. */
   lv_obj_t * wrap = lv_obj_create(parent);

@@ -89,6 +89,9 @@ void go_compose_refresh();
 void go_idle();
 void wake_from_idle();
 
+/** Leave an in-play board: Active Games if another match is your turn, else Home. */
+void go_game_back();
+
 /** Web syncActiveDeskUi — jump to whatever state demands attention. */
 void sync_ui();
 

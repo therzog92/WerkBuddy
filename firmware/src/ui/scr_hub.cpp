@@ -60,7 +60,7 @@ void rebuild_games_strip() {
   lv_obj_t * strip = lv_button_create(g_games_host);
   lv_obj_remove_style_all(strip);
   lv_obj_set_width(strip, lv_pct(100));
-  lv_obj_set_height(strip, 48);
+  lv_obj_set_height(strip, 56);
   lv_obj_set_style_pad_ver(strip, 10, 0);
   lv_obj_set_style_pad_hor(strip, 12, 0);
   lv_obj_set_style_radius(strip, 12, 0);
@@ -70,6 +70,7 @@ void rebuild_games_strip() {
   lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_column(strip, 10, 0);
   lv_obj_add_flag(strip, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(strip, 8);
   lv_obj_add_event_cb(strip, [](lv_event_t * /*e*/) { go_active_games(); }, LV_EVENT_CLICKED,
                       nullptr);
 
@@ -116,10 +117,9 @@ void rebuild_games_strip() {
 }
 
 void tick(lv_timer_t * /*t*/) {
-  if (!g_clock) return;
   char cb[24], db[40];
   format_clock(cb, sizeof(cb), db, sizeof(db));
-  lv_label_set_text(g_clock, cb);
+  if (g_clock) lv_label_set_text(g_clock, cb);
   if (g_date) lv_label_set_text(g_date, db);
   if (g_timer_lbl) {
     if (desk_timer::is_finished()) {
@@ -175,7 +175,9 @@ void on_deleted(lv_event_t * /*e*/) {
 }  // namespace
 
 lv_obj_t * hub_screen() {
-  lv_obj_t * scr = make_screen(theme::BgWash::Hub);
+  const uint8_t hide = app::desk().chrome_hide;
+  const bool hub_open = (hide & app::Desk::kHideHubClock) && (hide & app::Desk::kHideHubName);
+  lv_obj_t * scr = make_screen(hub_open ? theme::BgWash::HubOpen : theme::BgWash::Hub);
   lv_obj_add_event_cb(scr, on_deleted, LV_EVENT_DELETE, nullptr);
 
   lv_obj_t * top = lv_obj_create(scr);
@@ -216,36 +218,44 @@ lv_obj_t * hub_screen() {
   lv_obj_set_style_pad_ver(hero, 4, 0);
   lv_obj_remove_flag(hero, LV_OBJ_FLAG_SCROLLABLE);
 
-  g_desk = lv_label_create(hero);
-  char desk[48];
-  lv_snprintf(desk, sizeof(desk), "%s's Desk", app::desk().name);
-  lv_label_set_text(g_desk, desk);
-  lv_obj_set_style_text_color(g_desk, theme::muted(), 0);
-  lv_obj_set_style_text_font(g_desk, &lv_font_montserrat_28, 0);
+  g_desk = nullptr;
+  if ((app::desk().chrome_hide & app::Desk::kHideHubName) == 0) {
+    g_desk = lv_label_create(hero);
+    char desk[48];
+    lv_snprintf(desk, sizeof(desk), "%s's Desk", app::desk().name);
+    lv_label_set_text(g_desk, desk);
+    lv_obj_set_style_text_color(g_desk, theme::muted(), 0);
+    lv_obj_set_style_text_font(g_desk, &lv_font_montserrat_28, 0);
+  }
 
-  g_clock = lv_label_create(hero);
-  lv_label_set_text(g_clock, cb);
-  lv_obj_set_style_text_color(g_clock, theme::gold(), 0);
-  lv_obj_set_style_text_font(g_clock, font_display(60), 0);
-  lv_obj_set_style_text_letter_space(g_clock, 2, 0);
-  lv_obj_add_flag(g_clock, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(
-      g_clock,
-      [](lv_event_t * /*e*/) {
-        app::desk().clock_24h = app::desk().clock_24h ? 0 : 1;
-        app::save();
-        char cb2[24], db2[40];
-        format_clock(cb2, sizeof(cb2), db2, sizeof(db2));
-        if (g_clock) lv_label_set_text(g_clock, cb2);
-        if (g_date) lv_label_set_text(g_date, db2);
-        toast(app::desk().clock_24h ? "24-hour clock" : "12-hour clock");
-      },
-      LV_EVENT_CLICKED, nullptr);
+  g_clock = nullptr;
+  g_date = nullptr;
+  if ((app::desk().chrome_hide & app::Desk::kHideHubClock) == 0) {
+    g_clock = lv_label_create(hero);
+    lv_label_set_text(g_clock, cb);
+    lv_obj_set_style_text_color(g_clock, theme::gold(), 0);
+    lv_obj_set_style_text_font(g_clock, font_display(60), 0);
+    lv_obj_set_style_text_letter_space(g_clock, 2, 0);
+    lv_obj_add_flag(g_clock, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(g_clock, 12);
+    lv_obj_add_event_cb(
+        g_clock,
+        [](lv_event_t * /*e*/) {
+          app::desk().clock_24h = app::desk().clock_24h ? 0 : 1;
+          app::save();
+          char cb2[24], db2[40];
+          format_clock(cb2, sizeof(cb2), db2, sizeof(db2));
+          if (g_clock) lv_label_set_text(g_clock, cb2);
+          if (g_date) lv_label_set_text(g_date, db2);
+          toast(app::desk().clock_24h ? "24-hour clock" : "12-hour clock");
+        },
+        LV_EVENT_CLICKED, nullptr);
 
-  g_date = lv_label_create(hero);
-  lv_label_set_text(g_date, db);
-  lv_obj_set_style_text_color(g_date, theme::gold(), 0);
-  lv_obj_set_style_text_font(g_date, &lv_font_montserrat_20, 0);
+    g_date = lv_label_create(hero);
+    lv_label_set_text(g_date, db);
+    lv_obj_set_style_text_color(g_date, theme::gold(), 0);
+    lv_obj_set_style_text_font(g_date, &lv_font_montserrat_20, 0);
+  }
 
   g_timer_lbl = lv_label_create(hero);
   lv_label_set_text(g_timer_lbl, "");
@@ -256,11 +266,7 @@ lv_obj_t * hub_screen() {
   lv_obj_add_flag(g_timer_lbl, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(g_timer_lbl, [](lv_event_t * /*e*/) { go_timer(); }, LV_EVENT_CLICKED,
                       nullptr);
-  /* Desk name also opens timer (easy target). */
-  lv_obj_add_flag(g_desk, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(g_desk, [](lv_event_t * /*e*/) { go_timer(); }, LV_EVENT_CLICKED, nullptr);
-  lv_obj_add_flag(g_date, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(g_date, [](lv_event_t * /*e*/) { go_timer(); }, LV_EVENT_CLICKED, nullptr);
+  lv_obj_set_ext_click_area(g_timer_lbl, 12);
 
   g_timer = lv_timer_create(tick, 1000, nullptr);
   tick(nullptr);
@@ -330,9 +336,9 @@ lv_obj_t * hub_screen() {
   lv_obj_set_flex_align(corners, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER);
   lv_obj_remove_flag(corners, LV_OBJ_FLAG_SCROLLABLE);
 
-  constexpr int kGlyph = 48;
-  constexpr int kColW = 72;
-  constexpr int kColH = 76;
+  constexpr int kGlyph = 58;
+  constexpr int kColW = 108;
+  constexpr int kColH = 92;
   lv_obj_t * doodle = make_app_icon_sized(corners, AppIcon::Doodle, "Doodle",
                                           [](lv_event_t * /*e*/) { go_doodle(); }, kGlyph, kColW,
                                           kColH, &lv_font_montserrat_12);
@@ -343,7 +349,7 @@ lv_obj_t * hub_screen() {
       lv_obj_t * glyph = lv_obj_get_child(wrap, 0);
       lv_obj_set_style_transform_pivot_x(glyph, 36, 0);
       lv_obj_set_style_transform_pivot_y(glyph, 36, 0);
-      constexpr int32_t kBase = (48 * 256) / 72;
+      constexpr int32_t kBase = (58 * 256) / 72;
       constexpr int32_t kLo = (kBase * 90) / 100;
       constexpr int32_t kHi = (kBase * 110) / 100;
       lv_obj_set_style_transform_scale(glyph, kLo, 0);
@@ -357,7 +363,7 @@ lv_obj_t * hub_screen() {
       lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
       lv_anim_set_exec_cb(&a, [](void * obj, int32_t v) {
         auto * g = static_cast<lv_obj_t *>(obj);
-        constexpr int32_t kBase = (48 * 256) / 72;
+        constexpr int32_t kBase = (58 * 256) / 72;
         constexpr int32_t kLo = (kBase * 90) / 100;
         constexpr int32_t kHi = (kBase * 110) / 100;
         const lv_opa_t opa = (lv_opa_t)(150 + (v * 105) / 1000);

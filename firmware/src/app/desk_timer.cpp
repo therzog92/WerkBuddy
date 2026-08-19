@@ -61,22 +61,10 @@ void fire_done(int i) {
 
 void on_tick(lv_timer_t * /*t*/) {
   bool sec_changed = false;
-  const uint32_t wall = app::wall_unix();
   for (int i = 0; i < kSlots; ++i) {
     Slot & s = g_slots[i];
     if (s.state != State::Running) continue;
-    /* Prefer wall deadline so a brief power cut doesn't erase a long timer. */
-    if (s.ends_at_wall && wall >= 1700000000u) {
-      if (wall >= s.ends_at_wall) {
-        fire_done(i);
-        return;
-      }
-      const uint32_t left_wall = (s.ends_at_wall - wall) * 1000u;
-      if ((left_wall / 1000) != (s.remaining_ms / 1000)) sec_changed = true;
-      s.remaining_ms = left_wall;
-      s.ends_at_ms = lv_tick_get() + left_wall;
-      continue;
-    }
+    /* Monotonic lv_tick while powered on — a wall-clock jump must not fire the timer. */
     const int32_t left = (int32_t)(s.ends_at_ms - lv_tick_get());
     if (left <= 0) {
       fire_done(i);
@@ -226,11 +214,6 @@ void set_duration_ms(uint32_t ms) { set_duration_ms(g_selected, ms); }
 uint32_t remaining_ms(int slot) {
   Slot & s = slot_ref(slot);
   if (s.state == State::Running) {
-    const uint32_t wall = app::wall_unix();
-    if (s.ends_at_wall && wall >= 1700000000u) {
-      if (wall >= s.ends_at_wall) return 0;
-      return (s.ends_at_wall - wall) * 1000u;
-    }
     const int32_t left = (int32_t)(s.ends_at_ms - lv_tick_get());
     return left > 0 ? (uint32_t)left : 0;
   }
@@ -323,6 +306,21 @@ void format_remaining(int slot, char * buf, uint32_t n) {
 void format_remaining(char * buf, uint32_t n) { format_remaining(g_selected, buf, n); }
 
 void set_listener(ListenFn fn) { g_listen = fn; }
+
+void rebase_wall() {
+  const uint32_t wall = app::wall_unix();
+  for (int i = 0; i < kSlots; ++i) {
+    Slot & s = g_slots[i];
+    if (s.state != State::Running) continue;
+    s.remaining_ms = remaining_ms(i);
+    s.ends_at_ms = lv_tick_get() + s.remaining_ms;
+    if (wall >= 1700000000u)
+      s.ends_at_wall = wall + (s.remaining_ms + 999) / 1000;
+    else
+      s.ends_at_wall = 0;
+  }
+  persist_now();
+}
 
 }  // namespace desk_timer
 }  // namespace wp

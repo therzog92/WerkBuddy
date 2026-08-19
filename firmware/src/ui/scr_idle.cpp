@@ -39,11 +39,10 @@ void format_now(char * time_buf, size_t tn, char * date_buf, size_t dn) {
 }
 
 void tick(lv_timer_t * /*t*/) {
-  if (!g_time || !g_date) return;
   char tb[16], db[32];
   format_now(tb, sizeof(tb), db, sizeof(db));
-  lv_label_set_text(g_time, tb);
-  lv_label_set_text(g_date, db);
+  if (g_time) lv_label_set_text(g_time, tb);
+  if (g_date) lv_label_set_text(g_date, db);
   if (g_timer_lbl) {
     if (desk_timer::is_finished()) {
       lv_label_set_text(g_timer_lbl, "Time's up");
@@ -105,15 +104,17 @@ lv_obj_t * idle_screen() {
   brightness::set_panel_on(clock_mode);
 
   if (clock_mode) {
-    /* Soft hot accent pool behind the clock */
-    lv_obj_t * glow = lv_obj_create(scr);
-    lv_obj_remove_style_all(glow);
-    lv_obj_set_size(glow, 280, 280);
-    lv_obj_center(glow);
-    lv_obj_set_style_radius(glow, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(glow, theme::hot(), 0);
-    lv_obj_set_style_bg_opa(glow, 22, 0);
-    lv_obj_remove_flag(glow, LV_OBJ_FLAG_CLICKABLE);
+    /* Accent pool only when there is no photo — wallpaper idle is a picture frame. */
+    if (!background::has()) {
+      lv_obj_t * glow = lv_obj_create(scr);
+      lv_obj_remove_style_all(glow);
+      lv_obj_set_size(glow, 280, 280);
+      lv_obj_center(glow);
+      lv_obj_set_style_radius(glow, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_bg_color(glow, theme::hot(), 0);
+      lv_obj_set_style_bg_opa(glow, 22, 0);
+      lv_obj_remove_flag(glow, LV_OBJ_FLAG_CLICKABLE);
+    }
 
     lv_obj_t * col = lv_obj_create(scr);
     lv_obj_remove_style_all(col);
@@ -124,27 +125,32 @@ lv_obj_t * idle_screen() {
     lv_obj_set_style_pad_row(col, 6, 0);
     lv_obj_remove_flag(col, LV_OBJ_FLAG_CLICKABLE);
 
-    lv_obj_t * desk = lv_label_create(col);
-    char desk_buf[48];
-    lv_snprintf(desk_buf, sizeof(desk_buf), "%s's Desk", app::desk().name);
-    lv_label_set_text(desk, desk_buf);
-    lv_obj_set_style_text_color(desk, theme::gold(), 0);
-    lv_obj_set_style_text_font(desk, &lv_font_montserrat_28, 0);
-    lv_obj_set_style_text_letter_space(desk, 1, 0);
+    g_time = nullptr;
+    g_date = nullptr;
+    if ((app::desk().chrome_hide & app::Desk::kHideIdleName) == 0) {
+      lv_obj_t * desk = lv_label_create(col);
+      char desk_buf[48];
+      lv_snprintf(desk_buf, sizeof(desk_buf), "%s's Desk", app::desk().name);
+      lv_label_set_text(desk, desk_buf);
+      lv_obj_set_style_text_color(desk, theme::gold(), 0);
+      lv_obj_set_style_text_font(desk, &lv_font_montserrat_28, 0);
+      lv_obj_set_style_text_letter_space(desk, 1, 0);
+    }
 
     char tb[16], db[32];
     format_now(tb, sizeof(tb), db, sizeof(db));
+    if ((app::desk().chrome_hide & app::Desk::kHideIdleClock) == 0) {
+      g_time = lv_label_create(col);
+      lv_label_set_text(g_time, tb);
+      lv_obj_set_style_text_color(g_time, theme::ink(), 0);
+      lv_obj_set_style_text_font(g_time, font_display(96), 0);
+      lv_obj_set_style_text_letter_space(g_time, 2, 0);
 
-    g_time = lv_label_create(col);
-    lv_label_set_text(g_time, tb);
-    lv_obj_set_style_text_color(g_time, theme::ink(), 0);
-    lv_obj_set_style_text_font(g_time, font_display(96), 0);
-    lv_obj_set_style_text_letter_space(g_time, 2, 0);
-
-    g_date = lv_label_create(col);
-    lv_label_set_text(g_date, db);
-    lv_obj_set_style_text_color(g_date, theme::muted(), 0);
-    lv_obj_set_style_text_font(g_date, &lv_font_montserrat_28, 0);
+      g_date = lv_label_create(col);
+      lv_label_set_text(g_date, db);
+      lv_obj_set_style_text_color(g_date, theme::muted(), 0);
+      lv_obj_set_style_text_font(g_date, &lv_font_montserrat_28, 0);
+    }
 
     g_timer_lbl = lv_label_create(col);
     lv_label_set_text(g_timer_lbl, "");

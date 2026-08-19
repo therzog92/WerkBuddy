@@ -41,6 +41,7 @@ void apply_screen_bg(lv_obj_t * scr);
 /** Wallpaper dim level when a custom background is set. */
 enum class BgWash : uint8_t {
   Hub = 0,  /* photo readable behind home chrome */
+  HubOpen,  /* hub with clock+name hidden — brighter photo */
   Page,     /* settings / games / etc — lightly washed for text */
   Idle,     /* clock lock screen — photo present, dimmed */
 };

@@ -31,7 +31,7 @@ void toast(const char * text) {
   lv_obj_set_style_pad_ver(g_toast, 10, 0);
   lv_obj_set_style_border_width(g_toast, 1, 0);
   lv_obj_set_style_border_color(g_toast, theme::border(), 0);
-  lv_obj_align(g_toast, LV_ALIGN_BOTTOM_MID, 0, -76);
+  lv_obj_align(g_toast, LV_ALIGN_TOP_MID, 0, 12);
   lv_obj_remove_flag(g_toast, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t * l = lv_label_create(g_toast);
@@ -252,12 +252,13 @@ void style_peer_like(lv_obj_t * btn) {
 lv_obj_t * dock_btn(lv_obj_t * dock, const char * label, bool primary, bool danger,
                     lv_event_cb_t cb, void * user_data) {
   lv_obj_t * btn = lv_button_create(dock);
-  lv_obj_set_height(btn, 36);
+  lv_obj_set_height(btn, 40);
   lv_obj_set_flex_grow(btn, 1);
   lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_shadow_width(btn, 0, 0);
   lv_obj_set_style_border_width(btn, 0, 0);
   lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(btn, 8);
 
   if (danger) {
     lv_obj_set_style_bg_color(btn, theme::danger(), 0);
@@ -359,6 +360,7 @@ void show_confirm(const char * message, const char * yes_label, bool yes_danger,
   lv_obj_t * msg = lv_label_create(card);
   lv_label_set_text(msg, message && message[0] ? message : "Are you sure?");
   lv_obj_set_style_text_color(msg, theme::ink(), 0);
+  lv_obj_set_style_text_font(msg, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_long_mode(msg, LV_LABEL_LONG_WRAP);
   lv_obj_set_width(msg, 300);
