@@ -3,6 +3,7 @@
 #include "app/app.h"
 #include "app/background.h"
 #include "app/checklist.h"
+#include "app/fw_update.h"
 #include "protocol/messages.h"
 #include "sim/github_ota.h"
 #include "ui/brightness.h"
@@ -376,15 +377,24 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
       return;
     }
     if (g_osk_canned_index == -4) {
-      /* Save credentials only — do not stay associated (ephemeral STA policy). */
       app::Desk & d = app::desk();
+#ifdef WP_DEVICE
+      /* Verify the password actually associates before accepting — keep the
+       * entry up for retry on failure instead of blindly saving. */
+      toast("Checking password…");
+      char err[64] = {};
+      if (!wifi_jobs::test_join(g_wifi_ssid_draft, g_osk_buf, err, sizeof(err))) {
+        toast(err[0] ? err : "Could not connect");
+        return;
+      }
+#endif
       std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", g_wifi_ssid_draft);
       std::snprintf(d.wifi_pass, sizeof(d.wifi_pass), "%s", g_osk_buf);
       d.wifi_connected = false;
       g_wifi_ssid_draft[0] = '\0';
       g_osk_buf[0] = '\0';
       app::save();
-      toast_fmt("Saved %s", d.wifi_ssid);
+      toast_fmt("Connected - saved %s", d.wifi_ssid);
       go_settings();
       return;
     }
@@ -1306,26 +1316,55 @@ lv_obj_t * settings_screen() {
 #endif
          },
          nullptr);
-    chip(wifi_acts, "Updates", false,
-         [](lv_event_t * /*e*/) {
-           if (!app::desk().wifi_ssid[0]) {
-             toast("Save a Wi-Fi network first");
-             return;
-           }
+  }
+
+  add_section(body, "Update Firmware");
+  {
+    lv_obj_t * up = lv_button_create(body);
+    lv_obj_set_width(up, lv_pct(100));
+    lv_obj_set_height(up, 44);
+    lv_obj_set_style_bg_color(up, theme::gold(), 0);
+    lv_obj_set_style_shadow_width(up, 0, 0);
+    lv_obj_set_style_radius(up, 12, 0);
+    lv_obj_t * ul = lv_label_create(up);
+    lv_label_set_text(ul, "Upload from phone");
+    lv_obj_set_style_text_color(ul, lv_color_hex(0x1a1224), 0);
+    lv_obj_set_style_text_font(ul, &lv_font_montserrat_14, 0);
+    lv_obj_center(ul);
+    lv_obj_add_event_cb(up, [](lv_event_t * /*e*/) { go_fw_upload(); }, LV_EVENT_CLICKED, nullptr);
+
+    lv_obj_t * ota = lv_button_create(body);
+    lv_obj_set_width(ota, lv_pct(100));
+    lv_obj_set_height(ota, 44);
+    lv_obj_set_style_bg_color(ota, theme::panel(), 0);
+    lv_obj_set_style_shadow_width(ota, 0, 0);
+    lv_obj_set_style_radius(ota, 12, 0);
+    lv_obj_t * ol = lv_label_create(ota);
+    lv_label_set_text(ol, "GitHub OTA (Wi-Fi)");
+    lv_obj_set_style_text_color(ol, theme::ink(), 0);
+    lv_obj_set_style_text_font(ol, &lv_font_montserrat_14, 0);
+    lv_obj_center(ol);
+    lv_obj_add_event_cb(
+        ota,
+        [](lv_event_t * /*e*/) {
+          if (!app::desk().wifi_ssid[0]) {
+            toast("Save a Wi-Fi network first");
+            return;
+          }
 #ifdef WP_DEVICE
-           toast("Joining Wi-Fi…");
-           char err[64] = {};
-           if (!wifi_jobs::join_sta(err, sizeof(err))) {
-             toast(err[0] ? err : "Wi-Fi join failed");
-             return;
-           }
-           go_ota_releases();
+          toast("Joining Wi-Fi…");
+          char err[64] = {};
+          if (!wifi_jobs::join_sta(err, sizeof(err))) {
+            toast(err[0] ? err : "Wi-Fi join failed");
+            return;
+          }
+          go_ota_releases();
 #else
-           app::desk().wifi_connected = true; /* STA up for Updates UI */
-           go_ota_releases();
+          app::desk().wifi_connected = true; /* STA up for Updates UI */
+          go_ota_releases();
 #endif
-         },
-         nullptr);
+        },
+        LV_EVENT_CLICKED, nullptr);
   }
 
   }
@@ -1683,12 +1722,21 @@ void on_pick_ap(lv_event_t * e) {
   std::snprintf(g_wifi_ssid_draft, sizeof(g_wifi_ssid_draft), "%s", ap.ssid);
   if (ap.open) {
     app::Desk & d = app::desk();
+#ifdef WP_DEVICE
+    toast("Connecting…");
+    char err[64] = {};
+    if (!wifi_jobs::test_join(ap.ssid, "", err, sizeof(err))) {
+      toast(err[0] ? err : "Could not connect");
+      g_wifi_ssid_draft[0] = '\0';
+      return;
+    }
+#endif
     std::snprintf(d.wifi_ssid, sizeof(d.wifi_ssid), "%s", ap.ssid);
     d.wifi_pass[0] = '\0';
     d.wifi_connected = false;
     g_wifi_ssid_draft[0] = '\0';
     app::save();
-    toast_fmt("Saved %s", d.wifi_ssid);
+    toast_fmt("Connected - saved %s", d.wifi_ssid);
     go_settings();
     return;
   }
@@ -2395,6 +2443,108 @@ lv_obj_t * bg_upload_screen() {
 #endif
 
     g_bg_poll = lv_timer_create(bg_poll_tick, 200, nullptr);
+  }
+
+  lv_obj_t * dock = make_dock(scr);
+  dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_settings(); });
+  return scr;
+}
+
+namespace {
+
+lv_timer_t * g_fw_poll = nullptr;
+
+void fw_upload_cleanup(lv_event_t * /*e*/) {
+  if (g_fw_poll) {
+    lv_timer_delete(g_fw_poll);
+    g_fw_poll = nullptr;
+  }
+  /* SoftAP stop can block the radio — defer until after the transition paints. */
+  lv_timer_t * defer = lv_timer_create([](lv_timer_t * t) {
+    fw_update::stop();
+    lv_timer_delete(t);
+  }, 300, nullptr);
+  lv_timer_set_repeat_count(defer, 1);
+}
+
+void fw_poll_tick(lv_timer_t * /*t*/) {
+  fw_update::poll();
+  char err[96] = {};
+  if (!fw_update::finished(err, sizeof(err))) return;
+  if (g_fw_poll) {
+    lv_timer_delete(g_fw_poll);
+    g_fw_poll = nullptr;
+  }
+  fw_update::stop();
+  toast(err[0] ? err : "Update failed");
+}
+
+}  // namespace
+
+lv_obj_t * fw_upload_screen() {
+  const bool ok = fw_update::start();
+
+  lv_obj_t * scr = make_screen();
+  lv_obj_add_event_cb(scr, fw_upload_cleanup, LV_EVENT_DELETE, nullptr);
+  make_topbar(scr, "UPDATE", app::desk().name);
+  lv_obj_t * body = make_body(scr, true);
+  make_tagline(body, "Update from phone");
+
+  if (!ok) {
+    lv_obj_t * err = lv_label_create(body);
+#ifdef WP_DEVICE
+    lv_label_set_text(err, "Could not start update hotspot.");
+#else
+    lv_label_set_text(err, "The PC sim can't run the phone hotspot.");
+#endif
+    lv_obj_set_style_text_color(err, theme::danger(), 0);
+    lv_obj_set_style_text_font(err, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(err, lv_pct(100));
+  } else {
+#ifdef WP_DEVICE
+    char payload[96];
+    lv_snprintf(payload, sizeof(payload), "WIFI:T:WPA;S:%s;P:%s;H:false;;",
+                fw_update::ssid() ? fw_update::ssid() : "",
+                fw_update::pass() ? fw_update::pass() : "");
+#if LV_USE_QRCODE
+    lv_obj_t * qrcode = lv_qrcode_create(body);
+    lv_qrcode_set_size(qrcode, 200);
+    lv_qrcode_set_dark_color(qrcode, lv_color_hex(0x1a1224));
+    lv_qrcode_set_light_color(qrcode, lv_color_hex(0xf7f2ea));
+    lv_qrcode_update(qrcode, payload, (uint32_t)std::strlen(payload));
+    lv_obj_set_style_border_color(qrcode, lv_color_hex(0xf7f2ea), 0);
+    lv_obj_set_style_border_width(qrcode, 8, 0);
+#endif
+    lv_obj_t * hint = lv_label_create(body);
+    lv_label_set_text(hint,
+                      "1) Download the release .bin on your phone\n"
+                      "2) Scan QR to join desk Wi-Fi\n"
+                      "3) Phone opens the update page - pick the .bin");
+    lv_obj_set_style_text_color(hint, theme::muted(), 0);
+    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(hint, lv_pct(100));
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+
+    lv_obj_t * cred = lv_label_create(body);
+    char cred_buf[96];
+    lv_snprintf(cred_buf, sizeof(cred_buf), "Wi-Fi: %s\nPass: %s",
+                fw_update::ssid() ? fw_update::ssid() : "?",
+                fw_update::pass() ? fw_update::pass() : "?");
+    lv_label_set_text(cred, cred_buf);
+    lv_obj_set_style_text_color(cred, theme::gold(), 0);
+    lv_obj_set_style_text_font(cred, &lv_font_montserrat_14, 0);
+    lv_obj_set_width(cred, lv_pct(100));
+
+    if (fw_update::url() && fw_update::url()[0]) {
+      lv_obj_t * url_lbl = lv_label_create(body);
+      lv_label_set_text(url_lbl, fw_update::url());
+      lv_obj_set_style_text_color(url_lbl, theme::mint(), 0);
+      lv_obj_set_style_text_font(url_lbl, &lv_font_montserrat_12, 0);
+      lv_label_set_long_mode(url_lbl, LV_LABEL_LONG_WRAP);
+      lv_obj_set_width(url_lbl, lv_pct(100));
+    }
+#endif
+    g_fw_poll = lv_timer_create(fw_poll_tick, 200, nullptr);
   }
 
   lv_obj_t * dock = make_dock(scr);

@@ -23,6 +23,7 @@ add_executable(werkpager_sim
   src/app/active_games.cpp
   src/app/storage.cpp
   src/app/background.cpp
+  src/app/fw_update.cpp
   src/app/desk_timer.cpp
   src/app/page_log.cpp
   src/app/checklist.cpp

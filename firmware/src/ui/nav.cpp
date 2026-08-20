@@ -92,7 +92,8 @@ void idle_tick(lv_timer_t * /*t*/) {
     limit_ms = spec.ms;
     if (g_screen == Screen::Keyboard || g_screen == Screen::EmojiPicker ||
         g_screen == Screen::WifiScan || g_screen == Screen::OtaReleases ||
-        g_screen == Screen::BgUpload || g_screen == Screen::Setup ||
+        g_screen == Screen::BgUpload || g_screen == Screen::FwUpload ||
+        g_screen == Screen::Setup ||
         g_screen == Screen::Doodle ||
         (g_screen == Screen::Timer && desk_timer::is_finished())) {
       return;
@@ -215,6 +216,7 @@ void go_keyboard_wifi_pass() { load(keyboard_screen_wifi_pass(), Screen::Keyboar
 void go_ota_releases() { load(ota_releases_screen(), Screen::OtaReleases); }
 void go_emoji_picker(int slot) { load(emoji_picker_screen(slot), Screen::EmojiPicker); }
 void go_bg_upload() { load(bg_upload_screen(), Screen::BgUpload); }
+void go_fw_upload() { load(fw_upload_screen(), Screen::FwUpload); }
 void go_timer() { load(timer_screen(), Screen::Timer); }
 void go_checklist() { load(checklist_screen(), Screen::Checklist); }
 void go_calculator() { load(calculator_screen(), Screen::Calculator); }

@@ -11,6 +11,7 @@
 #include "app/app.h"
 #include "app/background.h"
 #include "app/desk_timer.h"
+#include "app/fw_update.h"
 #include "board.h"
 #include "device_drive.h"
 #include "device_net.h"
@@ -158,6 +159,7 @@ void loop() {
   wp::drive::poll();
   wp::net::link_poll();
   wp::background::upload_poll();
+  wp::fw_update::poll();
   lv_timer_handler();
   delay(5);
 }

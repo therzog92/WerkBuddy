@@ -17,6 +17,13 @@ struct ScanAp {
 int scan(ScanAp * out, int max_out);
 
 /**
+ * Verify credentials only: join SSID/pass briefly, then disconnect and restore
+ * SoftAP. Returns true when the network accepted the password (associated).
+ * On failure fills a short reason ("Could not find network" / "Wrong password").
+ */
+bool test_join(const char * ssid, const char * pass, char * err, size_t err_n);
+
+/**
  * Ephemeral STA: join saved network → SNTP → set system time / clock_offset → disconnect.
  * Restores SoftAP for ESP-NOW afterward. Returns true on success.
  */

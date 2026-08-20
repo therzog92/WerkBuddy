@@ -107,13 +107,23 @@ void on_recv(const uint8_t * mac, const uint8_t * data, int len) {
 }  // namespace
 
 void restore_espnow_radio() {
+  WiFi.scanDelete();
   WiFi.disconnect(false /*wifioff*/, false /*erase*/);
   delay(30);
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP("WerkBuddy", nullptr, kChannel);
-  esp_wifi_set_channel(kChannel, WIFI_SECOND_CHAN_NONE);
-  delay(30);
-  Serial.printf("ESP-NOW radio restored ch=%d\n", WiFi.channel());
+  /* Setting the channel while a scan/association is still draining is silently
+   * ignored — verify and retry until the radio actually reads back channel 1 so
+   * ESP-NOW can never be left stranded off-channel after a Wi-Fi job. */
+  uint8_t ch = 0;
+  for (int i = 0; i < 12; ++i) {
+    esp_wifi_set_channel(kChannel, WIFI_SECOND_CHAN_NONE);
+    delay(10);
+    esp_wifi_get_channel(&ch, nullptr);
+    if (ch == kChannel) break;
+    delay(20);
+  }
+  Serial.printf("ESP-NOW radio restored ch=%u\n", (unsigned)ch);
 }
 
 void link_init() {

@@ -33,6 +33,7 @@ enum class Screen {
   WifiScan,
   OtaReleases,
   BgUpload,
+  FwUpload,
   Timer,
   Checklist,
   Calculator,
@@ -78,6 +79,7 @@ void go_keyboard_wifi_pass();
 void go_ota_releases();
 void go_emoji_picker(int slot); /* settings slot, or kEmojiPickerCompose for WerkRoom */
 void go_bg_upload();
+void go_fw_upload();
 void go_timer();
 void go_checklist();
 void go_calculator();

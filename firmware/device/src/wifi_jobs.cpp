@@ -22,27 +22,114 @@ constexpr int kNtpTries = 40;
 
 }  // namespace
 
+int bars_for(int rssi) {
+  if (rssi > -55) return 4;
+  if (rssi > -65) return 3;
+  if (rssi > -75) return 2;
+  return 1;
+}
+
 int scan(ScanAp * out, int max_out) {
   if (!out || max_out <= 0) return 0;
-  WiFi.mode(WIFI_AP_STA);
-  const int n = WiFi.scanNetworks(false, false);
-  int count = 0;
-  for (int i = 0; i < n && count < max_out; ++i) {
-    String ssid = WiFi.SSID(i);
-    if (!ssid.length()) continue;
-    std::snprintf(out[count].ssid, sizeof(out[count].ssid), "%s", ssid.c_str());
-    const int rssi = WiFi.RSSI(i);
-    int bars = 1;
-    if (rssi > -55) bars = 4;
-    else if (rssi > -65) bars = 3;
-    else if (rssi > -75) bars = 2;
-    out[count].bars = bars;
-    out[count].open = (WiFi.encryptionType(i) == WIFI_AUTH_OPEN);
-    ++count;
-  }
+
+  /* Full STA-mode scan sees all 2.4 GHz channels — anchoring SoftAP on ch 1
+   * while scanning skips the phone-hotspot channels. Re-home radio afterward. */
   WiFi.scanDelete();
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(false, false);
+  delay(50);
+
+  constexpr int kCap = 48;
+  char ssid[kCap][33];
+  int rssi[kCap];
+  bool open[kCap];
+  int n = 0;
+
+  for (int pass = 0; pass < 2; ++pass) {
+    const int found = WiFi.scanNetworks(false /*async*/, false /*show_hidden*/);
+    for (int i = 0; i < found && n < kCap; ++i) {
+      const String s = WiFi.SSID(i);
+      if (!s.length()) continue;
+      const int r = WiFi.RSSI(i);
+      const bool o = WiFi.encryptionType(i) == WIFI_AUTH_OPEN;
+
+      int slot = -1;
+      for (int k = 0; k < n; ++k)
+        if (s == ssid[k]) { slot = k; break; }
+      if (slot >= 0) {
+        if (r > rssi[slot]) { rssi[slot] = r; open[slot] = o; }
+        continue;
+      }
+      std::snprintf(ssid[n], 33, "%s", s.c_str());
+      rssi[n] = r;
+      open[n] = o;
+      ++n;
+    }
+    WiFi.scanDelete();
+    if (pass == 0) delay(120);
+  }
+
+  /* Strongest signal first, then truncate to the requested count. */
+  for (int a = 0; a < n; ++a)
+    for (int b = a + 1; b < n; ++b)
+      if (rssi[b] > rssi[a]) {
+        const int tr = rssi[a]; rssi[a] = rssi[b]; rssi[b] = tr;
+        const bool to = open[a]; open[a] = open[b]; open[b] = to;
+        char ts[33]; std::snprintf(ts, sizeof(ts), "%s", ssid[a]);
+        std::snprintf(ssid[a], sizeof(ssid[a]), "%s", ssid[b]);
+        std::snprintf(ssid[b], sizeof(ssid[b]), "%s", ts);
+      }
+
+  const int count = n < max_out ? n : max_out;
+  for (int i = 0; i < count; ++i) {
+    std::snprintf(out[i].ssid, sizeof(out[i].ssid), "%s", ssid[i]);
+    out[i].bars = bars_for(rssi[i]);
+    out[i].open = open[i];
+  }
+
   net::restore_espnow_radio();
   return count;
+}
+
+bool test_join(const char * ssid, const char * pass, char * err, size_t err_n) {
+  if (err && err_n) err[0] = 0;
+  if (!ssid || !ssid[0]) {
+    if (err && err_n) std::snprintf(err, err_n, "No network");
+    return false;
+  }
+
+  WiFi.scanDelete();
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.disconnect(false, false);
+  delay(50);
+  WiFi.begin(ssid, (pass && pass[0]) ? pass : nullptr);
+
+  wl_status_t st = WL_IDLE_STATUS;
+  for (int i = 0; i < kJoinTries; ++i) {
+    st = WiFi.status();
+    if (st == WL_CONNECTED) break;
+    if (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL ||
+        st == WL_CONNECTION_LOST)
+      break;
+    delay(250);
+  }
+
+  WiFi.disconnect(false, false);
+  net::restore_espnow_radio();
+
+  if (st == WL_CONNECTED) {
+    Serial.printf("WiFi verify: joined %s OK\n", ssid);
+    return true;
+  }
+  if (st == WL_NO_SSID_AVAIL) {
+    if (err && err_n) std::snprintf(err, err_n, "Could not find network");
+  } else if (st == WL_CONNECT_FAILED || st == WL_CONNECTION_LOST) {
+    if (err && err_n) std::snprintf(err, err_n, "Wrong password");
+  } else {
+    if (err && err_n) std::snprintf(err, err_n, "Timed out");
+  }
+  Serial.printf("WiFi verify: FAILED (status %d)\n", (int)st);
+  return false;
 }
 
 bool sync_time(char * err, size_t err_n) {
