@@ -2,6 +2,7 @@
 
 #include "app/app.h"
 #include "app/page_log.h"
+#include "app/presence.h"
 #include "ui/chrome.h"
 #include "ui/emoji_badge.h"
 #include "ui/fonts.h"
@@ -53,6 +54,11 @@ void on_home(lv_event_t * /*e*/) { go_hub(); }
 
 void on_peer(lv_event_t * e) {
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  char why[48];
+  if (!app::peer_contact_ok(idx, why, sizeof(why))) {
+    toast(why);
+    return;
+  }
   const app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;
   compose_mark_fresh();
@@ -261,6 +267,12 @@ void on_send(lv_event_t * /*e*/) {
   app::Desk & d = app::desk();
   if (d.outgoing.active || d.incoming.active) return;
 
+  char why[48];
+  if (!app::peer_contact_ok_id(g_compose_peer.id, why, sizeof(why))) {
+    toast(why);
+    return;
+  }
+
   proto::Msg m;
   m.type = proto::MsgType::Call;
   std::snprintf(m.from_id, sizeof(m.from_id), "%s", d.id);
@@ -385,7 +397,10 @@ lv_obj_t * pager_werk_screen() {
   const bool tall_rows = d.peer_count > 0 && d.peer_count <= 3;
 
   for (int i = 0; i < d.peer_count; ++i) {
-    lv_obj_t * btn = make_peer_btn(body, d.peers[i].name, nullptr, on_peer, (void *)(intptr_t)i);
+    char sub[24];
+    const char * st = app::peer_presence_subtitle(i, sub, sizeof(sub));
+    lv_obj_t * btn = make_peer_btn(body, d.peers[i].name, st, on_peer, (void *)(intptr_t)i);
+    if (!app::peer_present_idx(i)) lv_obj_set_style_opa(btn, LV_OPA_50, 0);
     if (!tall_rows) continue;
     lv_obj_set_height(btn, row_h);
     lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);

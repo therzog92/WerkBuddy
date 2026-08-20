@@ -19,6 +19,7 @@ add_subdirectory(third_party/lvgl)
 add_executable(werkpager_sim
   src/main.cpp
   src/app/app.cpp
+  src/app/presence.cpp
   src/app/active_games.cpp
   src/app/storage.cpp
   src/app/background.cpp

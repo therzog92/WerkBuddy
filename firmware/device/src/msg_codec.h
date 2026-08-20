@@ -14,8 +14,10 @@ namespace wp {
 
 constexpr uint8_t kMsgVer = 1;
 constexpr size_t kEspNowMax = 250;
-constexpr size_t kDiscoverSize = 2 + 6 + 12;                 /* 20 */
+constexpr size_t kDiscoverSize = 2 + 6 + 12;                 /* 20 — v1 */
+constexpr size_t kDiscoverV2Size = kDiscoverSize + 1;      /* + flags (dnd) */
 constexpr size_t kPeerHdrSize = 2 + 6 + 6 + 12;              /* 26 */
+constexpr size_t kStatusSize = kPeerHdrSize + 1;             /* dnd flag */
 constexpr size_t kCallSize = kPeerHdrSize + 16 + 22;        /* 64 — emoji room for ZWJ */
 constexpr size_t kTttMoveSize = kPeerHdrSize + 2;           /* 28 */
 constexpr size_t kC4DropSize = kPeerHdrSize + 2;            /* 28 */

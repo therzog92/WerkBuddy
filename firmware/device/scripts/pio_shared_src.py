@@ -19,7 +19,7 @@ build = join("$BUILD_DIR", "shared")
 env.BuildSources(
     join(build, "app"),
     str(shared / "app"),
-    "+<app.cpp> +<active_games.cpp> +<checklist.cpp> +<desk_timer.cpp> "
+    "+<app.cpp> +<presence.cpp> +<active_games.cpp> +<checklist.cpp> +<desk_timer.cpp> "
     "+<page_log.cpp> +<score_log.cpp> "
     "-<storage.cpp> -<background.cpp>",
 )

@@ -37,7 +37,6 @@ bool is_peer_ctrl(proto::MsgType t) {
   switch (t) {
     case T::Ack:
     case T::Clear:
-    case T::Status:
     case T::TttAccept:
     case T::TttDecline:
     case T::TttForfeit:
@@ -122,14 +121,15 @@ int pack_msg(const proto::Msg & msg, const uint8_t own_mac[6], uint8_t * out, si
   const T type = msg.type;
 
   if (type == T::Discover || type == T::DiscoverReply) {
-    if (out_len < kDiscoverSize) return -1;
+    if (out_len < kDiscoverV2Size) return -1;
     out[0] = (uint8_t)type;
     out[1] = kMsgVer;
     std::memcpy(out + 2, own_mac, 6);
     char padded[12] = {};
     pad_copy(padded, sizeof(padded), msg.from_name);
     std::memcpy(out + 8, padded, 12);
-    return (int)kDiscoverSize;
+    out[20] = msg.hit ? 1 : 0;
+    return (int)kDiscoverV2Size;
   }
 
   if (type == T::TimeSync) {
@@ -144,6 +144,13 @@ int pack_msg(const proto::Msg & msg, const uint8_t own_mac[6], uint8_t * out, si
 
   uint8_t to[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
   if (msg.to_id[0]) id_to_mac(msg.to_id, to); /* keep broadcast if not 12-hex MAC */
+
+  if (type == T::Status) {
+    if (out_len < kStatusSize) return -1;
+    if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
+    out[26] = msg.hit ? 1 : 0;
+    return (int)kStatusSize;
+  }
 
   if (type == T::Call) {
     if (out_len < kCallSize) return -1;
@@ -311,6 +318,14 @@ bool unpack_msg(const uint8_t * data, size_t len, proto::Msg * out) {
     mac_to_id(data + 2, m.from_id, sizeof(m.from_id));
     std::memcpy(m.from_name, data + 8, 12);
     m.from_name[12] = 0;
+    if (len >= kDiscoverV2Size) m.hit = data[20] != 0;
+    *out = m;
+    return true;
+  }
+
+  if (m.type == T::Status) {
+    if (len < kPeerHdrSize || !unpack_peer_hdr(data, len, &m)) return false;
+    if (len >= kStatusSize) m.hit = data[26] != 0;
     *out = m;
     return true;
   }

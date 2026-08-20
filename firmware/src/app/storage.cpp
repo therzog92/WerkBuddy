@@ -81,6 +81,8 @@ bool load(app::Desk & d) {
       d.clock_24h = std::atoi(val) != 0 ? 1 : 0;
     } else if (!std::strcmp(key, "chrome_hide")) {
       d.chrome_hide = (uint8_t)std::atoi(val);
+    } else if (!std::strcmp(key, "dnd")) {
+      d.dnd = std::atoi(val) != 0 ? 1 : 0;
     } else if (!std::strcmp(key, "setup_done")) {
       d.setup_done = std::atoi(val) != 0;
       saw_setup = true;
@@ -147,6 +149,7 @@ void save(const app::Desk & d) {
   put_int(f, "rotate_180", d.rotate_180 ? 1 : 0);
   put_int(f, "clock_24h", d.clock_24h ? 1 : 0);
   put_int(f, "chrome_hide", d.chrome_hide);
+  put_int(f, "dnd", d.dnd ? 1 : 0);
   put_int(f, "setup_done", d.setup_done ? 1 : 0);
   put_int(f, "clock_offset_ms", d.clock_offset_ms);
   put_int(f, "wall_epoch", (int)d.wall_epoch);

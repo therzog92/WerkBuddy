@@ -709,16 +709,40 @@ void bot_receive(Bot & b, const Msg & m) {
 }  // namespace
 
 void link_init() {
-  /* Sim link needs no setup. ESP-NOW init lands here in Phase 0. */
+  auto beacon = []() {
+    for (Bot & b : g_bots) {
+      Msg m = base_msg(b, MsgType::Status);
+      m.to_id[0] = '\0';
+      m.hit = false;
+      deliver(m);
+    }
+  };
+  later(500, beacon);
+  lv_timer_create([](lv_timer_t * /*t*/) {
+    for (Bot & b : g_bots) {
+      Msg m = base_msg(b, MsgType::Status);
+      m.to_id[0] = '\0';
+      m.hit = false;
+      deliver(m);
+    }
+  }, 10000, nullptr);
 }
 
 void link_send(const Msg & msg) {
   if (msg.type == MsgType::Discover) {
     int delay = 350;
     for (Bot & b : g_bots) {
-      later((uint32_t)delay, [&b]() { deliver(base_msg(b, MsgType::DiscoverReply)); });
+      later((uint32_t)delay, [&b]() {
+        Msg r = base_msg(b, MsgType::DiscoverReply);
+        r.hit = false;
+        deliver(r);
+      });
       delay += 450;
     }
+    return;
+  }
+  if (msg.type == MsgType::Status) {
+    /* Broadcast presence — no remote sim desks besides bots (beacon timer). */
     return;
   }
   if (msg.type == MsgType::Clear) {

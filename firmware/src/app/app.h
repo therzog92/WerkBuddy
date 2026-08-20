@@ -23,7 +23,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "0.74";
+constexpr const char * kFirmwareVersion = "0.75";
 /** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
 const char * firmware_version();
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
@@ -170,6 +170,8 @@ struct Desk {
   static constexpr uint8_t kHideIdleClock = 1 << 2;
   static constexpr uint8_t kHideIdleName = 1 << 3;
   uint8_t chrome_hide = 0;
+  /** 1 = do not disturb — blocks incoming pages/games/doodle; still beacons presence. */
+  uint8_t dnd = 0;
   bool setup_done = false; /* false → first-run / post-reset setup */
   int64_t clock_offset_ms = 0;
   /** Last known UTC wall seconds (NVS); restored into RTC after power loss. */

@@ -430,6 +430,7 @@ void on_scan(lv_event_t * /*e*/) {
   std::snprintf(m.from_id, sizeof(m.from_id), "%s", app::desk().id);
   std::snprintf(m.from_name, sizeof(m.from_name), "%s",
                 app::desk().name[0] ? app::desk().name : "Desk");
+  m.hit = app::desk().dnd != 0;
   app::send(m);
   toast("Scanning desks...");
 }

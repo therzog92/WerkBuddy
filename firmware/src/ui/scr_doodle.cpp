@@ -1,6 +1,7 @@
 #include "ui/scr_doodle.h"
 
 #include "app/app.h"
+#include "app/presence.h"
 #include "protocol/messages.h"
 #include "ui/chrome.h"
 #include "ui/nav.h"
@@ -416,10 +417,17 @@ lv_obj_t * doodle_screen() {
   lv_obj_set_style_pad_row(pick, 8, 0);
   if (d.peer_count == 0) make_tagline(pick, "No saved desks - add one in Settings.");
   for (int i = 0; i < d.peer_count; ++i) {
-    make_peer_btn(
-        pick, d.peers[i].name, nullptr,
+    char sub[24];
+    const char * st = app::peer_presence_subtitle(i, sub, sizeof(sub));
+    lv_obj_t * btn = make_peer_btn(
+        pick, d.peers[i].name, st,
         [](lv_event_t * e) {
           const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+          char why[48];
+          if (!app::peer_contact_ok(idx, why, sizeof(why))) {
+            toast(why);
+            return;
+          }
           app::Desk & desk = app::desk();
           if (idx < 0 || idx >= desk.peer_count) return;
           std::snprintf(desk.doodle_peer_id, sizeof(desk.doodle_peer_id), "%s", desk.peers[idx].id);
@@ -428,6 +436,7 @@ lv_obj_t * doodle_screen() {
           go_doodle();
         },
         (void *)(intptr_t)i);
+    if (!app::peer_present_idx(i)) lv_obj_set_style_opa(btn, LV_OPA_50, 0);
   }
 
   lv_obj_t * draw = lv_obj_create(body);

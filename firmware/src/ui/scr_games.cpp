@@ -2,6 +2,7 @@
 
 #include "app/app.h"
 #include "app/active_games.h"
+#include "app/presence.h"
 #include "app/score_log.h"
 #include "games/battleship.h"
 #include "games/c4.h"
@@ -144,6 +145,16 @@ lv_obj_t * make_status(lv_obj_t * parent, const char * text) {
   return s;
 }
 
+bool guard_peer_challenge(lv_event_t * e) {
+  const int idx = (int)(intptr_t)lv_event_get_user_data(e);
+  char why[48];
+  if (!app::peer_contact_ok(idx, why, sizeof(why))) {
+    toast(why);
+    return false;
+  }
+  return true;
+}
+
 /** Light score pill: Name · disc · n   Name · disc · n (shared by scored games). */
 lv_obj_t * make_score_pill(lv_obj_t * parent, const char * name_a, int score_a, lv_color_t accent_a,
                            const char * name_b, int score_b, lv_color_t accent_b) {
@@ -255,13 +266,17 @@ void peer_list(lv_obj_t * parent, lv_event_cb_t on_peer) {
   const app::Desk & d = app::desk();
   if (d.peer_count == 0) make_tagline(parent, "No saved desks - add one in Settings.");
   for (int i = 0; i < d.peer_count; ++i) {
-    make_peer_btn(parent, d.peers[i].name, nullptr, on_peer, (void *)(intptr_t)i);
+    char sub[24];
+    const char * st = app::peer_presence_subtitle(i, sub, sizeof(sub));
+    lv_obj_t * btn = make_peer_btn(parent, d.peers[i].name, st, on_peer, (void *)(intptr_t)i);
+    if (!app::peer_present_idx(i)) lv_obj_set_style_opa(btn, LV_OPA_50, 0);
   }
 }
 
 /* ================= TIC TAC TOE ================= */
 
 void ttt_challenge(lv_event_t * e) {
+  if (!guard_peer_challenge(e)) return;
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;
@@ -527,6 +542,7 @@ lv_obj_t * game_ttt_build(lv_obj_t * into) {
 /* ================= SUPER TIC TAC TOE ================= */
 
 void sttt_challenge(lv_event_t * e) {
+  if (!guard_peer_challenge(e)) return;
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;
@@ -945,6 +961,7 @@ lv_grad_dsc_t * c4_rainbow() {
 }
 
 void c4_challenge(lv_event_t * e) {
+  if (!guard_peer_challenge(e)) return;
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;
@@ -1340,6 +1357,7 @@ lv_obj_t * game_c4_build(lv_obj_t * into) {
 /* ================= BATTLESHIP ================= */
 
 void bs_challenge(lv_event_t * e) {
+  if (!guard_peer_challenge(e)) return;
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;
@@ -1824,6 +1842,7 @@ app::Desk & desk = app::desk();
 /* ================= CHECKERS ================= */
 
 void ck_challenge(lv_event_t * e) {
+  if (!guard_peer_challenge(e)) return;
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;
@@ -2291,6 +2310,7 @@ void mem_resolve_local(void * ud) {
 }
 
 void mem_challenge(lv_event_t * e) {
+  if (!guard_peer_challenge(e)) return;
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;
@@ -2581,6 +2601,7 @@ void rv_send_pass() {
 }
 
 void rv_challenge(lv_event_t * e) {
+  if (!guard_peer_challenge(e)) return;
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;
@@ -2867,6 +2888,7 @@ lv_obj_t * game_rv_build(lv_obj_t * into) {
 /* ================= DOTS & BOXES ================= */
 
 void db_challenge(lv_event_t * e) {
+  if (!guard_peer_challenge(e)) return;
   const int idx = (int)(intptr_t)lv_event_get_user_data(e);
   app::Desk & d = app::desk();
   if (idx < 0 || idx >= d.peer_count) return;

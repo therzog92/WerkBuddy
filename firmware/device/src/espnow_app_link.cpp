@@ -65,7 +65,8 @@ void send_discover_reply() {
   std::snprintf(reply.from_id, sizeof(reply.from_id), "%s", g_mac_id);
   const char * name = app::desk().name[0] ? app::desk().name : "Desk";
   std::snprintf(reply.from_name, sizeof(reply.from_name), "%s", name);
-  uint8_t frame[kDiscoverSize];
+  reply.hit = app::desk().dnd != 0;
+  uint8_t frame[kDiscoverV2Size];
   const int n = pack_msg(reply, g_mac, frame, sizeof(frame));
   if (n > 0) esp_now_send(kBroadcast, frame, (size_t)n);
   /* Do NOT send TimeSync here — it raced DiscoverReply in the old 1-slot RX
@@ -81,7 +82,7 @@ void handle_frame(const uint8_t * data, int len) {
 
   /* Directed frames: drop if addressed to someone else. */
   if (msg.type != proto::MsgType::Discover && msg.type != proto::MsgType::DiscoverReply &&
-      msg.type != proto::MsgType::TimeSync) {
+      msg.type != proto::MsgType::Status && msg.type != proto::MsgType::TimeSync) {
     uint8_t to[6];
     if (id_to_mac(msg.to_id, to) && !mac_bcast(to) && !mac_eq(to, g_mac)) return;
   }
@@ -155,8 +156,8 @@ void link_send(const proto::Msg & msg) {
   if (n <= 0) return;
 
   const bool bcast = m.type == proto::MsgType::Discover || m.type == proto::MsgType::DiscoverReply ||
-                     m.type == proto::MsgType::TimeSync || m.type == proto::MsgType::Clear ||
-                     !m.to_id[0];
+                     m.type == proto::MsgType::Status || m.type == proto::MsgType::TimeSync ||
+                     m.type == proto::MsgType::Clear || !m.to_id[0];
 
   if (bcast) {
     esp_now_send(kBroadcast, frame, (size_t)n);

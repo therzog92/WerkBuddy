@@ -4,6 +4,7 @@
 #include "app/background.h"
 #include "app/checklist.h"
 #include "app/page_log.h"
+#include "app/presence.h"
 #include "app/score_log.h"
 #include "app/desk_timer.h"
 #include "app/storage.h"
@@ -411,6 +412,7 @@ void init() {
 
   net::link_init();
   games_init();
+  presence_init();
 
   /* Keep NVS wall_epoch fresh so a dead desk resumes near last-on time. */
   lv_timer_create(clock_snapshot_cb, 30000, nullptr);
@@ -525,6 +527,7 @@ void touch_peer_name(const char * id, const char * name) {
 void remove_peer(const char * id) {
   for (int i = 0; i < g_desk.peer_count; ++i) {
     if (same(g_desk.peers[i].id, id)) {
+      presence_on_remove_peer(i);
       for (int j = i; j < g_desk.peer_count - 1; ++j) g_desk.peers[j] = g_desk.peers[j + 1];
       g_desk.peer_count--;
       save();
@@ -612,17 +615,48 @@ void adjust_clock_days(int days) {
 
 void send(const proto::Msg & msg) { net::link_send(msg); }
 
+namespace {
+
+bool blocks_while_dnd(proto::MsgType t) {
+  using T = proto::MsgType;
+  switch (t) {
+    case T::Call:
+    case T::TttInvite:
+    case T::C4Invite:
+    case T::BsInvite:
+    case T::CkInvite:
+    case T::MemInvite:
+    case T::StttInvite:
+    case T::RvInvite:
+    case T::DbInvite:
+    case T::DoodleStroke:
+    case T::DoodleClear:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 /* ============ incoming radio (mirrors web bus handler) ============ */
 
 void handle_msg(const proto::Msg & m) {
   Desk & d = g_desk;
 
+  if (d.dnd && blocks_while_dnd(m.type)) return;
+
   switch (m.type) {
+    case proto::MsgType::Discover: {
+      note_peer_presence(m.from_id, m.from_name, m.hit);
+      return;
+    }
+
     case proto::MsgType::DiscoverReply: {
+      note_peer_presence(m.from_id, m.from_name, m.hit);
       touch_peer_name(m.from_id, m.from_name);
       for (int i = 0; i < d.nearby_count; ++i) {
         if (!same(d.nearby[i].id, m.from_id)) continue;
-        /* Refresh name if they renamed since last scan. */
         if (m.from_name[0] && !same(d.nearby[i].name, m.from_name)) {
           copy_str(d.nearby[i].name, proto::kMaxName, m.from_name);
           if (ui::current_screen() == ui::Screen::Settings) ui::refresh_settings_keep_scroll();
@@ -635,8 +669,12 @@ void handle_msg(const proto::Msg & m) {
         d.nearby_count++;
       }
       ui::toast_fmt("%s is nearby", m.from_name[0] ? m.from_name : "Desk");
-      /* Refresh Nearby list without jumping scroll to the top of Settings. */
       if (ui::current_screen() == ui::Screen::Settings) ui::refresh_settings_keep_scroll();
+      return;
+    }
+
+    case proto::MsgType::Status: {
+      note_peer_presence(m.from_id, m.from_name, m.hit);
       return;
     }
 

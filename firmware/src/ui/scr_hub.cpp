@@ -3,6 +3,7 @@
 #include "app/active_games.h"
 #include "app/app.h"
 #include "app/desk_timer.h"
+#include "app/presence.h"
 #include "ui/chrome.h"
 #include "ui/fonts.h"
 #include "ui/icons.h"
@@ -21,6 +22,7 @@ lv_obj_t * g_desk = nullptr;
 lv_obj_t * g_timer_lbl = nullptr;
 lv_obj_t * g_games_host = nullptr;
 lv_timer_t * g_timer = nullptr;
+lv_obj_t * g_brand = nullptr;
 int g_games_active_seen = -1;
 int g_games_turn_seen = -1;
 
@@ -40,6 +42,17 @@ void format_clock(char * buf, size_t n, char * date_buf, size_t dn) {
   static const char * kMo[] = {"January", "February", "March", "April", "May", "June",
                                "July", "August", "September", "October", "November", "December"};
   lv_snprintf(date_buf, (uint32_t)dn, "%s, %s %d", kWd[tm.tm_wday], kMo[tm.tm_mon], tm.tm_mday);
+}
+
+void sync_brand_color() {
+  if (!g_brand) return;
+  lv_obj_set_style_text_color(g_brand, app::dnd() ? theme::danger() : lv_color_hex(0x3ddc84), 0);
+}
+
+void toggle_dnd(lv_event_t * /*e*/) {
+  app::set_dnd(!app::dnd());
+  sync_brand_color();
+  toast(app::dnd() ? "Do not disturb" : "Available");
 }
 
 void rebuild_games_strip() {
@@ -164,6 +177,7 @@ void on_deleted(lv_event_t * /*e*/) {
   g_desk = nullptr;
   g_timer_lbl = nullptr;
   g_games_host = nullptr;
+  g_brand = nullptr;
   g_games_active_seen = -1;
   g_games_turn_seen = -1;
   if (g_timer) {
@@ -187,10 +201,14 @@ lv_obj_t * hub_screen() {
   lv_obj_set_flex_flow(top, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(top, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_t * brand = lv_label_create(top);
+  g_brand = brand;
   lv_label_set_text(brand, "WERKBUDDY");
-  lv_obj_set_style_text_color(brand, theme::gold(), 0);
   lv_obj_set_style_text_font(brand, font_display(18), 0);
   lv_obj_set_style_text_letter_space(brand, 2, 0);
+  lv_obj_add_flag(brand, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(brand, 10);
+  lv_obj_add_event_cb(brand, toggle_dnd, LV_EVENT_CLICKED, nullptr);
+  sync_brand_color();
 
   lv_obj_t * body = lv_obj_create(scr);
   lv_obj_remove_style_all(body);

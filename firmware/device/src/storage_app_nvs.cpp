@@ -34,6 +34,7 @@ bool load(app::Desk & d) {
   d.rotate_180 = prefs.getUChar("rot180", d.rotate_180) ? 1 : 0;
   d.clock_24h = prefs.getUChar("clk24", d.clock_24h) ? 1 : 0;
   d.chrome_hide = (uint8_t)prefs.getUChar("chr_hide", d.chrome_hide);
+  d.dnd = prefs.getUChar("dnd", d.dnd) ? 1 : 0;
   if (prefs.isKey("setup_done")) {
     d.setup_done = prefs.getBool("setup_done", false);
   } else if (prefs.isKey("setup")) {
@@ -114,6 +115,7 @@ void save(const app::Desk & d) {
   prefs.putUChar("rot180", d.rotate_180 ? 1 : 0);
   prefs.putUChar("clk24", d.clock_24h ? 1 : 0);
   prefs.putUChar("chr_hide", d.chrome_hide);
+  prefs.putUChar("dnd", d.dnd ? 1 : 0);
   prefs.putBool("setup_done", d.setup_done);
   prefs.remove("setup"); /* drop thin-shell alias so load won't resurrect it */
   prefs.putLong64("clock_off", d.clock_offset_ms);
