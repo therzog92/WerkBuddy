@@ -2563,12 +2563,33 @@ lv_obj_t * bg_upload_screen() {
 namespace {
 
 lv_timer_t * g_fw_poll = nullptr;
+int g_fw_step = 1;
+lv_obj_t * g_fw_tab_row = nullptr;
+lv_obj_t * g_fw_step1 = nullptr;
+lv_obj_t * g_fw_step2 = nullptr;
+
+void fw_show_step(int step) {
+  g_fw_step = step;
+  if (g_fw_step1) {
+    if (step == 1) lv_obj_clear_flag(g_fw_step1, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(g_fw_step1, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (g_fw_step2) {
+    if (step == 2) lv_obj_clear_flag(g_fw_step2, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(g_fw_step2, LV_OBJ_FLAG_HIDDEN);
+  }
+  if (g_fw_tab_row) chip_row_select(g_fw_tab_row, step - 1);
+}
 
 void fw_upload_cleanup(lv_event_t * /*e*/) {
   if (g_fw_poll) {
     lv_timer_delete(g_fw_poll);
     g_fw_poll = nullptr;
   }
+  g_fw_step = 1;
+  g_fw_tab_row = nullptr;
+  g_fw_step1 = nullptr;
+  g_fw_step2 = nullptr;
   /* SoftAP stop can block the radio — defer until after the transition paints. */
   lv_timer_t * defer = lv_timer_create([](lv_timer_t * t) {
     fw_update::stop();
@@ -2598,7 +2619,8 @@ lv_obj_t * fw_upload_screen() {
   lv_obj_add_event_cb(scr, fw_upload_cleanup, LV_EVENT_DELETE, nullptr);
   make_topbar(scr, "UPDATE", app::desk().name);
   lv_obj_t * body = make_body(scr, true);
-  make_tagline(body, "Update from phone");
+  lv_obj_remove_flag(body, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(body, LV_DIR_NONE);
 
   if (!ok) {
     lv_obj_t * err = lv_label_create(body);
@@ -2610,61 +2632,108 @@ lv_obj_t * fw_upload_screen() {
     lv_obj_set_style_text_color(err, theme::danger(), 0);
     lv_obj_set_style_text_font(err, &lv_font_montserrat_14, 0);
     lv_obj_set_width(err, lv_pct(100));
-  } else {
-#ifdef WP_DEVICE
-    char payload[96];
-    lv_snprintf(payload, sizeof(payload), "WIFI:T:WPA;S:%s;P:%s;H:false;;",
-                fw_update::ssid() ? fw_update::ssid() : "",
-                fw_update::pass() ? fw_update::pass() : "");
-#if LV_USE_QRCODE
-    lv_obj_t * rel_qr = lv_qrcode_create(body);
-    lv_qrcode_set_size(rel_qr, 150);
-    lv_qrcode_set_dark_color(rel_qr, lv_color_hex(0x1a1224));
-    lv_qrcode_set_light_color(rel_qr, lv_color_hex(0xf7f2ea));
-    lv_qrcode_update(rel_qr, "https://github.com/therzog92/WerkBuddy/releases",
-                     (uint32_t)std::strlen("https://github.com/therzog92/WerkBuddy/releases"));
-    lv_obj_set_style_border_color(rel_qr, lv_color_hex(0xf7f2ea), 0);
-    lv_obj_set_style_border_width(rel_qr, 6, 0);
-
-    lv_obj_t * qrcode = lv_qrcode_create(body);
-    lv_qrcode_set_size(qrcode, 150);
-    lv_qrcode_set_dark_color(qrcode, lv_color_hex(0x1a1224));
-    lv_qrcode_set_light_color(qrcode, lv_color_hex(0xf7f2ea));
-    lv_qrcode_update(qrcode, payload, (uint32_t)std::strlen(payload));
-    lv_obj_set_style_border_color(qrcode, lv_color_hex(0xf7f2ea), 0);
-    lv_obj_set_style_border_width(qrcode, 6, 0);
-#endif
-    lv_obj_t * hint = lv_label_create(body);
-    lv_label_set_text(hint,
-                      "1) Scan TOP QR to open Releases, download the .bin\n"
-                      "2) Scan BOTTOM QR to join desk Wi-Fi\n"
-                      "3) Phone opens the update page - pick the .bin");
-    lv_obj_set_style_text_color(hint, theme::muted(), 0);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
-    lv_obj_set_width(hint, lv_pct(100));
-    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
-
-    lv_obj_t * cred = lv_label_create(body);
-    char cred_buf[96];
-    lv_snprintf(cred_buf, sizeof(cred_buf), "Wi-Fi: %s\nPass: %s",
-                fw_update::ssid() ? fw_update::ssid() : "?",
-                fw_update::pass() ? fw_update::pass() : "?");
-    lv_label_set_text(cred, cred_buf);
-    lv_obj_set_style_text_color(cred, theme::gold(), 0);
-    lv_obj_set_style_text_font(cred, &lv_font_montserrat_14, 0);
-    lv_obj_set_width(cred, lv_pct(100));
-
-    if (fw_update::url() && fw_update::url()[0]) {
-      lv_obj_t * url_lbl = lv_label_create(body);
-      lv_label_set_text(url_lbl, fw_update::url());
-      lv_obj_set_style_text_color(url_lbl, theme::mint(), 0);
-      lv_obj_set_style_text_font(url_lbl, &lv_font_montserrat_12, 0);
-      lv_label_set_long_mode(url_lbl, LV_LABEL_LONG_WRAP);
-      lv_obj_set_width(url_lbl, lv_pct(100));
-    }
-#endif
-    g_fw_poll = lv_timer_create(fw_poll_tick, 200, nullptr);
+    lv_obj_t * dock = make_dock(scr);
+    dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_settings(); });
+    return scr;
   }
+
+  /* Fixed two-step tabs: Step 1 = download .bin, Step 2 = join + upload. */
+  lv_obj_t * tabs = lv_obj_create(body);
+  lv_obj_remove_style_all(tabs);
+  lv_obj_set_width(tabs, lv_pct(100));
+  lv_obj_set_height(tabs, 40);
+  lv_obj_set_flex_flow(tabs, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(tabs, 6, 0);
+  lv_obj_remove_flag(tabs, LV_OBJ_FLAG_SCROLLABLE);
+  g_fw_tab_row = tabs;
+
+  chip(tabs, "Step 1 - Get .bin", true,
+       [](lv_event_t * /*e*/) { fw_show_step(1); }, nullptr);
+  chip(tabs, "Step 2 - Upload", false,
+       [](lv_event_t * /*e*/) { fw_show_step(2); }, nullptr);
+
+  /* Step 1: releases QR + note. */
+  lv_obj_t * step1 = lv_obj_create(body);
+  lv_obj_remove_style_all(step1);
+  lv_obj_set_width(step1, lv_pct(100));
+  lv_obj_set_flex_grow(step1, 1);
+  lv_obj_set_flex_flow(step1, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(step1, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(step1, 8, 0);
+  lv_obj_remove_flag(step1, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t * s1hint = lv_label_create(step1);
+  lv_label_set_text(s1hint, "Download the firmware on your phone");
+  lv_obj_set_style_text_color(s1hint, theme::muted(), 0);
+  lv_obj_set_style_text_font(s1hint, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(s1hint, lv_pct(100));
+  lv_label_set_long_mode(s1hint, LV_LABEL_LONG_WRAP);
+
+#if LV_USE_QRCODE
+  lv_obj_t * rel_qr = lv_qrcode_create(step1);
+  lv_qrcode_set_size(rel_qr, 190);
+  lv_qrcode_set_dark_color(rel_qr, lv_color_hex(0x1a1224));
+  lv_qrcode_set_light_color(rel_qr, lv_color_hex(0xf7f2ea));
+  lv_qrcode_update(rel_qr, "https://github.com/therzog92/WerkBuddy/releases",
+                   (uint32_t)std::strlen("https://github.com/therzog92/WerkBuddy/releases"));
+  lv_obj_set_style_border_color(rel_qr, lv_color_hex(0xf7f2ea), 0);
+  lv_obj_set_style_border_width(rel_qr, 6, 0);
+#endif
+
+  lv_obj_t * s1note = lv_label_create(step1);
+  lv_label_set_text(s1note, "Scan to open GitHub Releases,\nthen download the .bin file.");
+  lv_obj_set_style_text_color(s1note, theme::muted(), 0);
+  lv_obj_set_style_text_font(s1note, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(s1note, lv_pct(100));
+  lv_label_set_long_mode(s1note, LV_LABEL_LONG_WRAP);
+
+  /* Step 2: desk Wi-Fi QR + credentials + glitch note. */
+  lv_obj_t * step2 = lv_obj_create(body);
+  lv_obj_remove_style_all(step2);
+  lv_obj_set_width(step2, lv_pct(100));
+  lv_obj_set_flex_grow(step2, 1);
+  lv_obj_set_flex_flow(step2, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(step2, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(step2, 8, 0);
+  lv_obj_remove_flag(step2, LV_OBJ_FLAG_SCROLLABLE);
+
+  char payload[96];
+  lv_snprintf(payload, sizeof(payload), "WIFI:T:WPA;S:%s;P:%s;H:false;;",
+              fw_update::ssid() ? fw_update::ssid() : "",
+              fw_update::pass() ? fw_update::pass() : "");
+#if LV_USE_QRCODE
+  lv_obj_t * qrcode = lv_qrcode_create(step2);
+  lv_qrcode_set_size(qrcode, 190);
+  lv_qrcode_set_dark_color(qrcode, lv_color_hex(0x1a1224));
+  lv_qrcode_set_light_color(qrcode, lv_color_hex(0xf7f2ea));
+  lv_qrcode_update(qrcode, payload, (uint32_t)std::strlen(payload));
+  lv_obj_set_style_border_color(qrcode, lv_color_hex(0xf7f2ea), 0);
+  lv_obj_set_style_border_width(qrcode, 6, 0);
+#endif
+
+  lv_obj_t * cred = lv_label_create(step2);
+  char cred_buf[96];
+  lv_snprintf(cred_buf, sizeof(cred_buf), "Wi-Fi: %s\nPass: %s",
+              fw_update::ssid() ? fw_update::ssid() : "?",
+              fw_update::pass() ? fw_update::pass() : "?");
+  lv_label_set_text(cred, cred_buf);
+  lv_obj_set_style_text_color(cred, theme::gold(), 0);
+  lv_obj_set_style_text_font(cred, &lv_font_montserrat_14, 0);
+  lv_obj_set_width(cred, lv_pct(100));
+
+  lv_obj_t * s2note = lv_label_create(step2);
+  lv_label_set_text(s2note,
+                    "Scan to join the desk Wi-Fi, then pick the\n.bin on the page that opens.\n\nThe screen will flash during install.");
+  lv_obj_set_style_text_color(s2note, theme::muted(), 0);
+  lv_obj_set_style_text_font(s2note, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(s2note, lv_pct(100));
+  lv_label_set_long_mode(s2note, LV_LABEL_LONG_WRAP);
+
+  g_fw_step1 = step1;
+  g_fw_step2 = step2;
+  fw_show_step(1);
+
+  g_fw_poll = lv_timer_create(fw_poll_tick, 200, nullptr);
 
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_settings(); });
