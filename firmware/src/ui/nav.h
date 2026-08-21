@@ -34,6 +34,7 @@ enum class Screen {
   OtaReleases,
   BgUpload,
   FwUpload,
+  OtaProgress,
   Timer,
   Checklist,
   Calculator,
@@ -80,6 +81,7 @@ void go_ota_releases();
 void go_emoji_picker(int slot); /* settings slot, or kEmojiPickerCompose for WerkRoom */
 void go_bg_upload();
 void go_fw_upload();
+void go_ota_progress();
 void go_timer();
 void go_checklist();
 void go_calculator();

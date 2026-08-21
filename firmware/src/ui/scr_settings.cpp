@@ -1838,6 +1838,7 @@ bool ota_ensure_cache() {
 
 int g_ota_pending_idx = -1;
 int g_ota_selected_idx = -1;
+int g_ota_progress_idx = -1;
 
 void ota_leave_disconnect() {
   app::desk().wifi_connected = false;
@@ -1856,13 +1857,10 @@ void ota_do_install(lv_event_t * /*e*/) {
     toast("No .bin asset for this release");
     return;
   }
-  toast("Downloading firmware…");
-  char err[96] = {};
-  /* install_bin reboots on success; on failure we stay here. */
-  if (!sim::github_ota::install_bin(r.asset_url, err, (int)sizeof(err))) {
-    toast(err[0] ? err : "OTA failed");
-    return;
-  }
+  /* Show a live progress screen — install blocks the loop, so the progress
+   * callback repaints the panel each chunk. Reboots on success. */
+  g_ota_progress_idx = idx;
+  go_ota_progress();
 #else
   /* Sim: adopt tag only. */
   app::set_firmware_version(r.tag);
@@ -1885,9 +1883,11 @@ void ota_confirm_install(int idx) {
     return;
   }
   g_ota_pending_idx = idx;
-  char msg[96];
+  char msg[128];
   const char * label = r.name[0] ? r.name : r.tag;
-  lv_snprintf(msg, sizeof(msg), "Install %s?\nRunning %s now.", label, app::firmware_version());
+  lv_snprintf(msg, sizeof(msg),
+              "Install %s?\nKeep WerkBuddy plugged in - this may take a few minutes. The screen may glitch.",
+              label);
   show_confirm(msg, "Install", false, ota_do_install, [](lv_event_t * /*e*/) {
     g_ota_pending_idx = -1;
   });
@@ -2035,6 +2035,116 @@ lv_obj_t * ota_releases_screen() {
     go_settings();
   });
   dock_btn(dock, "Install", true, false, on_ota_install_dock);
+  return scr;
+}
+
+namespace {
+
+lv_obj_t * g_ota_bar = nullptr;
+lv_obj_t * g_ota_pct = nullptr;
+lv_obj_t * g_ota_status = nullptr;
+
+void ota_progress_cb(int pct, void * /*user*/) {
+  if (g_ota_pct) {
+    char buf[16];
+    lv_snprintf(buf, sizeof(buf), "%d%%", pct);
+    lv_label_set_text(g_ota_pct, buf);
+  }
+  if (g_ota_bar) lv_bar_set_value(g_ota_bar, pct, LV_ANIM_OFF);
+  /* install blocks the loop — repaint now so progress still advances. */
+  lv_refr_now(nullptr);
+}
+
+void ota_start_install(void * /*ud*/) {
+  const int idx = g_ota_progress_idx;
+  g_ota_progress_idx = -1;
+  if (idx < 0 || idx >= g_ota_cache_n) {
+    ota_leave_disconnect();
+    go_settings();
+    return;
+  }
+  const sim::github_ota::Release & r = g_ota_cache[idx];
+#ifdef WP_DEVICE
+  char err[96] = {};
+  /* Reboots on success; returns only on failure. */
+  if (!sim::github_ota::install_bin_progress(r.asset_url, ota_progress_cb, nullptr, err,
+                                             (int)sizeof(err))) {
+    if (g_ota_status) {
+      lv_label_set_text(g_ota_status, err[0] ? err : "Update failed");
+      lv_obj_set_style_text_color(g_ota_status, theme::danger(), 0);
+    }
+    lv_refr_now(nullptr);
+    lv_delay_ms(1800);
+    ota_leave_disconnect();
+    go_settings();
+    return;
+  }
+#else
+  if (g_ota_status) lv_label_set_text(g_ota_status, "Update only runs on the desk");
+  lv_refr_now(nullptr);
+  app::schedule(1200, [](void * /*ud*/) {
+    ota_leave_disconnect();
+    go_settings();
+  }, nullptr);
+#endif
+}
+
+}  // namespace
+
+lv_obj_t * ota_progress_screen() {
+  const int idx = g_ota_progress_idx;
+  const char * label = "Firmware";
+  if (idx >= 0 && idx < g_ota_cache_n) {
+    label = g_ota_cache[idx].name[0] ? g_ota_cache[idx].name : g_ota_cache[idx].tag;
+  }
+
+  lv_obj_t * scr = make_screen();
+  make_topbar(scr, "UPDATE", app::desk().name);
+  lv_obj_t * body = make_body(scr, true);
+  make_tagline(body, "Updating firmware");
+
+  lv_obj_t * warn = lv_label_create(body);
+  lv_label_set_text(warn,
+                    "Keep WerkBuddy plugged in.\nThis may take a few minutes and the screen may glitch.");
+  lv_obj_set_style_text_color(warn, theme::muted(), 0);
+  lv_obj_set_style_text_font(warn, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(warn, lv_pct(100));
+  lv_label_set_long_mode(warn, LV_LABEL_LONG_WRAP);
+
+  lv_obj_t * name = lv_label_create(body);
+  lv_label_set_text(name, label);
+  lv_obj_set_style_text_color(name, theme::ink(), 0);
+  lv_obj_set_style_text_font(name, &lv_font_montserrat_14, 0);
+  lv_obj_set_width(name, lv_pct(100));
+  lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+
+  lv_obj_t * bar = lv_bar_create(body);
+  lv_obj_set_width(bar, lv_pct(100));
+  lv_obj_set_height(bar, 18);
+  lv_bar_set_range(bar, 0, 100);
+  lv_bar_set_value(bar, 0, LV_ANIM_OFF);
+  lv_obj_set_style_radius(bar, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(bar, theme::panel(), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar, theme::gold(), LV_PART_INDICATOR);
+  g_ota_bar = bar;
+
+  lv_obj_t * pct = lv_label_create(body);
+  lv_label_set_text(pct, "0%");
+  lv_obj_set_style_text_color(pct, theme::ink(), 0);
+  lv_obj_set_style_text_font(pct, &lv_font_montserrat_20, 0);
+  lv_obj_set_width(pct, lv_pct(100));
+  g_ota_pct = pct;
+
+  lv_obj_t * status = lv_label_create(body);
+  lv_label_set_text(status, "Downloading…");
+  lv_obj_set_style_text_color(status, theme::mint(), 0);
+  lv_obj_set_style_text_font(status, &lv_font_montserrat_12, 0);
+  lv_obj_set_width(status, lv_pct(100));
+  lv_label_set_long_mode(status, LV_LABEL_LONG_WRAP);
+  g_ota_status = status;
+
+  /* Start the blocking install after the progress screen paints. */
+  app::schedule(60, ota_start_install, nullptr);
   return scr;
 }
 
@@ -2507,18 +2617,27 @@ lv_obj_t * fw_upload_screen() {
                 fw_update::ssid() ? fw_update::ssid() : "",
                 fw_update::pass() ? fw_update::pass() : "");
 #if LV_USE_QRCODE
+    lv_obj_t * rel_qr = lv_qrcode_create(body);
+    lv_qrcode_set_size(rel_qr, 150);
+    lv_qrcode_set_dark_color(rel_qr, lv_color_hex(0x1a1224));
+    lv_qrcode_set_light_color(rel_qr, lv_color_hex(0xf7f2ea));
+    lv_qrcode_update(rel_qr, "https://github.com/therzog92/WerkBuddy/releases",
+                     (uint32_t)std::strlen("https://github.com/therzog92/WerkBuddy/releases"));
+    lv_obj_set_style_border_color(rel_qr, lv_color_hex(0xf7f2ea), 0);
+    lv_obj_set_style_border_width(rel_qr, 6, 0);
+
     lv_obj_t * qrcode = lv_qrcode_create(body);
-    lv_qrcode_set_size(qrcode, 200);
+    lv_qrcode_set_size(qrcode, 150);
     lv_qrcode_set_dark_color(qrcode, lv_color_hex(0x1a1224));
     lv_qrcode_set_light_color(qrcode, lv_color_hex(0xf7f2ea));
     lv_qrcode_update(qrcode, payload, (uint32_t)std::strlen(payload));
     lv_obj_set_style_border_color(qrcode, lv_color_hex(0xf7f2ea), 0);
-    lv_obj_set_style_border_width(qrcode, 8, 0);
+    lv_obj_set_style_border_width(qrcode, 6, 0);
 #endif
     lv_obj_t * hint = lv_label_create(body);
     lv_label_set_text(hint,
-                      "1) Download the release .bin on your phone\n"
-                      "2) Scan QR to join desk Wi-Fi\n"
+                      "1) Scan TOP QR to open Releases, download the .bin\n"
+                      "2) Scan BOTTOM QR to join desk Wi-Fi\n"
                       "3) Phone opens the update page - pick the .bin");
     lv_obj_set_style_text_color(hint, theme::muted(), 0);
     lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);

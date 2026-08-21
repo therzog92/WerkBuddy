@@ -95,6 +95,7 @@ const char * screen_name(ui::Screen s) {
     case ui::Screen::OtaReleases: return "ota";
     case ui::Screen::BgUpload: return "bg-upload";
     case ui::Screen::FwUpload: return "fw-upload";
+    case ui::Screen::OtaProgress: return "ota-progress";
     case ui::Screen::Timer: return "timer";
     case ui::Screen::Checklist: return "checklist";
     case ui::Screen::Calculator: return "calculator";

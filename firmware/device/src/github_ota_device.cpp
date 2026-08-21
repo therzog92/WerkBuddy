@@ -219,6 +219,10 @@ int fetch_releases(Release * out, int max_out, char * err, int err_cap) {
 }
 
 bool install_bin(const char * url, char * err, int err_cap) {
+  return install_bin_progress(url, nullptr, nullptr, err, err_cap);
+}
+
+bool install_bin_progress(const char * url, ProgressFn cb, void * user, char * err, int err_cap) {
   if (err && err_cap > 0) err[0] = '\0';
   if (!url || !url[0]) {
     set_err(err, err_cap, "no firmware URL");
@@ -301,9 +305,12 @@ bool install_bin(const char * url, char * err, int err_cap) {
       return false;
     }
 
+    if (cb) cb(0, user);
+
     size_t written = 0;
     uint8_t buf[4096];
     const int expected = content_len;
+    int last_pct = -1;
     while (http.connected() || stream->available()) {
       const size_t avail = stream->available();
       if (!avail) {
@@ -319,8 +326,17 @@ bool install_bin(const char * url, char * err, int err_cap) {
         return false;
       }
       written += n;
+      if (cb && expected > 0) {
+        const int pct = written >= (size_t)expected ? 100
+                        : (int)((written * 100u) / (size_t)expected);
+        if (pct != last_pct) {
+          last_pct = pct;
+          cb(pct, user);
+        }
+      }
       if (expected > 0 && (int)written >= expected) break;
     }
+    if (cb) cb(100, user);
     http.end();
 
     if (!Update.end(true)) {

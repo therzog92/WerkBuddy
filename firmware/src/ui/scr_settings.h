@@ -22,6 +22,7 @@ constexpr int kEmojiPickerCompose = -1;
 lv_obj_t * emoji_picker_screen(int slot);
 lv_obj_t * bg_upload_screen();
 lv_obj_t * fw_upload_screen();
+lv_obj_t * ota_progress_screen();
 
 }  // namespace ui
 }  // namespace wp
