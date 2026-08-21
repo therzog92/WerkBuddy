@@ -381,7 +381,7 @@ lv_obj_t * build_keyboard(const char * title, const char * initial, int canned_i
 #ifdef WP_DEVICE
       /* Verify the password actually associates before accepting — keep the
        * entry up for retry on failure instead of blindly saving. */
-      toast("Checking password…");
+      toast("Checking password...");
       char err[64] = {};
       if (!wifi_jobs::test_join(g_wifi_ssid_draft, g_osk_buf, err, sizeof(err))) {
         toast(err[0] ? err : "Could not connect");
@@ -1299,7 +1299,7 @@ lv_obj_t * settings_screen() {
              return;
            }
 #ifdef WP_DEVICE
-           toast("Joining Wi-Fi…");
+           toast("Joining Wi-Fi...");
            char err[64] = {};
           if (wifi_jobs::sync_time(err, sizeof(err))) {
              app::note_clock_synced();
@@ -1352,7 +1352,7 @@ lv_obj_t * settings_screen() {
             return;
           }
 #ifdef WP_DEVICE
-          toast("Joining Wi-Fi…");
+          toast("Joining Wi-Fi...");
           char err[64] = {};
           if (!wifi_jobs::join_sta(err, sizeof(err))) {
             toast(err[0] ? err : "Wi-Fi join failed");
@@ -1723,7 +1723,7 @@ void on_pick_ap(lv_event_t * e) {
   if (ap.open) {
     app::Desk & d = app::desk();
 #ifdef WP_DEVICE
-    toast("Connecting…");
+    toast("Connecting...");
     char err[64] = {};
     if (!wifi_jobs::test_join(ap.ssid, "", err, sizeof(err))) {
       toast(err[0] ? err : "Could not connect");
@@ -1804,7 +1804,7 @@ lv_obj_t * wifi_scan_screen() {
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Cancel", false, false, [](lv_event_t * /*e*/) { go_settings(); });
   dock_btn(dock, "Rescan", true, false, [](lv_event_t * /*e*/) {
-    toast("Scanning…");
+    toast("Scanning...");
     go_wifi_scan();
   });
   return scr;
@@ -2136,7 +2136,7 @@ lv_obj_t * ota_progress_screen() {
   g_ota_pct = pct;
 
   lv_obj_t * status = lv_label_create(body);
-  lv_label_set_text(status, "Downloading…");
+  lv_label_set_text(status, "Downloading...");
   lv_obj_set_style_text_color(status, theme::mint(), 0);
   lv_obj_set_style_text_font(status, &lv_font_montserrat_12, 0);
   lv_obj_set_width(status, lv_pct(100));
@@ -2402,7 +2402,7 @@ struct BgFinalizeCtx {
 void bg_finalize_deferred(lv_timer_t * t) {
   auto * ctx = static_cast<BgFinalizeCtx *>(lv_timer_get_user_data(t));
   background::end_upload_job();
-  toast("Saving background…");
+  toast("Saving background...");
   const bool ok = background::finalize_upload();
   if (ok) {
     toast("Background saved");
@@ -2694,7 +2694,7 @@ lv_obj_t * fw_upload_screen() {
   lv_obj_set_flex_grow(step2, 1);
   lv_obj_set_flex_flow(step2, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(step2, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_row(step2, 8, 0);
+  lv_obj_set_style_pad_row(step2, 6, 0);
   lv_obj_remove_flag(step2, LV_OBJ_FLAG_SCROLLABLE);
 
   char payload[96];
@@ -2703,7 +2703,7 @@ lv_obj_t * fw_upload_screen() {
               fw_update::pass() ? fw_update::pass() : "");
 #if LV_USE_QRCODE
   lv_obj_t * qrcode = lv_qrcode_create(step2);
-  lv_qrcode_set_size(qrcode, 190);
+  lv_qrcode_set_size(qrcode, 150);
   lv_qrcode_set_dark_color(qrcode, lv_color_hex(0x1a1224));
   lv_qrcode_set_light_color(qrcode, lv_color_hex(0xf7f2ea));
   lv_qrcode_update(qrcode, payload, (uint32_t)std::strlen(payload));
@@ -2723,7 +2723,7 @@ lv_obj_t * fw_upload_screen() {
 
   lv_obj_t * s2note = lv_label_create(step2);
   lv_label_set_text(s2note,
-                    "Scan to join the desk Wi-Fi, then pick the\n.bin on the page that opens.\n\nThe screen will flash during install.");
+                    "Join the desk Wi-Fi, pick the .bin.\nScreen will flash during install.");
   lv_obj_set_style_text_color(s2note, theme::muted(), 0);
   lv_obj_set_style_text_font(s2note, &lv_font_montserrat_12, 0);
   lv_obj_set_width(s2note, lv_pct(100));
