@@ -8,6 +8,7 @@
 #include "device_net.h"
 
 #include <WiFi.h>
+#include <esp_sntp.h>
 #include <time.h>
 
 #include <cstdio>
@@ -167,10 +168,12 @@ bool sync_time(char * err, size_t err_n) {
   Serial.printf("WiFi sync: joined IP=%s\n", WiFi.localIP().toString().c_str());
   configTzTime("CST6CDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov");
 
+  /* Wait for an actual NTP sync — the boot clock already holds a sane default
+   * epoch, so a naive time() threshold would fire immediately with no sync. */
   bool got = false;
   for (int i = 0; i < kNtpTries; ++i) {
-    time_t now = time(nullptr);
-    if (now > 1700000000) {
+    if (esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+      time_t now = time(nullptr);
       struct tm ti {};
       localtime_r(&now, &ti);
       Serial.printf("WiFi sync: local %04d-%02d-%02d %02d:%02d\n", ti.tm_year + 1900,
