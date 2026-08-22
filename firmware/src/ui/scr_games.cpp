@@ -1456,6 +1456,8 @@ bool ship_seg_at(const games::bs::Fleet & f, int x, int y, int * ship_out, int *
   return false;
 }
 
+static lv_obj_t * s_bs_status = nullptr;
+
 void bs_setup_tap(lv_event_t * e) {
   const int packed = (int)(intptr_t)lv_event_get_user_data(e);
   const int x = packed % 10, y = packed / 10;
@@ -1548,7 +1550,7 @@ void bs_fire_cell(lv_event_t * e) {
   g.my_turn = false;
   std::snprintf(g.last_msg, sizeof(g.last_msg), "Firing...");
   app::send(m);
-  go_battleship();
+  if (s_bs_status) lv_label_set_text(s_bs_status, "Firing...");
 }
 
 void fill_bs_grid(lv_obj_t * parent, bool offense) {
@@ -1766,7 +1768,7 @@ app::Desk & desk = app::desk();
         go_hub();
       });
   } else if (app::bs().active) {
-    make_status(body, app::bs().over ? (app::bs().result_dismissed ? "Play again?" : "Game over")
+    s_bs_status = make_status(body, app::bs().over ? (app::bs().result_dismissed ? "Play again?" : "Game over")
                                 : (app::bs().last_msg[0] ? app::bs().last_msg
                                                     : (app::bs().my_turn ? "Your turn" : "Enemy turn")));
     lv_obj_t * tabs = lv_obj_create(body);
@@ -2327,6 +2329,68 @@ const std::string & mem_face_path(uint8_t pair) {
   return g_mem_faces[pair];
 }
 
+static lv_obj_t * s_mem_board = nullptr;
+static lv_obj_t * s_mem_status = nullptr;
+
+static void mem_update_board() {
+  if (!s_mem_board || !s_mem_status) return;
+  app::MemGame & g = app::mem();
+
+  const char * status = "Your turn";
+  char wait_buf[48];
+  if (g.over && !g.result_dismissed) status = "Game over";
+  else if (g.over) status = "Play again?";
+  else if (g.lock) status = "Matching...";
+  else if (!g.my_turn) {
+    lv_snprintf(wait_buf, sizeof(wait_buf), "Waiting on %s...", g.opp_name);
+    status = wait_buf;
+  }
+  lv_label_set_text(s_mem_status, status);
+
+  int kCard = lv_obj_get_width(lv_obj_get_child(s_mem_board, 0));
+  for (int i = 0; i < 16; ++i) {
+    lv_obj_t * card = lv_obj_get_child(s_mem_board, i);
+    if (!card) continue;
+    const bool up = g.matched[i] || g.flip_a == i || g.flip_b == i || g.local_flip == i;
+    
+    if (up) {
+      lv_obj_set_style_bg_color(card, lv_color_hex(0x1a1224), 0);
+      if (lv_obj_get_child_count(card) == 0) {
+        const std::string & path = mem_face_path(g.deck[i]);
+        if (!path.empty()) {
+          lv_obj_t * img = lv_image_create(card);
+          int32_t src_w = 96;
+#ifdef WP_DEVICE
+          const lv_image_dsc_t * dsc = memory_pack::find_dsc(path.c_str());
+          if (dsc) {
+            lv_image_set_src(img, dsc);
+            if (dsc->header.w > 0) src_w = (int32_t)dsc->header.w;
+            const int32_t scale = ((kCard - 8) * 256) / src_w;
+            lv_image_set_scale(img, scale);
+            lv_obj_center(img);
+            lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+          } else lv_obj_delete(img);
+#else
+          lv_image_set_src(img, path.c_str());
+          lv_image_header_t hdr{};
+          if (lv_image_decoder_get_info(path.c_str(), &hdr) == LV_RESULT_OK && hdr.w > 0) src_w = (int32_t)hdr.w;
+          const int32_t scale = ((kCard - 8) * 256) / src_w;
+          lv_image_set_scale(img, scale);
+          lv_obj_center(img);
+          lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+#endif
+        }
+      }
+      if (g.matched[i]) lv_obj_set_style_opa(card, 200, 0);
+      else lv_obj_set_style_opa(card, LV_OPA_COVER, 0);
+    } else {
+      lv_obj_clean(card);
+      lv_obj_set_style_bg_color(card, lv_color_hex(0x6a3a78), 0);
+      lv_obj_set_style_opa(card, LV_OPA_COVER, 0);
+    }
+  }
+}
+
 struct MemResolveLocal {
   int8_t a, b;
 };
@@ -2353,7 +2417,10 @@ void mem_resolve_local(void * ud) {
       g.over = true;
       g.result_dismissed = false;
     }
-    if (ui::current_screen() == ui::Screen::Mem) go_memory();
+    if (ui::current_screen() == ui::Screen::Mem) {
+      if (g.over) go_memory(); // show results overlay
+      else mem_update_board();
+    }
   }
   delete r;
 }
@@ -2393,7 +2460,7 @@ void mem_flip(lv_event_t * e) {
 
   if (g.local_flip < 0) {
     g.local_flip = (int8_t)card;
-    go_memory();
+    mem_update_board();
     return;
   }
 
@@ -2408,7 +2475,7 @@ void mem_flip(lv_event_t * e) {
   m.card_b = g.flip_b;
   app::send(m);
   app::schedule(700, mem_resolve_local, new MemResolveLocal{g.flip_a, g.flip_b});
-  go_memory();
+  mem_update_board();
 }
 
 void fill_mem_play(lv_obj_t * parent) {
@@ -2430,7 +2497,7 @@ void fill_mem_play(lv_obj_t * parent) {
     lv_snprintf(wait_buf, sizeof(wait_buf), "Waiting on %s...", g.opp_name);
     status = wait_buf;
   }
-  make_status(parent, status);
+  s_mem_status = make_status(parent, status);
 
   /* Grow cards into leftover space under score + status. */
   constexpr int kGap = 6;
@@ -2451,6 +2518,7 @@ void fill_mem_play(lv_obj_t * parent) {
   if (kCard > 100) kCard = 100;
 
   lv_obj_t * board = lv_obj_create(parent);
+  s_mem_board = board;
   lv_obj_remove_style_all(board);
   lv_obj_set_size(board, 4 * kCard + 3 * kGap, 4 * kCard + 3 * kGap);
   lv_obj_remove_flag(board, LV_OBJ_FLAG_SCROLLABLE);

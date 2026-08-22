@@ -1589,7 +1589,7 @@ lv_obj_t * settings_screen() {
   if (g_settings_tab == SettingsTab::About) {
   lv_obj_t * ver = lv_label_create(body);
   char ver_lbl[40];
-  lv_snprintf(ver_lbl, sizeof(ver_lbl), "WerkBuddy v%s", app::firmware_version());
+  lv_snprintf(ver_lbl, sizeof(ver_lbl), "WerkBuddy v%s", app::kFirmwareVersion);
   lv_label_set_text(ver, ver_lbl);
   lv_obj_set_style_text_color(ver, theme::muted(), 0);
   lv_obj_set_style_text_font(ver, &lv_font_montserrat_12, 0);
@@ -1885,7 +1885,7 @@ void ota_confirm_install(int idx) {
   if (idx < 0 || idx >= g_ota_cache_n) return;
   const sim::github_ota::Release & r = g_ota_cache[idx];
   const char * body = sim::github_ota::tag_body(r.tag);
-  if (std::strcmp(body, app::firmware_version()) == 0) {
+  if (std::strcmp(body, app::kFirmwareVersion) == 0) {
     toast("Already on this version");
     return;
   }
@@ -1936,7 +1936,7 @@ lv_obj_t * ota_releases_screen() {
   lv_obj_t * title = lv_label_create(body);
   {
     char head[72];
-    const char * ver = app::firmware_version();
+    const char * ver = app::kFirmwareVersion;
     if (ver && ver[0] == 'v')
       lv_snprintf(head, sizeof(head), "GitHub Releases | Installed: %s", ver);
     else
@@ -1974,7 +1974,7 @@ lv_obj_t * ota_releases_screen() {
       g_ota_selected_idx = -1;
       for (int i = 0; i < g_ota_cache_n; ++i) {
         const char * body_tag = sim::github_ota::tag_body(g_ota_cache[i].tag);
-        if (std::strcmp(body_tag, app::firmware_version()) == 0) {
+        if (std::strcmp(body_tag, app::kFirmwareVersion) == 0) {
           g_ota_selected_idx = i;
           break;
         }
@@ -1991,7 +1991,7 @@ lv_obj_t * ota_releases_screen() {
     for (int i = 0; i < g_ota_cache_n; ++i) {
       const sim::github_ota::Release & r = g_ota_cache[i];
       const char * body_tag = sim::github_ota::tag_body(r.tag);
-      const bool is_current = std::strcmp(body_tag, app::firmware_version()) == 0;
+      const bool is_current = std::strcmp(body_tag, app::kFirmwareVersion) == 0;
       const bool is_sel = (i == g_ota_selected_idx);
 
       lv_obj_t * b = lv_button_create(body);

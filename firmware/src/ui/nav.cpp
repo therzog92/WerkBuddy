@@ -56,15 +56,18 @@ app::GameKind kind_for_screen(Screen s) {
   }
 }
 
-void load(lv_obj_t * scr, Screen which) {
+void load(lv_obj_t * scr, Screen which, lv_scr_load_anim_t anim = LV_SCR_LOAD_ANIM_NONE) {
   const Screen prev = g_screen;
   lv_obj_t * old = lv_screen_active();
   g_screen = which;
   /* Instant swap — animated loads + partial RGB strips look like a top-down wipe. */
-  if (old && old != scr)
+  if (anim != LV_SCR_LOAD_ANIM_NONE) {
+    lv_screen_load_anim(scr, anim, 250, 0, true);
+  } else if (old && old != scr) {
     lv_screen_load_anim(scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, true);
-  else
+  } else {
     lv_screen_load(scr);
+  }
   const bool wash =
       which == Screen::Incoming ||
       (which == Screen::Timer && desk_timer::is_finished());
@@ -151,62 +154,62 @@ void go_ttt() {
     game_reload_inplace();
     return;
   }
-  load(game_ttt_screen(), Screen::Ttt);
+  load(game_ttt_screen(), Screen::Ttt, LV_SCR_LOAD_ANIM_FADE_IN);
 }
 void go_sttt() {
   if (g_screen == Screen::Sttt) {
     game_reload_inplace();
     return;
   }
-  load(game_sttt_screen(), Screen::Sttt);
+  load(game_sttt_screen(), Screen::Sttt, LV_SCR_LOAD_ANIM_FADE_IN);
 }
 void go_c4() {
   if (g_screen == Screen::C4) {
     game_reload_inplace();
     return;
   }
-  load(game_c4_screen(), Screen::C4);
+  load(game_c4_screen(), Screen::C4, LV_SCR_LOAD_ANIM_FADE_IN);
 }
 void go_battleship() {
   if (g_screen == Screen::Bs) {
     game_reload_inplace();
     return;
   }
-  load(game_bs_screen(), Screen::Bs);
+  load(game_bs_screen(), Screen::Bs, LV_SCR_LOAD_ANIM_FADE_IN);
 }
 void go_checkers() {
   if (g_screen == Screen::Ck) {
     game_reload_inplace();
     return;
   }
-  load(game_ck_screen(), Screen::Ck);
+  load(game_ck_screen(), Screen::Ck, LV_SCR_LOAD_ANIM_FADE_IN);
 }
 void go_memory() {
   if (g_screen == Screen::Mem) {
     game_reload_inplace();
     return;
   }
-  load(game_mem_screen(), Screen::Mem);
+  load(game_mem_screen(), Screen::Mem, LV_SCR_LOAD_ANIM_FADE_IN);
 }
 void go_reversi() {
   if (g_screen == Screen::Rv) {
     game_reload_inplace();
     return;
   }
-  load(game_rv_screen(), Screen::Rv);
+  load(game_rv_screen(), Screen::Rv, LV_SCR_LOAD_ANIM_FADE_IN);
 }
 void go_dots() {
   if (g_screen == Screen::Db) {
     game_reload_inplace();
     return;
   }
-  load(game_db_screen(), Screen::Db);
+  load(game_db_screen(), Screen::Db, LV_SCR_LOAD_ANIM_FADE_IN);
 }
-void go_scoreboard() { load(scoreboard_screen(), Screen::Scoreboard); }
-void go_g2048() { load(game_g2048_screen(), Screen::G2048); }
-void go_wordle() { load(game_wordle_screen(), Screen::Wordle); }
+void go_scoreboard() { load(scoreboard_screen(), Screen::Scoreboard, LV_SCR_LOAD_ANIM_FADE_IN); }
+void go_g2048() { load(game_g2048_screen(), Screen::G2048, LV_SCR_LOAD_ANIM_FADE_IN); }
+void go_wordle() { load(game_wordle_screen(), Screen::Wordle, LV_SCR_LOAD_ANIM_FADE_IN); }
 
-void go_doodle() { load(doodle_screen(), Screen::Doodle); }
+void go_doodle() { load(doodle_screen(), Screen::Doodle, LV_SCR_LOAD_ANIM_FADE_IN); }
 void go_settings() { load(settings_screen(), Screen::Settings); }
 void go_setup() { load(setup_screen(), Screen::Setup); }
 void go_keyboard_name() { load(keyboard_screen_name(), Screen::Keyboard); }
