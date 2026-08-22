@@ -879,8 +879,13 @@ void handle_msg(const proto::Msg & m) {
       /* Retransmit only: same disc we just applied, and it is already our turn.
        * A later drop in the same column is their next turn — after we move,
        * turn != my_color (and last_r/c is our disc), so that still applies. */
-      if (g.over || g.turn == g.my_color)
-        return;
+      if (g.over) return;
+      if (m.seq > 0) {
+        if (m.seq <= g.seq) return;
+      } else {
+        if (g.turn == g.my_color) return;
+      }
+      g.seq = m.seq;
       const int row = games::c4::drop(g.board, m.col, color);
       if (row < 0) return;
       g.last_r = (int8_t)row;
@@ -1131,6 +1136,10 @@ void handle_msg(const proto::Msg & m) {
       if (m.card_a < 0 || m.card_a >= games::mem::kCards || m.card_b < 0 ||
           m.card_b >= games::mem::kCards)
         return;
+      if (m.seq > 0) {
+        if (m.seq <= g.seq) return;
+      }
+      g.seq = m.seq;
       if (g.matched[m.card_a] || g.matched[m.card_b]) return;
       if (g.lock && ((g.flip_a == m.card_a && g.flip_b == m.card_b) ||
                      (g.flip_a == m.card_b && g.flip_b == m.card_a)))
@@ -1391,3 +1400,4 @@ void handle_msg(const proto::Msg & m) {
 
 }  // namespace app
 }  // namespace wp
+

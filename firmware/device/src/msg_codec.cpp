@@ -215,6 +215,7 @@ int pack_msg(const proto::Msg & msg, const uint8_t own_mac[6], uint8_t * out, si
     if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
     out[26] = (uint8_t)msg.col;
     out[27] = (uint8_t)msg.color;
+    out[28] = msg.seq;
     return (int)kC4DropSize;
   }
 
@@ -242,6 +243,7 @@ int pack_msg(const proto::Msg & msg, const uint8_t own_mac[6], uint8_t * out, si
     if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
     out[26] = (uint8_t)msg.card_a;
     out[27] = (uint8_t)msg.card_b;
+    out[28] = msg.seq;
     return (int)kMemFlipSize;
   }
 
@@ -439,6 +441,7 @@ bool unpack_msg(const uint8_t * data, size_t len, proto::Msg * out) {
     if (len < kC4DropSize || !unpack_peer_hdr(data, len, &m)) return false;
     m.col = (int8_t)data[26];
     m.color = (int8_t)data[27];
+    m.seq = data[28];
     *out = m;
     return true;
   }
@@ -466,6 +469,7 @@ bool unpack_msg(const uint8_t * data, size_t len, proto::Msg * out) {
     if (len < kMemFlipSize || !unpack_peer_hdr(data, len, &m)) return false;
     m.card_a = (int8_t)data[26];
     m.card_b = (int8_t)data[27];
+    m.seq = data[28];
     *out = m;
     return true;
   }

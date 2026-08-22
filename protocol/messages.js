@@ -186,8 +186,8 @@ export const makeC4Invite = (a, b, c, color = "pink") =>
 export const makeC4Accept = (a, b, c, color = "gold") =>
   party(MessageType.C4_ACCEPT, a, b, c, { color });
 export const makeC4Decline = (a, b, c) => party(MessageType.C4_DECLINE, a, b, c);
-export const makeC4Drop = (fromId, toId, col, color) =>
-  party(MessageType.C4_DROP, fromId, "", toId, { col, color });
+export const makeC4Drop = (fromId, toId, col, color, seq = 0) =>
+  party(MessageType.C4_DROP, fromId, "", toId, { col, color, seq });
 export const makeC4Forfeit = (a, b, c) => party(MessageType.C4_FORFEIT, a, b, c);
 
 export const makeBsInvite = (a, b, c) => party(MessageType.BS_INVITE, a, b, c);
@@ -214,8 +214,8 @@ export const makeMemInvite = (fromId, fromName, toId, seed) =>
 export const makeMemAccept = (a, b, c) => party(MessageType.MEM_ACCEPT, a, b, c);
 export const makeMemDecline = (a, b, c) => party(MessageType.MEM_DECLINE, a, b, c);
 /** @param {number} cardA @param {number} cardB */
-export const makeMemFlip = (fromId, toId, cardA, cardB) =>
-  party(MessageType.MEM_FLIP, fromId, "", toId, { cardA, cardB });
+export const makeMemFlip = (fromId, toId, cardA, cardB, seq = 0) =>
+  party(MessageType.MEM_FLIP, fromId, "", toId, { cardA, cardB, seq });
 export const makeMemForfeit = (a, b, c) => party(MessageType.MEM_FORFEIT, a, b, c);
 
 /**

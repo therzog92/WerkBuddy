@@ -1019,6 +1019,8 @@ void c4_drop(lv_event_t * e) {
   fill_msg_ids(m, g.opp_id);
   m.col = (int8_t)col;
   m.color = g.my_color;
+  g.seq++;
+  m.seq = g.seq;
   app::send(m);
   const int w = games::c4::winner(g.board);
   if (w >= 0) {
@@ -2473,6 +2475,8 @@ void mem_flip(lv_event_t * e) {
   fill_msg_ids(m, g.opp_id);
   m.card_a = g.flip_a;
   m.card_b = g.flip_b;
+    g.seq++;
+    m.seq = g.seq;
   app::send(m);
   app::schedule(700, mem_resolve_local, new MemResolveLocal{g.flip_a, g.flip_b});
   mem_update_board();

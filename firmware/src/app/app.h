@@ -90,6 +90,7 @@ struct C4Game {
   int8_t my_color = 0, opp_color = -1, turn = 0;
   int8_t board[games::c4::kRows][games::c4::kCols] = {};
   int8_t last_r = -1, last_c = -1;
+  uint8_t seq = 0;
 };
 
 struct BsGame {
@@ -129,6 +130,7 @@ struct MemGame {
   int8_t flip_a = -1, flip_b = -1; /* resolving pair */
   int8_t local_flip = -1;          /* my first face-up card */
   uint8_t my_score = 0, opp_score = 0;
+  uint8_t seq = 0;
 };
 
 struct RvGame {
