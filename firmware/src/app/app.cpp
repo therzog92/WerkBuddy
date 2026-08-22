@@ -879,9 +879,7 @@ void handle_msg(const proto::Msg & m) {
       /* Retransmit only: same disc we just applied, and it is already our turn.
        * A later drop in the same column is their next turn — after we move,
        * turn != my_color (and last_r/c is our disc), so that still applies. */
-      if (g.last_c == m.col && g.last_r >= 0 && g.last_r < games::c4::kRows &&
-          m.col >= 0 && m.col < games::c4::kCols &&
-          g.board[g.last_r][m.col] == color && g.turn == g.my_color)
+      if (g.over || g.turn == g.my_color)
         return;
       const int row = games::c4::drop(g.board, m.col, color);
       if (row < 0) return;

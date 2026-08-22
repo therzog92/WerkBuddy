@@ -60,21 +60,29 @@ void load(lv_obj_t * scr, Screen which, lv_scr_load_anim_t anim = LV_SCR_LOAD_AN
   const Screen prev = g_screen;
   lv_obj_t * old = lv_screen_active();
   g_screen = which;
+  const bool wash =
+      which == Screen::Incoming ||
+      (which == Screen::Timer && desk_timer::is_finished());
+
   /* Instant swap — animated loads + partial RGB strips look like a top-down wipe. */
   if (anim != LV_SCR_LOAD_ANIM_NONE) {
+    display_perf::prefer_full_frame(true);
+    app::schedule(300, [](void * ud) {
+      display_perf::prefer_full_frame((bool)(intptr_t)ud);
+    }, (void *)(intptr_t)wash);
     lv_screen_load_anim(scr, anim, 250, 0, true);
   } else if (old && old != scr) {
     lv_screen_load_anim(scr, LV_SCR_LOAD_ANIM_NONE, 0, 0, true);
   } else {
     lv_screen_load(scr);
   }
-  const bool wash =
-      which == Screen::Incoming ||
-      (which == Screen::Timer && desk_timer::is_finished());
+
   brightness::set_page_boost(which == Screen::Incoming || which == Screen::Outgoing ||
                              (which == Screen::Timer && desk_timer::is_finished()));
-  /* Full-frame only while a screen-wide color wash is animating. */
-  display_perf::prefer_full_frame(wash);
+  /* Full-frame only while a screen-wide color wash is animating or we are transitioning. */
+  if (anim == LV_SCR_LOAD_ANIM_NONE) {
+    display_perf::prefer_full_frame(wash);
+  }
   /* Leaving a board → Hub/Idle: flush games after paint, not mid-teardown. */
   if (is_game_board(prev) && !is_game_board(which)) app::games_persist_soon();
 }
