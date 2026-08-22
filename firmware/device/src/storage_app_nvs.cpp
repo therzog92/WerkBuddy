@@ -2,6 +2,7 @@
 
 #include "app/app.h"
 
+#include <LittleFS.h>
 #include <Preferences.h>
 #include <cstdio>
 #include <cstring>
@@ -161,15 +162,37 @@ void wipe() {
   prefs.end();
 }
 
-/* Preferences putBytes is capped ~4000B — chunk large game blobs. */
-constexpr size_t kChunk = 3500;
-constexpr int kMaxChunks = 8;
+/* Games blob uses LittleFS (sequential file write) instead of NVS Preferences.
+ * NVS putBytes locks the CPU data cache during flash programming, which starves
+ * the PSRAM-backed RGB framebuffer and causes a visible screen tear on every
+ * save.  LittleFS file I/O does NOT lock the data cache, so the panel keeps
+ * refreshing smoothly.
+ *
+ * On first boot after upgrade we transparently migrate the old NVS blob to
+ * LittleFS and clear the NVS keys so they don't waste flash space. */
+constexpr size_t kChunk    = 3500;  /* only used by migration path */
+constexpr int    kMaxChunks = 8;
+static const char * kGamesFile = "/werkpager_games.bin";
 
 bool load_games_blob(void * dst, size_t * len_io) {
   if (!dst || !len_io || !*len_io) return false;
-  if (!prefs.begin("werkpager", true)) return false;
+
+  /* ---- Normal path: LittleFS file ---- */
+  File f = LittleFS.open(kGamesFile, "r");
+  if (f) {
+    const size_t total = f.size();
+    if (total == 0 || total > *len_io) { f.close(); return false; }
+    const size_t n = f.read(static_cast<uint8_t *>(dst), total);
+    f.close();
+    if (n != total) return false;
+    *len_io = total;
+    return true;
+  }
+
+  /* ---- Migration: read old NVS blob, save to LittleFS, delete NVS keys ---- */
+  if (!prefs.begin("werkpager", false)) return false;
   const size_t total = (size_t)prefs.getUInt("glen", 0);
-  if (total == 0 || total > *len_io) {
+  if (total == 0 || total > *len_io || total > kChunk * kMaxChunks) {
     prefs.end();
     return false;
   }
@@ -180,54 +203,35 @@ bool load_games_blob(void * dst, size_t * len_io) {
     std::snprintf(key, sizeof(key), "g%d", i);
     const size_t want = total - got > kChunk ? kChunk : total - got;
     const size_t n = prefs.getBytes(key, out + got, want);
-    if (n != want) {
-      prefs.end();
-      return false;
-    }
+    if (n != want) { prefs.end(); return false; }
     got += n;
   }
-  prefs.end();
-  *len_io = got;
-  return got == total;
-}
-
-bool save_games_blob(const void * src, size_t len) {
-  if (!prefs.begin("werkpager", false)) return false;
-  if (!src || !len) {
-    prefs.putUInt("glen", 0);
-    for (int i = 0; i < kMaxChunks; ++i) {
-      char key[8];
-      std::snprintf(key, sizeof(key), "g%d", i);
-      prefs.remove(key);
-    }
-    prefs.end();
-    return true;
-  }
-  if (len > kChunk * kMaxChunks) {
-    prefs.end();
-    return false;
-  }
-  const auto * in = static_cast<const uint8_t *>(src);
-  size_t off = 0;
-  int i = 0;
-  for (; i < kMaxChunks && off < len; ++i) {
-    char key[8];
-    std::snprintf(key, sizeof(key), "g%d", i);
-    const size_t n = len - off > kChunk ? kChunk : len - off;
-    if (prefs.putBytes(key, in + off, n) != n) {
-      prefs.end();
-      return false;
-    }
-    off += n;
-  }
-  for (; i < kMaxChunks; ++i) {
+  /* Erase the NVS game chunks now that we have the data */
+  prefs.putUInt("glen", 0);
+  for (int i = 0; i < kMaxChunks; ++i) {
     char key[8];
     std::snprintf(key, sizeof(key), "g%d", i);
     prefs.remove(key);
   }
-  prefs.putUInt("glen", (uint32_t)len);
   prefs.end();
+
+  if (got != total) return false;
+  *len_io = got;
+  /* Persist to LittleFS so future boots skip NVS entirely */
+  save_games_blob(dst, got);
   return true;
+}
+
+bool save_games_blob(const void * src, size_t len) {
+  if (!src || !len) {
+    LittleFS.remove(kGamesFile);
+    return true;
+  }
+  File f = LittleFS.open(kGamesFile, "w");
+  if (!f) return false;
+  const size_t n = f.write(static_cast<const uint8_t *>(src), len);
+  f.close();
+  return n == len;
 }
 
 bool load_timer_blob(void * dst, size_t * len_io) {

@@ -289,7 +289,7 @@ void on_wordle_forfeit_yes(lv_event_t * /*e*/) {
     app::send(m);
   }
   app::end_focused();
-  go_game_back();
+  go_hub();
 }
 
 void submit_picked_word() {
