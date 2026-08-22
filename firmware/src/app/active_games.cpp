@@ -293,13 +293,12 @@ void schedule_persist() {
   g_persist_scheduled = true;
   schedule(400, [](void * /*ud*/) {
     g_persist_scheduled = false;
-    if (g_persist_dirty && !on_game_board_ui()) persist_now();
+    if (g_persist_dirty) persist_now();
   }, nullptr);
 }
 
 void forfeit_tick(lv_timer_t * /*t*/) {
-  /* NVS writes stall the RGB panel — defer so Hub/Idle paints settle first. */
-  if (g_persist_dirty && !on_game_board_ui()) schedule_persist();
+  if (g_persist_dirty) schedule_persist();
   const uint32_t now = mono_ms();
   resync_live_games(now);
   for (int i = 0; i < kMaxActiveGames; ++i) {
@@ -794,3 +793,5 @@ int list_sorted(int * out_indices, int max_out) {
 
 }  // namespace app
 }  // namespace wp
+
+

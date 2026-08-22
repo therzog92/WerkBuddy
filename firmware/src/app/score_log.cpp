@@ -12,7 +12,11 @@ namespace wp {
 namespace score_log {
 namespace {
 
+#ifdef WP_DEVICE
+const char * kFile = "/littlefs/werkpager_score_log.ini";
+#else
 const char * kFile = "werkpager_score_log.ini";
+#endif
 
 Entry g_entries[kMaxEntries] = {};
 int g_count = 0;
