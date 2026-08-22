@@ -1943,7 +1943,24 @@ void ck_tap(lv_event_t * e) {
     if (g.must_x < 0 && games::ck::side_of(g.board[y][x]) == g.side) {
       g.sel_x = (int8_t)x;
       g.sel_y = (int8_t)y;
-      go_checkers();
+      
+      lv_obj_t * cell = (lv_obj_t *)lv_event_get_target(e);
+      lv_obj_t * board = lv_obj_get_parent(cell);
+      if (board) {
+        for (int i = 0; i < 64; ++i) {
+          lv_obj_t * c = lv_obj_get_child(board, i);
+          if (!c) continue;
+          int cvx = i % 8, cvy = i / 8;
+          int cx = cvx, cy = cvy;
+          if (g.side == 'b') { cx = 7 - cvx; cy = 7 - cvy; }
+          if (g.sel_x == cx && g.sel_y == cy) {
+            lv_obj_set_style_border_width(c, 2, 0);
+            lv_obj_set_style_border_color(c, theme::gold(), 0);
+          } else {
+            lv_obj_set_style_border_width(c, 0, 0);
+          }
+        }
+      }
     }
     return;
   }
@@ -1951,7 +1968,24 @@ void ck_tap(lv_event_t * e) {
   if (games::ck::side_of(g.board[y][x]) == g.side) {
     g.sel_x = (int8_t)x;
     g.sel_y = (int8_t)y;
-    go_checkers();
+    
+    lv_obj_t * cell = (lv_obj_t *)lv_event_get_target(e);
+    lv_obj_t * board = lv_obj_get_parent(cell);
+    if (board) {
+      for (int i = 0; i < 64; ++i) {
+        lv_obj_t * c = lv_obj_get_child(board, i);
+        if (!c) continue;
+        int cvx = i % 8, cvy = i / 8;
+        int cx = cvx, cy = cvy;
+        if (g.side == 'b') { cx = 7 - cvx; cy = 7 - cvy; }
+        if (g.sel_x == cx && g.sel_y == cy) {
+          lv_obj_set_style_border_width(c, 2, 0);
+          lv_obj_set_style_border_color(c, theme::gold(), 0);
+        } else {
+          lv_obj_set_style_border_width(c, 0, 0);
+        }
+      }
+    }
   }
 }
 
