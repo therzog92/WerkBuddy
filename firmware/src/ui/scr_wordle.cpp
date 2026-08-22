@@ -7,6 +7,7 @@
 #include "games/wordle.h"
 #include "protocol/messages.h"
 #include "ui/chrome.h"
+#include "ui/emoji_badge.h"
 #include "ui/fonts.h"
 #include "ui/nav.h"
 #include "ui/theme.h"
@@ -24,10 +25,17 @@ using games::wordle::TileState;
 
 constexpr uint32_t kColorCorrect = 0x538d4e;  /* Classic Wordle Green */
 constexpr uint32_t kColorPresent = 0xb59f3b;  /* Classic Wordle Yellow */
-constexpr uint32_t kColorAbsent  = 0x3a3a3c;  /* Dark Gray */
-constexpr uint32_t kColorKeyDef  = 0x4a3a5a;  /* Keyboard default panel */
+constexpr uint32_t kColorAbsent = 0x3a3a3c;   /* Dark Gray */
+constexpr uint32_t kColorKeyDef = 0x4a3a5a;   /* Keyboard default panel */
 constexpr uint32_t kColorTileDef = 0x1e1628;  /* Empty tile fill */
-constexpr uint32_t kColorBorder  = 0x3d2c52;  /* Empty tile border */
+constexpr uint32_t kColorBorder = 0x3d2c52;   /* Empty tile border */
+
+lv_obj_t * g_wordle_scr = nullptr;
+lv_obj_t * g_pick_tiles[kWordLen] = {};
+lv_obj_t * g_pick_lbls[kWordLen] = {};
+lv_obj_t * g_guess_tiles[kMaxAttempts][kWordLen] = {};
+lv_obj_t * g_guess_lbls[kMaxAttempts][kWordLen] = {};
+lv_obj_t * g_key_btns[26] = {};
 
 void fill_msg_ids(proto::Msg & m, const char * to_id) {
   std::snprintf(m.from_id, sizeof(m.from_id), "%s", app::desk().id);
@@ -43,7 +51,7 @@ lv_color_t tile_bg_color(TileState s) {
   switch (s) {
     case TileState::Correct: return lv_color_hex(kColorCorrect);
     case TileState::Present: return lv_color_hex(kColorPresent);
-    case TileState::Absent:  return lv_color_hex(kColorAbsent);
+    case TileState::Absent: return lv_color_hex(kColorAbsent);
     case TileState::Tbd:
     case TileState::Empty:
     default:
@@ -55,13 +63,157 @@ lv_color_t key_bg_color(TileState s) {
   switch (s) {
     case TileState::Correct: return lv_color_hex(kColorCorrect);
     case TileState::Present: return lv_color_hex(kColorPresent);
-    case TileState::Absent:  return lv_color_hex(kColorAbsent);
+    case TileState::Absent: return lv_color_hex(kColorAbsent);
     case TileState::Tbd:
     case TileState::Empty:
     default:
       return lv_color_hex(kColorKeyDef);
   }
 }
+
+void clear_live_if_scr(lv_obj_t * scr) {
+  if (g_wordle_scr != scr) return;
+  g_wordle_scr = nullptr;
+  std::memset(g_pick_tiles, 0, sizeof(g_pick_tiles));
+  std::memset(g_pick_lbls, 0, sizeof(g_pick_lbls));
+  std::memset(g_guess_tiles, 0, sizeof(g_guess_tiles));
+  std::memset(g_guess_lbls, 0, sizeof(g_guess_lbls));
+  std::memset(g_key_btns, 0, sizeof(g_key_btns));
+}
+
+void on_wordle_scr_deleted(lv_event_t * e) {
+  clear_live_if_scr(static_cast<lv_obj_t *>(lv_event_get_target(e)));
+}
+
+void bind_wordle_scr(lv_obj_t * scr) {
+  g_wordle_scr = scr;
+  lv_obj_add_event_cb(scr, on_wordle_scr_deleted, LV_EVENT_DELETE, nullptr);
+}
+
+void paint_tile(lv_obj_t * tile, lv_obj_t * lbl, char letter, TileState s) {
+  if (!tile || !lbl) return;
+  lv_obj_set_style_bg_color(tile, tile_bg_color(s), 0);
+  lv_obj_set_style_border_color(
+      tile, s == TileState::Tbd ? theme::gold() : lv_color_hex(kColorBorder), 0);
+  char ch[2] = {letter ? letter : ' ', 0};
+  lv_label_set_text(lbl, ch);
+}
+
+void refresh_pick_tiles() {
+  app::WordleGame & g = app::wordle();
+  for (int i = 0; i < kWordLen; ++i) {
+    const bool filled = i < g.current_len;
+    paint_tile(g_pick_tiles[i], g_pick_lbls[i], filled ? g.current_input[i] : ' ',
+               filled ? TileState::Tbd : TileState::Empty);
+  }
+}
+
+void refresh_current_guess_row() {
+  app::WordleGame & g = app::wordle();
+  const int r = g.attempt_count;
+  if (r < 0 || r >= kMaxAttempts) return;
+  for (int c = 0; c < kWordLen; ++c) {
+    const bool filled = c < g.current_len;
+    paint_tile(g_guess_tiles[r][c], g_guess_lbls[r][c], filled ? g.current_input[c] : ' ',
+               filled ? TileState::Tbd : TileState::Empty);
+  }
+}
+
+void paint_guess_row(int r) {
+  app::WordleGame & g = app::wordle();
+  if (r < 0 || r >= kMaxAttempts) return;
+  for (int c = 0; c < kWordLen; ++c) {
+    paint_tile(g_guess_tiles[r][c], g_guess_lbls[r][c], g.attempts[r].word[c],
+               g.attempts[r].states[c]);
+  }
+}
+
+void paint_keyboard_keys() {
+  app::WordleGame & g = app::wordle();
+  for (int i = 0; i < 26; ++i) {
+    if (!g_key_btns[i]) continue;
+    lv_obj_set_style_bg_color(g_key_btns[i], key_bg_color(g.key_states[i]), 0);
+  }
+}
+
+bool live_pick() { return g_wordle_scr && g_pick_tiles[0]; }
+bool live_guess() { return g_wordle_scr && g_guess_tiles[0][0]; }
+
+void show_wordle_result(lv_obj_t * scr) {
+  app::WordleGame & g = app::wordle();
+  if (!scr || !g.over || g.result_dismissed) return;
+
+  lv_obj_t * ov = lv_obj_create(scr);
+  lv_obj_remove_style_all(ov);
+  lv_obj_set_size(ov, lv_pct(100), lv_pct(100));
+  lv_obj_add_flag(ov, LV_OBJ_FLAG_FLOATING);
+  lv_obj_add_flag(ov, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(ov, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(ov, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(ov, 180, 0);
+  lv_obj_align(ov, LV_ALIGN_CENTER, 0, 0);
+
+  lv_obj_t * card = lv_obj_create(ov);
+  lv_obj_remove_style_all(card);
+  lv_obj_set_size(card, 280, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_color(card, theme::panel(), 0);
+  lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(card, 16, 0);
+  lv_obj_set_style_pad_all(card, 18, 0);
+  lv_obj_set_style_border_width(card, 2, 0);
+  lv_obj_set_style_border_color(card, g.i_won ? theme::gold() : theme::hot(), 0);
+  lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(card, 10, 0);
+  lv_obj_center(card);
+
+  make_emoji_image(card, g.i_won ? "🎉" : "😢", 48);
+
+  lv_obj_t * head = lv_label_create(card);
+  lv_label_set_text(head, g.i_won ? "You Win!" : "Game Over");
+  lv_obj_set_style_text_color(head, g.i_won ? theme::gold() : theme::hot(), 0);
+  lv_obj_set_style_text_font(head, &lv_font_montserrat_20, 0);
+
+  lv_obj_t * word_lbl = lv_label_create(card);
+  char wbuf[64];
+  lv_snprintf(wbuf, sizeof(wbuf), "Target Word: %s", g.my_target);
+  lv_label_set_text(word_lbl, wbuf);
+  lv_obj_set_style_text_color(word_lbl, theme::ink(), 0);
+  lv_obj_set_style_text_font(word_lbl, &lv_font_montserrat_16, 0);
+
+  lv_obj_t * sub_lbl = lv_label_create(card);
+  char sbuf[96];
+  if (g.i_won) {
+    lv_snprintf(sbuf, sizeof(sbuf), "Guessed in %d tries!", g.attempt_count);
+  } else {
+    lv_snprintf(sbuf, sizeof(sbuf), "%s wins this round!", g.opp_name);
+  }
+  lv_label_set_text(sub_lbl, sbuf);
+  lv_obj_set_style_text_color(sub_lbl, theme::muted(), 0);
+  lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_14, 0);
+
+  lv_obj_t * btn_done = lv_button_create(card);
+  lv_obj_remove_style_all(btn_done);
+  lv_obj_set_size(btn_done, 120, 36);
+  lv_obj_set_style_radius(btn_done, 10, 0);
+  lv_obj_set_style_bg_color(btn_done, theme::gold(), 0);
+  lv_obj_set_style_bg_opa(btn_done, LV_OPA_COVER, 0);
+  lv_obj_t * d_lbl = lv_label_create(btn_done);
+  lv_label_set_text(d_lbl, "Done");
+  lv_obj_set_style_text_color(d_lbl, lv_color_hex(0x1a1220), 0);
+  lv_obj_center(d_lbl);
+
+  lv_obj_add_event_cb(
+      btn_done,
+      [](lv_event_t * /*e*/) {
+        app::WordleGame & g2 = app::wordle();
+        g2.result_dismissed = true;
+        app::end_focused();
+        go_game_back();
+      },
+      LV_EVENT_CLICKED, nullptr);
+}
+
 void on_wordle_forfeit_yes(lv_event_t * /*e*/) {
   app::WordleGame & g2 = app::wordle();
   if (g2.active) {
@@ -74,6 +226,7 @@ void on_wordle_forfeit_yes(lv_event_t * /*e*/) {
   app::end_focused();
   go_game_back();
 }
+
 void submit_picked_word() {
   app::WordleGame & g = app::wordle();
   if (!g.active || g.my_word_picked) return;
@@ -100,7 +253,20 @@ void submit_picked_word() {
   go_wordle();
 }
 
-void on_pick_key_click(lv_event_t * e) {
+void apply_letter(app::WordleGame & g, char ch) {
+  if (g.current_len >= kWordLen) return;
+  if (ch >= 'a' && ch <= 'z') ch = static_cast<char>(ch - 'a' + 'A');
+  g.current_input[g.current_len++] = ch;
+  g.current_input[g.current_len] = '\0';
+}
+
+void apply_del(app::WordleGame & g) {
+  if (g.current_len <= 0) return;
+  g.current_len--;
+  g.current_input[g.current_len] = '\0';
+}
+
+void on_pick_key(lv_event_t * e) {
   const char * key = (const char *)lv_event_get_user_data(e);
   if (!key || !key[0]) return;
   app::WordleGame & g = app::wordle();
@@ -109,113 +275,119 @@ void on_pick_key_click(lv_event_t * e) {
   if (std::strcmp(key, "ENTER") == 0) {
     submit_picked_word();
     return;
-  } else if (std::strcmp(key, "DEL") == 0 || std::strcmp(key, "BACK") == 0) {
-    if (g.current_len > 0) {
-      g.current_len--;
-      g.current_input[g.current_len] = '\0';
-    }
-  } else {
-    if (g.current_len < kWordLen) {
-      char ch = key[0];
-      if (ch >= 'a' && ch <= 'z') ch -= ('a' - 'A');
-      g.current_input[g.current_len++] = ch;
-      g.current_input[g.current_len] = '\0';
-    }
   }
-  go_wordle();
+  if (std::strcmp(key, "DEL") == 0 || std::strcmp(key, "BACK") == 0) {
+    apply_del(g);
+  } else {
+    apply_letter(g, key[0]);
+  }
+  if (live_pick())
+    refresh_pick_tiles();
+  else
+    go_wordle();
 }
 
-void on_guess_key_click(lv_event_t * e) {
+void submit_guess() {
+  app::WordleGame & g = app::wordle();
+  if (g.current_len < kWordLen) {
+    toast("5 letters required");
+    return;
+  }
+  g.current_input[kWordLen] = '\0';
+  if (!games::wordle::is_valid_word(g.current_input)) {
+    toast("Not in word list");
+    return;
+  }
+  if (g.attempt_count >= kMaxAttempts) return;
+
+  const int row = g.attempt_count;
+  std::memcpy(g.attempts[row].word, g.current_input, kWordLen);
+  g.attempts[row].word[kWordLen] = '\0';
+  games::wordle::evaluate_guess(g.current_input, g.my_target, g.attempts[row].states);
+  for (int i = 0; i < kWordLen; ++i) {
+    char ch = g.attempts[row].word[i];
+    if (ch >= 'A' && ch <= 'Z') {
+      int k_idx = ch - 'A';
+      TileState s = g.attempts[row].states[i];
+      if (s == TileState::Correct) {
+        g.key_states[k_idx] = TileState::Correct;
+      } else if (s == TileState::Present && g.key_states[k_idx] != TileState::Correct) {
+        g.key_states[k_idx] = TileState::Present;
+      } else if (s == TileState::Absent && g.key_states[k_idx] == TileState::Empty) {
+        g.key_states[k_idx] = TileState::Absent;
+      }
+    }
+  }
+  g.attempt_count++;
+  char target_u[6] = {};
+  for (int i = 0; i < kWordLen; ++i) {
+    char c = g.my_target[i];
+    if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+    target_u[i] = c;
+  }
+  const bool win = std::strncmp(g.current_input, target_u, kWordLen) == 0;
+  if (win) {
+    g.i_won = true;
+    g.over = true;
+    g.result_dismissed = false;
+    score_log::note("Wordle", g.opp_name, score_log::Outcome::Win);
+    proto::Msg m;
+    m.type = proto::MsgType::WordleResult;
+    fill_msg_ids(m, g.opp_id);
+    m.won = true;
+    m.attempts = (uint8_t)g.attempt_count;
+    app::send(m);
+  } else if (g.attempt_count >= kMaxAttempts) {
+    g.i_lost = true;
+    g.over = true;
+    g.result_dismissed = false;
+    score_log::note("Wordle", g.opp_name, score_log::Outcome::Lose);
+    proto::Msg m;
+    m.type = proto::MsgType::WordleResult;
+    fill_msg_ids(m, g.opp_id);
+    m.won = false;
+    m.attempts = (uint8_t)kMaxAttempts;
+    app::send(m);
+  }
+  g.current_len = 0;
+  g.current_input[0] = '\0';
+  app::games_mark_dirty();
+
+  if (live_guess()) {
+    paint_guess_row(row);
+    paint_keyboard_keys();
+    if (g.over) show_wordle_result(g_wordle_scr);
+  } else {
+    go_wordle();
+  }
+}
+
+void on_guess_key(lv_event_t * e) {
   const char * key = (const char *)lv_event_get_user_data(e);
   if (!key || !key[0]) return;
   app::WordleGame & g = app::wordle();
   if (!g.active || !g.my_word_picked || !g.opp_word_ready || g.over) return;
 
   if (std::strcmp(key, "ENTER") == 0) {
-    if (g.current_len < kWordLen) {
-      toast("5 letters required");
-      return;
-    }
-    g.current_input[kWordLen] = '\0';
-    if (!games::wordle::is_valid_word(g.current_input)) {
-      toast("Not in word list");
-      return;
-    }
-    if (g.attempt_count < kMaxAttempts) {
-      std::memcpy(g.attempts[g.attempt_count].word, g.current_input, kWordLen);
-      g.attempts[g.attempt_count].word[kWordLen] = '\0';
-      games::wordle::evaluate_guess(g.current_input, g.my_target, g.attempts[g.attempt_count].states);
-      for (int i = 0; i < kWordLen; ++i) {
-        char ch = g.attempts[g.attempt_count].word[i];
-        if (ch >= 'A' && ch <= 'Z') {
-          int k_idx = ch - 'A';
-          TileState s = g.attempts[g.attempt_count].states[i];
-          if (s == TileState::Correct) {
-            g.key_states[k_idx] = TileState::Correct;
-          } else if (s == TileState::Present && g.key_states[k_idx] != TileState::Correct) {
-            g.key_states[k_idx] = TileState::Present;
-          } else if (s == TileState::Absent && g.key_states[k_idx] == TileState::Empty) {
-            g.key_states[k_idx] = TileState::Absent;
-          }
-        }
-      }
-      g.attempt_count++;
-      char target_u[6] = {};
-      for (int i = 0; i < kWordLen; ++i) {
-        char c = g.my_target[i];
-        if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
-        target_u[i] = c;
-      }
-      bool win = std::strncmp(g.current_input, target_u, kWordLen) == 0;
-      if (win) {
-        g.i_won = true;
-        g.over = true;
-        g.result_dismissed = false;
-        score_log::note("Wordle", g.opp_name, score_log::Outcome::Win);
-        proto::Msg m;
-        m.type = proto::MsgType::WordleResult;
-        fill_msg_ids(m, g.opp_id);
-        m.won = true;
-        m.attempts = (uint8_t)g.attempt_count;
-        app::send(m);
-      } else if (g.attempt_count >= kMaxAttempts) {
-        g.i_lost = true;
-        g.over = true;
-        g.result_dismissed = false;
-        score_log::note("Wordle", g.opp_name, score_log::Outcome::Lose);
-        proto::Msg m;
-        m.type = proto::MsgType::WordleResult;
-        fill_msg_ids(m, g.opp_id);
-        m.won = false;
-        m.attempts = (uint8_t)kMaxAttempts;
-        app::send(m);
-      }
-      g.current_len = 0;
-      g.current_input[0] = '\0';
-      app::games_mark_dirty();
-    }
-  } else if (std::strcmp(key, "DEL") == 0 || std::strcmp(key, "BACK") == 0) {
-    if (g.current_len > 0) {
-      g.current_len--;
-      g.current_input[g.current_len] = '\0';
-      app::games_mark_dirty();
-    }
-  } else {
-    if (g.current_len < kWordLen) {
-      char ch = key[0];
-      if (ch >= 'a' && ch <= 'z') ch -= ('a' - 'A');
-      g.current_input[g.current_len++] = ch;
-      g.current_input[g.current_len] = '\0';
-      app::games_mark_dirty();
-    }
+    submit_guess();
+    return;
   }
-  go_wordle();
+  if (std::strcmp(key, "DEL") == 0 || std::strcmp(key, "BACK") == 0) {
+    apply_del(g);
+  } else {
+    apply_letter(g, key[0]);
+  }
+  if (live_guess())
+    refresh_current_guess_row();
+  else
+    go_wordle();
 }
 
 void make_wordle_keyboard(lv_obj_t * parent, lv_event_cb_t on_key, const TileState * key_states) {
   static const char * r1[] = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"};
   static const char * r2[] = {"A", "S", "D", "F", "G", "H", "J", "K", "L"};
   static const char * r3[] = {"ENTER", "Z", "X", "C", "V", "B", "N", "M", "DEL"};
+  std::memset(g_key_btns, 0, sizeof(g_key_btns));
 
   auto make_row = [&](const char ** keys, int count) {
     lv_obj_t * row = lv_obj_create(parent);
@@ -239,23 +411,23 @@ void make_wordle_keyboard(lv_obj_t * parent, lv_event_cb_t on_key, const TileSta
       TileState ks = TileState::Empty;
       if (!is_action && k[0] >= 'A' && k[0] <= 'Z' && key_states) {
         ks = key_states[k[0] - 'A'];
+        g_key_btns[k[0] - 'A'] = btn;
       }
-      
+
       if (std::strcmp(k, "ENTER") == 0 && key_states) {
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x2ecc71), 0); /* Vibrant Green */
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x2ecc71), 0);
         lv_obj_set_style_border_width(btn, 2, 0);
       } else {
         lv_obj_set_style_bg_color(btn, key_bg_color(ks), 0);
       }
-      
+
       lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-      lv_obj_add_event_cb(btn, on_key, LV_EVENT_CLICKED, (void *)k);
+      /* PRESSED so the letter lands on finger-down, not wait-for-release. */
+      lv_obj_add_event_cb(btn, on_key, LV_EVENT_PRESSED, (void *)k);
 
       lv_obj_t * lbl = lv_label_create(btn);
       lv_label_set_text(lbl, k);
-      
       lv_obj_set_style_text_color(lbl, lv_color_hex(0xffffff), 0);
-      
       lv_obj_set_style_text_font(lbl, is_action ? &lv_font_montserrat_12 : &lv_font_montserrat_16, 0);
       lv_obj_center(lbl);
     }
@@ -308,6 +480,21 @@ void wordle_challenge(lv_event_t * e) {
   fill_msg_ids(m, p.id);
   app::send(m);
   go_wordle();
+}
+
+lv_obj_t * make_letter_tile(lv_obj_t * row, int size, lv_obj_t ** out_lbl) {
+  lv_obj_t * tile = lv_obj_create(row);
+  lv_obj_remove_style_all(tile);
+  lv_obj_set_size(tile, size, size);
+  lv_obj_set_style_radius(tile, 4, 0);
+  lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(tile, 1, 0);
+  lv_obj_t * lbl = lv_label_create(tile);
+  lv_obj_set_style_text_color(lbl, lv_color_hex(0xffffff), 0);
+  lv_obj_set_style_text_font(lbl, size >= 40 ? &lv_font_montserrat_16 : &lv_font_montserrat_14, 0);
+  lv_obj_center(lbl);
+  if (out_lbl) *out_lbl = lbl;
+  return tile;
 }
 
 }  // namespace
@@ -411,6 +598,7 @@ lv_obj_t * game_wordle_screen() {
   /* —— State D: Phase 1 — Secret Word Picking for Opponent —— */
   if (g.active && !g.my_word_picked) {
     lv_obj_t * scr = make_screen();
+    bind_wordle_scr(scr);
     char sub[48];
     lv_snprintf(sub, sizeof(sub), "Pick word for %s", g.opp_name);
     make_topbar(scr, "WORDLE", app::desk().name, sub);
@@ -428,7 +616,6 @@ lv_obj_t * game_wordle_screen() {
     lv_obj_set_style_text_color(hint, theme::gold(), 0);
     lv_obj_set_style_text_font(hint, &lv_font_montserrat_16, 0);
 
-    /* 5 letter boxes */
     lv_obj_t * boxes = lv_obj_create(body);
     lv_obj_remove_style_all(boxes);
     lv_obj_set_size(boxes, lv_pct(100), 44);
@@ -438,30 +625,16 @@ lv_obj_t * game_wordle_screen() {
     lv_obj_remove_flag(boxes, LV_OBJ_FLAG_SCROLLABLE);
 
     for (int i = 0; i < kWordLen; ++i) {
-      lv_obj_t * tile = lv_obj_create(boxes);
-      lv_obj_remove_style_all(tile);
-      lv_obj_set_size(tile, 40, 42);
-      lv_obj_set_style_radius(tile, 6, 0);
-      lv_obj_set_style_bg_color(tile, lv_color_hex(kColorTileDef), 0);
-      lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
-      lv_obj_set_style_border_width(tile, 2, 0);
-      lv_obj_set_style_border_color(tile, i < g.current_len ? theme::gold() : lv_color_hex(kColorBorder), 0);
-
-      lv_obj_t * tlbl = lv_label_create(tile);
-      char ch_str[2] = {i < g.current_len ? g.current_input[i] : ' ', '\0'};
-      lv_label_set_text(tlbl, ch_str);
-      lv_obj_set_style_text_color(tlbl, lv_color_hex(0xffffff), 0);
-      lv_obj_set_style_text_font(tlbl, &lv_font_montserrat_16, 0);
-      lv_obj_center(tlbl);
+      g_pick_tiles[i] = make_letter_tile(boxes, 42, &g_pick_lbls[i]);
+      lv_obj_set_style_border_width(g_pick_tiles[i], 2, 0);
     }
+    refresh_pick_tiles();
 
-    make_wordle_keyboard(body, on_pick_key_click, nullptr);
+    make_wordle_keyboard(body, on_pick_key, nullptr);
 
     lv_obj_t * dock = make_dock(scr);
     dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) { show_forfeit_confirm(on_wordle_forfeit_yes); });
-    
     dock_btn(dock, "Submit", true, false, [](lv_event_t * /*e*/) { submit_picked_word(); });
-    
     return scr;
   }
 
@@ -516,6 +689,7 @@ lv_obj_t * game_wordle_screen() {
 
   /* —— State F: Phase 2 — Guessing Opponent's Word —— */
   lv_obj_t * scr = make_screen();
+  bind_wordle_scr(scr);
   char sub[48];
   lv_snprintf(sub, sizeof(sub), "vs. %s", g.opp_name);
   make_topbar(scr, "WORDLE", app::desk().name, sub);
@@ -526,7 +700,6 @@ lv_obj_t * game_wordle_screen() {
   lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-  /* 6×5 Board Grid */
   lv_obj_t * board = lv_obj_create(body);
   lv_obj_remove_style_all(board);
   lv_obj_set_size(board, 180, 206);
@@ -545,14 +718,9 @@ lv_obj_t * game_wordle_screen() {
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
 
     for (int c = 0; c < kWordLen; ++c) {
-      lv_obj_t * tile = lv_obj_create(row);
-      lv_obj_remove_style_all(tile);
-      lv_obj_set_size(tile, 32, 32);
-      lv_obj_set_style_radius(tile, 4, 0);
-
+      g_guess_tiles[r][c] = make_letter_tile(row, 32, &g_guess_lbls[r][c]);
       char letter = ' ';
       TileState tstate = TileState::Empty;
-
       if (r < g.attempt_count) {
         letter = g.attempts[r].word[c];
         tstate = g.attempts[r].states[c];
@@ -560,96 +728,17 @@ lv_obj_t * game_wordle_screen() {
         letter = g.current_input[c];
         tstate = TileState::Tbd;
       }
-
-      lv_obj_set_style_bg_color(tile, tile_bg_color(tstate), 0);
-      lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
-      lv_obj_set_style_border_width(tile, 1, 0);
-      lv_obj_set_style_border_color(
-          tile, tstate == TileState::Tbd ? theme::gold() : lv_color_hex(kColorBorder), 0);
-
-      lv_obj_t * tlbl = lv_label_create(tile);
-      char ch_str[2] = {letter, '\0'};
-      lv_label_set_text(tlbl, ch_str);
-      lv_obj_set_style_text_color(tlbl, lv_color_hex(0xffffff), 0);
-      lv_obj_set_style_text_font(tlbl, &lv_font_montserrat_14, 0);
-      lv_obj_center(tlbl);
+      paint_tile(g_guess_tiles[r][c], g_guess_lbls[r][c], letter, tstate);
     }
   }
 
-  make_wordle_keyboard(body, on_guess_key_click, g.key_states);
+  make_wordle_keyboard(body, on_guess_key, g.key_states);
 
   lv_obj_t * dock = make_dock(scr);
   dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) { show_forfeit_confirm(on_wordle_forfeit_yes); });
   dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_game_back(); });
 
-  /* Result overlay */
-  if (g.over && !g.result_dismissed) {
-    lv_obj_t * ov = lv_obj_create(scr);
-    lv_obj_remove_style_all(ov);
-    lv_obj_set_size(ov, lv_pct(100), lv_pct(100));
-    lv_obj_add_flag(ov, LV_OBJ_FLAG_FLOATING);
-    lv_obj_add_flag(ov, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_remove_flag(ov, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(ov, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(ov, 180, 0);
-    lv_obj_align(ov, LV_ALIGN_CENTER, 0, 0);
-
-    lv_obj_t * card = lv_obj_create(ov);
-    lv_obj_remove_style_all(card);
-    lv_obj_set_size(card, 280, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(card, theme::panel(), 0);
-    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 16, 0);
-    lv_obj_set_style_pad_all(card, 18, 0);
-    lv_obj_set_style_border_width(card, 2, 0);
-    lv_obj_set_style_border_color(card, g.i_won ? theme::gold() : theme::hot(), 0);
-    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(card, 10, 0);
-    lv_obj_center(card);
-
-    lv_obj_t * head = lv_label_create(card);
-    lv_label_set_text(head, g.i_won ? "You Win! 🎉" : "Game Over 😢");
-    lv_obj_set_style_text_color(head, g.i_won ? theme::gold() : theme::hot(), 0);
-    lv_obj_set_style_text_font(head, &lv_font_montserrat_20, 0);
-
-    lv_obj_t * word_lbl = lv_label_create(card);
-    char wbuf[64];
-    lv_snprintf(wbuf, sizeof(wbuf), "Target Word: %s", g.my_target);
-    lv_label_set_text(word_lbl, wbuf);
-    lv_obj_set_style_text_color(word_lbl, theme::ink(), 0);
-    lv_obj_set_style_text_font(word_lbl, &lv_font_montserrat_16, 0);
-
-    lv_obj_t * sub_lbl = lv_label_create(card);
-    char sbuf[96];
-    if (g.i_won) {
-      lv_snprintf(sbuf, sizeof(sbuf), "Guessed in %d tries!", g.attempt_count);
-    } else {
-      lv_snprintf(sbuf, sizeof(sbuf), "%s wins this round!", g.opp_name);
-    }
-    lv_label_set_text(sub_lbl, sbuf);
-    lv_obj_set_style_text_color(sub_lbl, theme::muted(), 0);
-    lv_obj_set_style_text_font(sub_lbl, &lv_font_montserrat_14, 0);
-
-    lv_obj_t * btn_done = lv_button_create(card);
-    lv_obj_remove_style_all(btn_done);
-    lv_obj_set_size(btn_done, 120, 36);
-    lv_obj_set_style_radius(btn_done, 10, 0);
-    lv_obj_set_style_bg_color(btn_done, theme::gold(), 0);
-    lv_obj_set_style_bg_opa(btn_done, LV_OPA_COVER, 0);
-    lv_obj_t * d_lbl = lv_label_create(btn_done);
-    lv_label_set_text(d_lbl, "Done");
-    lv_obj_set_style_text_color(d_lbl, lv_color_hex(0x1a1220), 0);
-    lv_obj_center(d_lbl);
-
-    lv_obj_add_event_cb(btn_done, [](lv_event_t * /*e*/) {
-      app::WordleGame & g2 = app::wordle();
-      g2.result_dismissed = true;
-      app::end_focused();
-      go_game_back();
-    }, LV_EVENT_CLICKED, nullptr);
-  }
-
+  if (g.over && !g.result_dismissed) show_wordle_result(scr);
   return scr;
 }
 
