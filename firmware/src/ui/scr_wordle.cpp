@@ -36,6 +36,42 @@ lv_obj_t * g_pick_lbls[kWordLen] = {};
 lv_obj_t * g_guess_tiles[kMaxAttempts][kWordLen] = {};
 lv_obj_t * g_guess_lbls[kMaxAttempts][kWordLen] = {};
 lv_obj_t * g_key_btns[26] = {};
+int g_pending_mode = -1; /* -1 pick mode, 0 classic, 1 race */
+
+bool my_done(const app::WordleGame & g) { return g.i_won || g.i_lost; }
+bool opp_done(const app::WordleGame & g) { return g.opp_won || g.opp_lost; }
+bool match_done(const app::WordleGame & g) {
+  if (g.race) return g.over;
+  return my_done(g) && opp_done(g);
+}
+
+lv_obj_t * make_wait_block(lv_obj_t * parent, const char * eye, const char * name, const char * sub) {
+  lv_obj_t * box = lv_obj_create(parent);
+  lv_obj_remove_style_all(box);
+  lv_obj_set_width(box, lv_pct(100));
+  lv_obj_set_flex_grow(box, 1);
+  lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(box, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(box, 8, 0);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t * e = lv_label_create(box);
+  lv_label_set_text(e, eye);
+  lv_obj_set_style_text_color(e, theme::mint(), 0);
+  lv_obj_set_style_text_font(e, &lv_font_montserrat_12, 0);
+
+  lv_obj_t * n = lv_label_create(box);
+  lv_label_set_text(n, name);
+  lv_obj_set_style_text_color(n, theme::gold(), 0);
+  lv_obj_set_style_text_font(n, font_display(52), 0);
+
+  lv_obj_t * s = lv_label_create(box);
+  lv_label_set_text(s, sub);
+  lv_obj_set_style_text_color(s, theme::muted(), 0);
+  lv_obj_set_style_text_align(s, LV_TEXT_ALIGN_CENTER, 0);
+  return box;
+}
 
 void fill_msg_ids(proto::Msg & m, const char * to_id) {
   std::snprintf(m.from_id, sizeof(m.from_id), "%s", app::desk().id);
@@ -141,7 +177,8 @@ bool live_guess() { return g_wordle_scr && g_guess_tiles[0][0]; }
 
 void show_wordle_result(lv_obj_t * scr) {
   app::WordleGame & g = app::wordle();
-  if (!scr || !g.over || g.result_dismissed) return;
+  if (!scr || g.result_dismissed) return;
+  if (!g.over && !match_done(g)) return;
 
   lv_obj_t * ov = lv_obj_create(scr);
   lv_obj_remove_style_all(ov);
@@ -161,17 +198,29 @@ void show_wordle_result(lv_obj_t * scr) {
   lv_obj_set_style_radius(card, 16, 0);
   lv_obj_set_style_pad_all(card, 18, 0);
   lv_obj_set_style_border_width(card, 2, 0);
-  lv_obj_set_style_border_color(card, g.i_won ? theme::gold() : theme::hot(), 0);
+  const bool you_ok = g.i_won;
+  lv_obj_set_style_border_color(card, you_ok ? theme::gold() : theme::hot(), 0);
   lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
   lv_obj_set_style_pad_row(card, 10, 0);
   lv_obj_center(card);
 
-  make_emoji_image(card, g.i_won ? "🎉" : "😢", 48);
+  make_emoji_image(card, you_ok ? "🎉" : "😢", 48);
 
   lv_obj_t * head = lv_label_create(card);
-  lv_label_set_text(head, g.i_won ? "You Win!" : "Game Over");
-  lv_obj_set_style_text_color(head, g.i_won ? theme::gold() : theme::hot(), 0);
+  const char * head_txt = "Game Over";
+  if (g.race) {
+    head_txt = you_ok ? "You Win!" : "Game Over";
+  } else if (match_done(g)) {
+    if (you_ok && g.opp_won) head_txt = "Both got it!";
+    else if (you_ok) head_txt = "You Win!";
+    else if (g.opp_lost) head_txt = "Both missed";
+    else head_txt = "Game Over";
+  } else {
+    head_txt = you_ok ? "You got it!" : "Out of tries";
+  }
+  lv_label_set_text(head, head_txt);
+  lv_obj_set_style_text_color(head, you_ok ? theme::gold() : theme::hot(), 0);
   lv_obj_set_style_text_font(head, &lv_font_montserrat_20, 0);
 
   lv_obj_t * word_lbl = lv_label_create(card);
@@ -183,10 +232,23 @@ void show_wordle_result(lv_obj_t * scr) {
 
   lv_obj_t * sub_lbl = lv_label_create(card);
   char sbuf[96];
-  if (g.i_won) {
-    lv_snprintf(sbuf, sizeof(sbuf), "Guessed in %d tries!", g.attempt_count);
+  if (g.race) {
+    if (you_ok) lv_snprintf(sbuf, sizeof(sbuf), "Guessed in %d tries!", g.attempt_count);
+    else if (g.opp_won) lv_snprintf(sbuf, sizeof(sbuf), "%s wins this round!", g.opp_name);
+    else lv_snprintf(sbuf, sizeof(sbuf), "Out of tries");
+  } else if (match_done(g)) {
+    char me[24], them[32];
+    if (you_ok) lv_snprintf(me, sizeof(me), "You: %d tries", g.attempt_count);
+    else lv_snprintf(me, sizeof(me), "You: missed");
+    if (g.opp_won && g.opp_attempts)
+      lv_snprintf(them, sizeof(them), "%s: %u tries", g.opp_name, (unsigned)g.opp_attempts);
+    else if (g.opp_won)
+      lv_snprintf(them, sizeof(them), "%s: got it", g.opp_name);
+    else
+      lv_snprintf(them, sizeof(them), "%s: missed", g.opp_name);
+    lv_snprintf(sbuf, sizeof(sbuf), "%s  ·  %s", me, them);
   } else {
-    lv_snprintf(sbuf, sizeof(sbuf), "%s wins this round!", g.opp_name);
+    lv_snprintf(sbuf, sizeof(sbuf), "Waiting for %s...", g.opp_name);
   }
   lv_label_set_text(sub_lbl, sbuf);
   lv_obj_set_style_text_color(sub_lbl, theme::muted(), 0);
@@ -208,8 +270,12 @@ void show_wordle_result(lv_obj_t * scr) {
       [](lv_event_t * /*e*/) {
         app::WordleGame & g2 = app::wordle();
         g2.result_dismissed = true;
-        app::end_focused();
-        go_game_back();
+        if (match_done(g2)) {
+          app::end_focused();
+          go_game_back();
+        } else {
+          go_wordle();
+        }
       },
       LV_EVENT_CLICKED, nullptr);
 }
@@ -472,12 +538,14 @@ void wordle_challenge(lv_event_t * e) {
   g = {};
   g.active = true;
   g.waiting = true;
+  g.race = g_pending_mode != 0;
   copy_str(g.opp_id, proto::kMaxId, p.id);
   copy_str(g.opp_name, proto::kMaxName, p.name);
 
   proto::Msg m;
   m.type = proto::MsgType::WordleInvite;
   fill_msg_ids(m, p.id);
+  m.wordle_mode = g.race ? 1 : 0;
   app::send(m);
   go_wordle();
 }
@@ -499,27 +567,49 @@ lv_obj_t * make_letter_tile(lv_obj_t * row, int size, lv_obj_t ** out_lbl) {
 
 }  // namespace
 
+void wordle_reset_setup() { g_pending_mode = -1; }
+
 lv_obj_t * game_wordle_screen() {
   const bool has_slot = app::has_focused(app::GameKind::Wordle);
   const bool is_inv = app::invite_active(app::GameKind::Wordle);
   app::WordleGame & g = app::wordle();
 
-  /* —— State A: Peer Picker (no active game) —— */
+  /* —— State A: Mode picker, then peer list —— */
   if (!has_slot || (!g.active && !is_inv)) {
     lv_obj_t * scr = make_screen();
-    make_topbar(scr, "WORDLE", app::desk().name, "Pick an opponent");
     lv_obj_t * body = make_body(scr, true);
-    make_tagline(body, "Challenge a peer to 2-Player Wordle");
-    const app::Desk & d = app::desk();
-    if (d.peer_count == 0) make_tagline(body, "No saved desks - add one in Settings.");
-    for (int i = 0; i < d.peer_count; ++i) {
-      char sub[24];
-      const char * st = app::peer_presence_subtitle(i, sub, sizeof(sub));
-      lv_obj_t * btn = make_peer_btn(body, d.peers[i].name, st, wordle_challenge, (void *)(intptr_t)i);
-      if (!app::peer_present_idx(i)) lv_obj_set_style_opa(btn, LV_OPA_50, 0);
-    }
     lv_obj_t * dock = make_dock(scr);
-    dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_game_back(); });
+    if (g_pending_mode < 0) {
+      make_topbar(scr, "WORDLE", app::desk().name, "Pick a mode");
+      make_tagline(body, "How do you want to play?");
+      make_peer_btn(body, "Classic", "Two games at once - each guesses the other's word",
+                    [](lv_event_t * /*e*/) {
+                      g_pending_mode = 0;
+                      go_wordle();
+                    }, nullptr);
+      make_peer_btn(body, "Race", "First to guess the secret wins the match",
+                    [](lv_event_t * /*e*/) {
+                      g_pending_mode = 1;
+                      go_wordle();
+                    }, nullptr);
+      dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_game_back(); });
+    } else {
+      make_topbar(scr, "WORDLE", app::desk().name, g_pending_mode ? "Race" : "Classic");
+      make_tagline(body, g_pending_mode ? "Challenge a peer to a Wordle race"
+                                       : "Challenge a peer to Classic Wordle");
+      const app::Desk & d = app::desk();
+      if (d.peer_count == 0) make_tagline(body, "No saved desks - add one in Settings.");
+      for (int i = 0; i < d.peer_count; ++i) {
+        char sub[24];
+        const char * st = app::peer_presence_subtitle(i, sub, sizeof(sub));
+        lv_obj_t * btn = make_peer_btn(body, d.peers[i].name, st, wordle_challenge, (void *)(intptr_t)i);
+        if (!app::peer_present_idx(i)) lv_obj_set_style_opa(btn, LV_OPA_50, 0);
+      }
+      dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) {
+        g_pending_mode = -1;
+        go_wordle();
+      });
+    }
     return scr;
   }
 
@@ -527,37 +617,11 @@ lv_obj_t * game_wordle_screen() {
   if (is_inv) {
     app::Invite & inv = app::invite_ref(app::GameKind::Wordle);
     lv_obj_t * scr = make_screen();
-    char sub[48];
-    lv_snprintf(sub, sizeof(sub), "vs. %s", inv.from_name);
-    make_topbar(scr, "WORDLE", app::desk().name, sub);
-    lv_obj_t * body = make_body(scr, false);
-    lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(body, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t * msg = lv_label_create(body);
-    char prompt[96];
-    lv_snprintf(prompt, sizeof(prompt), "%s challenged you to 2P Wordle!", inv.from_name);
-    lv_label_set_text(msg, prompt);
-    lv_obj_set_style_text_color(msg, theme::gold(), 0);
-    lv_obj_set_style_text_font(msg, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_align(msg, LV_TEXT_ALIGN_CENTER, 0);
-
+    make_topbar(scr, "WORDLE", app::desk().name);
+    lv_obj_t * body = make_body(scr, true);
+    make_wait_block(body, "GAME INVITE", inv.from_name,
+                    inv.wordle_mode ? "wants a Wordle race" : "wants to play Wordle");
     lv_obj_t * dock = make_dock(scr);
-    dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
-      app::Invite & inv2 = app::invite_ref(app::GameKind::Wordle);
-      app::WordleGame & g2 = app::wordle();
-      g2 = {};
-      g2.active = true;
-      g2.waiting = false;
-      copy_str(g2.opp_id, proto::kMaxId, inv2.from_id);
-      copy_str(g2.opp_name, proto::kMaxName, inv2.from_name);
-      proto::Msg m;
-      m.type = proto::MsgType::WordleAccept;
-      fill_msg_ids(m, inv2.from_id);
-      app::send(m);
-      app::accept_invite(app::GameKind::Wordle);
-      go_wordle();
-    });
     dock_btn(dock, "Decline", false, true, [](lv_event_t * /*e*/) {
       app::Invite & inv2 = app::invite_ref(app::GameKind::Wordle);
       proto::Msg m;
@@ -567,31 +631,36 @@ lv_obj_t * game_wordle_screen() {
       app::end_focused();
       go_game_back();
     });
+    dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
+      app::Invite & inv2 = app::invite_ref(app::GameKind::Wordle);
+      app::WordleGame & g2 = app::wordle();
+      g2 = {};
+      g2.active = true;
+      g2.waiting = false;
+      g2.race = inv2.wordle_mode != 0;
+      copy_str(g2.opp_id, proto::kMaxId, inv2.from_id);
+      copy_str(g2.opp_name, proto::kMaxName, inv2.from_name);
+      proto::Msg m;
+      m.type = proto::MsgType::WordleAccept;
+      fill_msg_ids(m, inv2.from_id);
+      app::send(m);
+      app::accept_invite(app::GameKind::Wordle);
+      go_wordle();
+    });
     return scr;
   }
 
   /* —— State C: Outgoing Challenge Waiting —— */
   if (g.active && g.waiting) {
     lv_obj_t * scr = make_screen();
-    char sub[48];
-    lv_snprintf(sub, sizeof(sub), "vs. %s", g.opp_name);
-    make_topbar(scr, "WORDLE", app::desk().name, sub);
-    lv_obj_t * body = make_body(scr, false);
-    lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(body, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t * msg = lv_label_create(body);
-    char prompt[96];
-    lv_snprintf(prompt, sizeof(prompt), "Waiting for %s to accept...", g.opp_name);
-    lv_label_set_text(msg, prompt);
-    lv_obj_set_style_text_color(msg, theme::mint(), 0);
-    lv_obj_set_style_text_font(msg, &lv_font_montserrat_20, 0);
-
+    make_topbar(scr, "WORDLE", app::desk().name, g.race ? "Race" : "Classic");
+    lv_obj_t * body = make_body(scr, true);
+    make_wait_block(body, "CHALLENGE SENT", g.opp_name, "Waiting for them to accept...");
     lv_obj_t * dock = make_dock(scr);
     dock_btn(dock, "Cancel", false, true, [](lv_event_t * /*e*/) {
       app::cancel_slot(app::focus_index());
     });
-    dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_game_back(); });
+    dock_btn(dock, "Home", false, false, [](lv_event_t * /*e*/) { go_hub(); });
     return scr;
   }
 
@@ -600,7 +669,7 @@ lv_obj_t * game_wordle_screen() {
     lv_obj_t * scr = make_screen();
     bind_wordle_scr(scr);
     char sub[48];
-    lv_snprintf(sub, sizeof(sub), "Pick word for %s", g.opp_name);
+    lv_snprintf(sub, sizeof(sub), "%s · pick for %s", g.race ? "Race" : "Classic", g.opp_name);
     make_topbar(scr, "WORDLE", app::desk().name, sub);
 
     lv_obj_t * body = make_body(scr, false);
@@ -691,7 +760,7 @@ lv_obj_t * game_wordle_screen() {
   lv_obj_t * scr = make_screen();
   bind_wordle_scr(scr);
   char sub[48];
-  lv_snprintf(sub, sizeof(sub), "vs. %s", g.opp_name);
+  lv_snprintf(sub, sizeof(sub), "%s vs %s", g.race ? "Race" : "Classic", g.opp_name);
   make_topbar(scr, "WORDLE", app::desk().name, sub);
 
   lv_obj_t * body = make_body(scr, false);
@@ -738,7 +807,16 @@ lv_obj_t * game_wordle_screen() {
   dock_btn(dock, "Forfeit", false, true, [](lv_event_t * /*e*/) { show_forfeit_confirm(on_wordle_forfeit_yes); });
   dock_btn(dock, "Back", false, false, [](lv_event_t * /*e*/) { go_game_back(); });
 
-  if (g.over && !g.result_dismissed) show_wordle_result(scr);
+  if (g.over && g.result_dismissed && !match_done(g)) {
+    lv_obj_t * wait = lv_label_create(body);
+    char wbuf[64];
+    lv_snprintf(wbuf, sizeof(wbuf), "Waiting for %s to finish...", g.opp_name);
+    lv_label_set_text(wait, wbuf);
+    lv_obj_set_style_text_color(wait, theme::mint(), 0);
+    lv_obj_set_style_text_font(wait, &lv_font_montserrat_14, 0);
+  }
+
+  if ((g.over || match_done(g)) && !g.result_dismissed) show_wordle_result(scr);
   return scr;
 }
 

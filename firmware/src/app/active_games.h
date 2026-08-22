@@ -45,6 +45,10 @@ void games_persist_soon();
 bool games_restore();
 /** Ask each live opponent whether they still have the match (clears stale NVS games). */
 void games_probe_peers();
+/** Remember last outbound game payload so dropped ESP-NOW packets can retry. */
+void note_sent_game(const proto::Msg & msg);
+/** Rebuild+send Accept (challenger retried an invite we already took). */
+void send_accept(GameKind kind, const char * to_id);
 
 int active_count();
 int your_turn_count();

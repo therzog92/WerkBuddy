@@ -24,6 +24,12 @@ lv_timer_t * g_forfeit_timer = nullptr;
 bool g_persist_dirty = false;
 bool g_persist_scheduled = false;
 
+/* Last outbound game packet per slot — RAM only (not in the NVS blob). */
+proto::Msg g_last_out[kMaxActiveGames];
+bool g_last_out_ok[kMaxActiveGames] = {};
+uint32_t g_last_out_ms[kMaxActiveGames] = {};
+constexpr uint32_t kResyncMs = 3000;
+
 constexpr uint32_t kGamesMagic = 0x31414757u; /* WGA1 */
 constexpr uint16_t kGamesVersion = 2;
 
@@ -150,6 +156,52 @@ void send_forfeit(GameKind k, const char * to_id) {
   send(m);
 }
 
+GameKind kind_of_out(proto::MsgType t) {
+  using T = proto::MsgType;
+  switch (t) {
+    case T::TttInvite:
+    case T::TttAccept:
+    case T::TttMove: return GameKind::Ttt;
+    case T::StttInvite:
+    case T::StttAccept:
+    case T::StttMove: return GameKind::Sttt;
+    case T::C4Invite:
+    case T::C4Accept:
+    case T::C4Drop: return GameKind::C4;
+    case T::BsInvite:
+    case T::BsAccept:
+    case T::BsReady:
+    case T::BsFire:
+    case T::BsResult: return GameKind::Bs;
+    case T::CkInvite:
+    case T::CkAccept:
+    case T::CkMove: return GameKind::Ck;
+    case T::MemInvite:
+    case T::MemAccept:
+    case T::MemFlip: return GameKind::Mem;
+    case T::RvInvite:
+    case T::RvAccept:
+    case T::RvMove: return GameKind::Rv;
+    case T::DbInvite:
+    case T::DbAccept:
+    case T::DbLine: return GameKind::Db;
+    case T::WordleInvite:
+    case T::WordleAccept:
+    case T::WordleWord:
+    case T::WordleResult: return GameKind::Wordle;
+    default: return GameKind::Count;
+  }
+}
+
+bool is_cached_out(proto::MsgType t) { return kind_of_out(t) != GameKind::Count; }
+
+void clear_last_out(int idx) {
+  if (idx < 0 || idx >= kMaxActiveGames) return;
+  g_last_out[idx] = proto::Msg{};
+  g_last_out_ok[idx] = false;
+  g_last_out_ms[idx] = 0;
+}
+
 void send_decline(GameKind k, const char * to_id) {
   proto::Msg m;
   switch (k) {
@@ -182,6 +234,26 @@ bool outgoing_wait(const GameSlot & s) {
     case GameKind::Db: return s.g.db.active && s.g.db.waiting;
     case GameKind::Wordle: return s.g.wordle.active && s.g.wordle.waiting;
     default: return false;
+  }
+}
+
+bool is_invite_out(proto::MsgType t) {
+  using T = proto::MsgType;
+  return t == T::TttInvite || t == T::StttInvite || t == T::C4Invite || t == T::BsInvite ||
+         t == T::CkInvite || t == T::MemInvite || t == T::RvInvite || t == T::DbInvite ||
+         t == T::WordleInvite;
+}
+
+void resync_live_games(uint32_t now) {
+  for (int i = 0; i < kMaxActiveGames; ++i) {
+    if (!g_last_out_ok[i]) continue;
+    GameSlot & s = g_slots[i];
+    if (!slot_live(s) || s.invite_pending) continue;
+    if (now - g_last_out_ms[i] < kResyncMs) continue;
+    /* Keep last move/result even after local game-over — peer may have missed
+     * the winning packet. Stop invite retries once they have accepted. */
+    if (is_invite_out(g_last_out[i].type) && !outgoing_wait(s)) continue;
+    send(g_last_out[i]);
   }
 }
 
@@ -229,6 +301,7 @@ void forfeit_tick(lv_timer_t * /*t*/) {
   /* NVS writes stall the RGB panel — defer so Hub/Idle paints settle first. */
   if (g_persist_dirty && !on_game_board_ui()) schedule_persist();
   const uint32_t now = mono_ms();
+  resync_live_games(now);
   for (int i = 0; i < kMaxActiveGames; ++i) {
     GameSlot & s = g_slots[i];
     if (!slot_live(s) || s.invite_pending) continue;
@@ -306,7 +379,10 @@ bool restore_now() {
     }
   }
 
-  for (int i = 0; i < kMaxActiveGames; ++i) g_slots[i] = GameSlot{};
+  for (int i = 0; i < kMaxActiveGames; ++i) {
+    g_slots[i] = GameSlot{};
+    clear_last_out(i);
+  }
   g_focus = -1;
 
   const uint32_t now = mono_ms();
@@ -344,7 +420,9 @@ bool slot_is_over(const GameSlot & s) {
     case GameKind::Mem: return s.g.mem.over;
     case GameKind::Rv: return s.g.rv.over;
     case GameKind::Db: return s.g.db.over;
-    case GameKind::Wordle: return s.g.wordle.over;
+    case GameKind::Wordle:
+      if (s.g.wordle.race) return s.g.wordle.over;
+      return (s.g.wordle.i_won || s.g.wordle.i_lost) && (s.g.wordle.opp_won || s.g.wordle.opp_lost);
     default: return false;
   }
 }
@@ -379,7 +457,41 @@ void games_probe_peers() {
 
 void games_init() {
   if (restore_now()) games_probe_peers();
-  if (!g_forfeit_timer) g_forfeit_timer = lv_timer_create(forfeit_tick, 5000, nullptr);
+  if (!g_forfeit_timer) g_forfeit_timer = lv_timer_create(forfeit_tick, 3000, nullptr);
+}
+
+void note_sent_game(const proto::Msg & msg) {
+  if (!is_cached_out(msg.type) || !msg.to_id[0]) return;
+  const GameKind k = kind_of_out(msg.type);
+  const int idx = find_slot(k, msg.to_id);
+  if (idx < 0) return;
+  g_last_out[idx] = msg;
+  g_last_out_ok[idx] = true;
+  g_last_out_ms[idx] = mono_ms();
+}
+
+void send_accept(GameKind k, const char * to_id) {
+  proto::Msg m;
+  switch (k) {
+    case GameKind::Ttt: m.type = proto::MsgType::TttAccept; break;
+    case GameKind::Sttt: m.type = proto::MsgType::StttAccept; break;
+    case GameKind::C4: m.type = proto::MsgType::C4Accept; break;
+    case GameKind::Bs: m.type = proto::MsgType::BsAccept; break;
+    case GameKind::Ck: m.type = proto::MsgType::CkAccept; break;
+    case GameKind::Mem: m.type = proto::MsgType::MemAccept; break;
+    case GameKind::Rv: m.type = proto::MsgType::RvAccept; break;
+    case GameKind::Db: m.type = proto::MsgType::DbAccept; break;
+    case GameKind::Wordle: m.type = proto::MsgType::WordleAccept; break;
+    default: return;
+  }
+  fill_from(m);
+  copy_str(m.to_id, sizeof(m.to_id), to_id);
+  if (k == GameKind::C4) {
+    const int idx = find_slot(k, to_id);
+    GameSlot * s = slot_at(idx);
+    if (s) m.color = s->g.c4.my_color;
+  }
+  send(m);
 }
 
 int active_count() {
@@ -425,6 +537,7 @@ int alloc_slot(GameKind kind) {
   for (int i = 0; i < kMaxActiveGames; ++i) {
     if (g_slots[i].used && slot_live(g_slots[i])) continue;
     g_slots[i] = GameSlot{};
+    clear_last_out(i);
     g_slots[i].used = true;
     g_slots[i].kind = kind;
     g_slots[i].turn_started_ms = mono_ms();
@@ -437,13 +550,17 @@ int alloc_slot(GameKind kind) {
 void free_slot(int idx) {
   if (idx < 0 || idx >= kMaxActiveGames) return;
   g_slots[idx] = GameSlot{};
+  clear_last_out(idx);
   if (g_focus == idx) g_focus = -1;
   /* Immediate persist so idle/wake NVS snapshot cannot revive a dropped match. */
   persist_now();
 }
 
 void clear_all_games() {
-  for (int i = 0; i < kMaxActiveGames; ++i) g_slots[i] = GameSlot{};
+  for (int i = 0; i < kMaxActiveGames; ++i) {
+    g_slots[i] = GameSlot{};
+    clear_last_out(i);
+  }
   g_focus = -1;
   persist_now();
 }

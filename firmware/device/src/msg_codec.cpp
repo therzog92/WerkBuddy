@@ -61,7 +61,6 @@ bool is_peer_ctrl(proto::MsgType t) {
     case T::DbAccept:
     case T::DbDecline:
     case T::DbForfeit:
-    case T::WordleInvite:
     case T::WordleAccept:
     case T::WordleDecline:
     case T::WordleForfeit:
@@ -307,6 +306,13 @@ int pack_msg(const proto::Msg & msg, const uint8_t own_mac[6], uint8_t * out, si
     return (int)need;
   }
 
+  if (type == T::WordleInvite) {
+    if (out_len < kInviteFirstSize) return -1;
+    if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
+    out[26] = msg.wordle_mode ? 1 : 0;
+    return (int)kInviteFirstSize;
+  }
+
   if (type == T::WordleWord) {
     if (out_len < kWordleWordSize) return -1;
     if (pack_peer_hdr(type, own_mac, to, msg.from_name, out, out_len) < 0) return -1;
@@ -521,6 +527,13 @@ bool unpack_msg(const uint8_t * data, size_t len, proto::Msg * out) {
     const size_t need = kDoodleStrokeHdr + (size_t)m.n_pts * 2;
     if (len < need) return false;
     if (m.n_pts) std::memcpy(m.pts, data + 33, (size_t)m.n_pts * 2);
+    *out = m;
+    return true;
+  }
+
+  if (m.type == T::WordleInvite) {
+    if (len < kPeerHdrSize || !unpack_peer_hdr(data, len, &m)) return false;
+    m.wordle_mode = (len >= kInviteFirstSize) ? data[26] : 1;
     *out = m;
     return true;
   }

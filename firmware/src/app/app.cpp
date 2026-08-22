@@ -230,7 +230,13 @@ GameSlot * receive_invite(GameKind kind, const proto::Msg & m, int & idx) {
   const int old_idx = find_slot(kind, m.from_id);
   if (old_idx >= 0) {
     GameSlot * old = slot_at(old_idx);
-    if (old && slot_is_over(*old)) free_slot(old_idx);
+    if (old && slot_is_over(*old)) {
+      free_slot(old_idx);
+    } else if (old && slot_is_live(*old) && !old->invite_pending && !is_outgoing_wait(*old)) {
+      /* Invite retry after we already accepted — they never got Accept. */
+      send_accept(kind, m.from_id);
+      return nullptr;
+    }
   }
 
   if (!can_start(kind, m.from_id)) return nullptr;
@@ -246,6 +252,7 @@ GameSlot * receive_invite(GameKind kind, const proto::Msg & m, int & idx) {
       (m.color >= 0 && m.color < games::c4::kColorCount) ? m.color : 0;
   slot->invite.seed = m.seed;
   slot->invite.first = m.first;
+  slot->invite.wordle_mode = m.wordle_mode;
   set_focus(idx);
   /* Build game UI next tick — sync go_* from ESP-NOW poll nested too deep and
    * froze touch (especially when the desk was on the idle lock screen). */
@@ -615,7 +622,10 @@ void adjust_clock_days(int days) {
   note_clock_synced();
 }
 
-void send(const proto::Msg & msg) { net::link_send(msg); }
+void send(const proto::Msg & msg) {
+  net::link_send(msg);
+  note_sent_game(msg);
+}
 
 namespace {
 
@@ -866,6 +876,13 @@ void handle_msg(const proto::Msg & m) {
       if (!slot || slot->invite_pending) return;
       C4Game & g = slot->g.c4;
       const int8_t color = m.color >= 0 ? m.color : g.opp_color;
+      /* Retransmit only: same disc we just applied, and it is already our turn.
+       * A later drop in the same column is their next turn — after we move,
+       * turn != my_color (and last_r/c is our disc), so that still applies. */
+      if (g.last_c == m.col && g.last_r >= 0 && g.last_r < games::c4::kRows &&
+          m.col >= 0 && m.col < games::c4::kCols &&
+          g.board[g.last_r][m.col] == color && g.turn == g.my_color)
+        return;
       const int row = games::c4::drop(g.board, m.col, color);
       if (row < 0) return;
       g.last_r = (int8_t)row;
@@ -924,6 +941,7 @@ void handle_msg(const proto::Msg & m) {
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       BsGame & g = slot->g.bs;
+      if (g.opp_ready || !g.setup) return;
       g.opp_ready = true;
       maybe_start_bs_battle(g);
       finish_remote_move(idx, GameKind::Bs, m.from_id, g.opp_name,
@@ -940,6 +958,19 @@ void handle_msg(const proto::Msg & m) {
       if (!g.active || g.setup || m.x < 0 || m.x >= games::bs::kGrid || m.y < 0 ||
           m.y >= games::bs::kGrid)
         return;
+      if (g.fleet.grid[m.y][m.x] == games::bs::kHitCell || g.fleet_miss[m.y][m.x]) {
+        proto::Msg r;
+        r.type = proto::MsgType::BsResult;
+        copy_str(r.from_id, proto::kMaxId, d.id);
+        copy_str(r.to_id, proto::kMaxId, m.from_id);
+        r.x = m.x;
+        r.y = m.y;
+        r.hit = g.fleet.grid[m.y][m.x] == games::bs::kHitCell;
+        r.sunk = false;
+        r.game_over = g.over;
+        send(r);
+        return;
+      }
       const auto res = games::bs::resolve_fire(g.fleet, m.x, m.y);
       if (!res.hit) g.fleet_miss[m.y][m.x] = true;
 
@@ -1030,6 +1061,9 @@ void handle_msg(const proto::Msg & m) {
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       CkGame & g = slot->g.ck;
+      if (m.from_x < 0 || m.from_x >= games::ck::kSize || m.from_y < 0 ||
+          m.from_y >= games::ck::kSize || !g.board[m.from_y][m.from_x])
+        return;
       games::ck::Move mv{m.from_x, m.from_y, m.to_x, m.to_y,
                          (int8_t)(m.to_x - m.from_x) == 2 || (int8_t)(m.from_x - m.to_x) == 2};
       games::ck::apply_move(g.board, mv);
@@ -1099,6 +1133,11 @@ void handle_msg(const proto::Msg & m) {
       if (m.card_a < 0 || m.card_a >= games::mem::kCards || m.card_b < 0 ||
           m.card_b >= games::mem::kCards)
         return;
+      if (g.matched[m.card_a] || g.matched[m.card_b]) return;
+      if (g.lock && ((g.flip_a == m.card_a && g.flip_b == m.card_b) ||
+                     (g.flip_a == m.card_b && g.flip_b == m.card_a)))
+        return;
+      if (!g.lock && g.flip_a < 0 && g.my_turn) return;
       g.flip_a = m.card_a;
       g.flip_b = m.card_b;
       g.local_flip = -1;
@@ -1148,7 +1187,9 @@ void handle_msg(const proto::Msg & m) {
       RvGame & g = slot->g.rv;
       const int8_t opp = (g.my_color == games::rv::kBlack) ? games::rv::kWhite : games::rv::kBlack;
       if (m.x < 0 && m.y < 0) {
-        /* Pass — board unchanged */
+        /* Duplicate pass: already our turn, or we already auto-passed back. */
+        if (g.turn == g.my_color) return;
+        if (g.turn == opp && !games::rv::any_move(g.board, g.my_color)) return;
       } else if (!games::rv::apply(g.board, m.x, m.y, opp)) {
         return;
       }
@@ -1287,15 +1328,20 @@ void handle_msg(const proto::Msg & m) {
       GameSlot * slot = slot_at(idx);
       if (!slot || slot->invite_pending) return;
       WordleGame & g = slot->g.wordle;
+      if ((m.won && g.opp_won) || (!m.won && g.opp_lost)) return;
+      g.opp_attempts = m.attempts;
       if (m.won) {
-        if (!g.over) {
-          g.opp_won = true;
+        g.opp_won = true;
+        if (g.race && !g.over) {
           g.over = true;
           g.result_dismissed = false;
           score_log::note("Wordle", g.opp_name, score_log::Outcome::Lose);
+        } else if (!g.race && (g.i_won || g.i_lost)) {
+          g.result_dismissed = false;
         }
       } else {
         g.opp_lost = true;
+        if (!g.race && (g.i_won || g.i_lost)) g.result_dismissed = false;
       }
       finish_remote_move(idx, GameKind::Wordle, m.from_id, g.opp_name, false);
       return;

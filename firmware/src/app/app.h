@@ -24,7 +24,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "1.0";
+constexpr const char * kFirmwareVersion = "1.1";
 /** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
 const char * firmware_version();
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
@@ -59,6 +59,7 @@ struct Invite {
   char from_name[proto::kMaxName] = {};
   int8_t color = -1;  /* c4 */
   uint32_t seed = 0;  /* memory */
+  uint8_t wordle_mode = 0; /* 0 classic, 1 race */
 };
 
 /** Coin flip for who goes first when we are the challenger. */
@@ -152,6 +153,8 @@ struct WordleGame {
   bool active = false, waiting = false, over = false, result_dismissed = false;
   char opp_id[proto::kMaxId] = {};
   char opp_name[proto::kMaxName] = {};
+  /** true = first to guess wins the match; false = two independent puzzles. */
+  bool race = false;
   /* Word picking state */
   bool my_word_picked = false;
   char word_for_opp[6] = {};
@@ -166,6 +169,7 @@ struct WordleGame {
   bool i_lost = false;
   bool opp_won = false;
   bool opp_lost = false;
+  uint8_t opp_attempts = 0;
   games::wordle::TileState key_states[26] = {};
 };
 

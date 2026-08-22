@@ -225,6 +225,7 @@ int main() {
       wp::app::WordleGame & g = wp::app::wordle();
       g.active = true;
       g.waiting = false;
+      g.race = true;
       g.my_word_picked = false;
       std::snprintf(g.opp_id, sizeof(g.opp_id), "mac-will");
       std::snprintf(g.opp_name, sizeof(g.opp_name), "Will");
@@ -235,6 +236,7 @@ int main() {
       wp::app::WordleGame & g = wp::app::wordle();
       g.active = true;
       g.waiting = false;
+      g.race = true;
       g.my_word_picked = true;
       g.opp_word_ready = true;
       std::snprintf(g.opp_id, sizeof(g.opp_id), "mac-will");

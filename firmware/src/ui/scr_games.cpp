@@ -18,6 +18,7 @@
 #include "ui/fonts.h"
 #include "ui/icons.h"
 #include "ui/nav.h"
+#include "ui/scr_wordle.h"
 #include "ui/theme.h"
 
 #include <algorithm>
@@ -3277,6 +3278,7 @@ lv_obj_t * games_folder_screen() {
       {AppIcon::Wordle, "Wordle",
        [](lv_event_t * /*e*/) {
          app::set_focus(-1);
+         wordle_reset_setup();
          go_wordle();
        }},
       {AppIcon::G2048, "2048 (1P)", [](lv_event_t * /*e*/) { go_g2048(); }},
@@ -3620,6 +3622,7 @@ bool accept_incoming_slot(int idx) {
       app::wordle() = {};
       app::wordle().active = true;
       app::wordle().waiting = false;
+      app::wordle().race = inv.wordle_mode != 0;
       std::snprintf(app::wordle().opp_id, sizeof(app::wordle().opp_id), "%s", inv.from_id);
       std::snprintf(app::wordle().opp_name, sizeof(app::wordle().opp_name), "%s", inv.from_name);
       m.type = proto::MsgType::WordleAccept;

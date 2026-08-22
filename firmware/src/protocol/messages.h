@@ -128,6 +128,8 @@ struct Msg {
   char word[6] = {};
   bool won = false;
   uint8_t attempts = 0;
+  /** 0 = classic (two independent puzzles), 1 = race (first to guess wins). */
+  uint8_t wordle_mode = 0;
 
   /* doodle stroke */
   uint16_t stroke_id = 0;
