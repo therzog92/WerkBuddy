@@ -9,6 +9,7 @@
 #include "ui/scr_games.h"
 #include "ui/scr_active_games.h"
 #include "ui/scr_g2048.h"
+#include "ui/scr_wordle.h"
 #include "ui/scr_hub.h"
 #include "ui/scr_idle.h"
 #include "ui/scr_page_history.h"
@@ -36,7 +37,8 @@ app::Peer g_compose_peer;
 
 bool is_game_board(Screen s) {
   return s == Screen::Ttt || s == Screen::Sttt || s == Screen::C4 || s == Screen::Bs ||
-         s == Screen::Ck || s == Screen::Mem || s == Screen::Rv || s == Screen::Db;
+         s == Screen::Ck || s == Screen::Mem || s == Screen::Rv || s == Screen::Db ||
+         s == Screen::Wordle;
 }
 
 app::GameKind kind_for_screen(Screen s) {
@@ -49,6 +51,7 @@ app::GameKind kind_for_screen(Screen s) {
     case Screen::Mem: return app::GameKind::Mem;
     case Screen::Rv: return app::GameKind::Rv;
     case Screen::Db: return app::GameKind::Db;
+    case Screen::Wordle: return app::GameKind::Wordle;
     default: return app::GameKind::Ttt;
   }
 }
@@ -201,6 +204,7 @@ void go_dots() {
 }
 void go_scoreboard() { load(scoreboard_screen(), Screen::Scoreboard); }
 void go_g2048() { load(game_g2048_screen(), Screen::G2048); }
+void go_wordle() { load(game_wordle_screen(), Screen::Wordle); }
 
 void go_doodle() { load(doodle_screen(), Screen::Doodle); }
 void go_settings() { load(settings_screen(), Screen::Settings); }
@@ -290,6 +294,7 @@ void finish_wake_from_idle(void * /*ud*/) {
     case Screen::UtilsFolder: go_utils_folder(); break;
     case Screen::Scoreboard: go_scoreboard(); break;
     case Screen::G2048: go_g2048(); break;
+    case Screen::Wordle: go_wordle(); break;
     case Screen::Doodle: go_doodle(); break;
     case Screen::Timer: go_timer(); break;
     case Screen::Checklist: go_checklist(); break;

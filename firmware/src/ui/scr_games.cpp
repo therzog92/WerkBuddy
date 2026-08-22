@@ -155,6 +155,15 @@ bool guard_peer_challenge(lv_event_t * e) {
   return true;
 }
 
+bool guard_active_move(const char * opp_id) {
+  if (!opp_id || !opp_id[0]) return true;
+  if (!app::peer_present(opp_id)) {
+    toast("Opponent is away");
+    return false;
+  }
+  return true;
+}
+
 /** Light score pill: Name · disc · n   Name · disc · n (shared by scored games). */
 lv_obj_t * make_score_pill(lv_obj_t * parent, const char * name_a, int score_a, lv_color_t accent_a,
                            const char * name_b, int score_b, lv_color_t accent_b) {
@@ -302,6 +311,7 @@ void ttt_play_cell(lv_event_t * e) {
   const int cell = (int)(intptr_t)lv_event_get_user_data(e);
   app::TttGame & g = app::ttt();
   if (!g.active || g.waiting || g.over || g.turn != g.mark) return;
+  if (!guard_active_move(g.opp_id)) return;
   if (cell < 0 || cell >= 9 || g.board[cell]) return;
   g.board[cell] = g.mark;
   proto::Msg m;
@@ -571,6 +581,7 @@ void sttt_play_cell(lv_event_t * e) {
   const int cell = packed % 9;
   app::StttGame & g = app::sttt();
   if (!g.active || g.waiting || g.over || g.turn != g.mark) return;
+  if (!guard_active_move(g.opp_id)) return;
   if (!games::sttt::play(g.boards, g.meta, g.next_board, board, cell, g.mark)) return;
   proto::Msg m;
   m.type = proto::MsgType::StttMove;
@@ -997,6 +1008,7 @@ void c4_drop(lv_event_t * e) {
   const int col = (int)(intptr_t)lv_event_get_user_data(e);
   app::C4Game & g = app::c4();
   if (!g.active || g.waiting || g.over || g.turn != g.my_color) return;
+  if (!guard_active_move(g.opp_id)) return;
   const int row = games::c4::drop(g.board, col, g.my_color);
   if (row < 0) return;
   g.last_r = (int8_t)row;
@@ -1526,6 +1538,7 @@ void bs_fire_cell(lv_event_t * e) {
   const int x = packed % 10, y = packed / 10;
   app::BsGame & g = app::bs();
   if (g.setup || !g.my_turn || g.over || g.tracking[y][x]) return;
+  if (!guard_active_move(g.opp_id)) return;
   proto::Msg m;
   m.type = proto::MsgType::BsFire;
   fill_msg_ids(m, g.opp_id);
@@ -1870,6 +1883,7 @@ void ck_tap(lv_event_t * e) {
   int vx = packed % 8, vy = packed / 8;
   app::CkGame & g = app::ck();
   if (!g.active || g.waiting || g.over || g.turn != g.side) return;
+  if (!guard_active_move(g.opp_id)) return;
 
   /* view transform: black sees board flipped so own pieces at bottom */
   int x = vx, y = vy;
@@ -2338,6 +2352,7 @@ void mem_flip(lv_event_t * e) {
   const int card = (int)(intptr_t)lv_event_get_user_data(e);
   app::MemGame & g = app::mem();
   if (!g.active || g.waiting || g.over || !g.my_turn || g.lock) return;
+  if (!guard_active_move(g.opp_id)) return;
   if (card < 0 || card >= 16 || g.matched[card]) return;
   if (g.local_flip == card) return;
 
@@ -2630,6 +2645,7 @@ void rv_play_cell(lv_event_t * e) {
   const int c = packed % games::rv::kN;
   app::RvGame & g = app::rv();
   if (!g.active || g.waiting || g.over || g.turn != g.my_color) return;
+  if (!guard_active_move(g.opp_id)) return;
   if (!games::rv::apply(g.board, r, c, g.my_color)) return;
   proto::Msg m;
   m.type = proto::MsgType::RvMove;
@@ -2918,6 +2934,7 @@ void db_play_edge(lv_event_t * e) {
   const int c = packed & 0xff;
   app::DbGame & g = app::db();
   if (!g.active || g.waiting || g.over || g.turn != g.my_side) return;
+  if (!guard_active_move(g.opp_id)) return;
   const int claimed = games::db::claim(g.state, is_vert, r, c, g.my_side);
   if (claimed < 0) return;
   proto::Msg m;
@@ -3202,7 +3219,14 @@ lv_obj_t * games_folder_screen() {
                               LV_GRID_TEMPLATE_LAST};
   lv_obj_set_grid_dsc_array(grid, cols, rows);
   lv_obj_set_style_pad_row(grid, 12, 0);
+  lv_obj_set_style_pad_right(grid, 6, 0);
   lv_obj_add_flag(grid, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(grid, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(grid, LV_SCROLLBAR_MODE_ON);
+  lv_obj_set_style_bg_color(grid, theme::gold(), LV_PART_SCROLLBAR);
+  lv_obj_set_style_bg_opa(grid, 180, LV_PART_SCROLLBAR);
+  lv_obj_set_style_width(grid, 4, LV_PART_SCROLLBAR);
+  lv_obj_set_style_radius(grid, 2, LV_PART_SCROLLBAR);
 
   struct Item {
     AppIcon icon;
@@ -3249,6 +3273,11 @@ lv_obj_t * games_folder_screen() {
        [](lv_event_t * /*e*/) {
          app::set_focus(-1);
          go_dots();
+       }},
+      {AppIcon::Wordle, "Wordle",
+       [](lv_event_t * /*e*/) {
+         app::set_focus(-1);
+         go_wordle();
        }},
       {AppIcon::G2048, "2048 (1P)", [](lv_event_t * /*e*/) { go_g2048(); }},
       {AppIcon::Scoreboard, "Scoreboard", [](lv_event_t * /*e*/) { go_scoreboard(); }},
@@ -3586,6 +3615,17 @@ bool accept_incoming_slot(int idx) {
       fill(m, inv.from_id);
       app::send(m);
       go_dots();
+      return true;
+    case app::GameKind::Wordle:
+      app::wordle() = {};
+      app::wordle().active = true;
+      app::wordle().waiting = false;
+      std::snprintf(app::wordle().opp_id, sizeof(app::wordle().opp_id), "%s", inv.from_id);
+      std::snprintf(app::wordle().opp_name, sizeof(app::wordle().opp_name), "%s", inv.from_name);
+      m.type = proto::MsgType::WordleAccept;
+      fill(m, inv.from_id);
+      app::send(m);
+      go_wordle();
       return true;
     default: return false;
   }

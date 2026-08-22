@@ -59,6 +59,12 @@ export const MessageType = Object.freeze({
   GAME_PROBE: 'game_probe',
   GAME_PROBE_REPLY: 'game_probe_reply',
   TIME_SYNC: 'time_sync', // offer only — peer confirms before adopting
+  WORDLE_INVITE: 'wordle_invite',
+  WORDLE_ACCEPT: 'wordle_accept',
+  WORDLE_DECLINE: 'wordle_decline',
+  WORDLE_WORD: 'wordle_word',
+  WORDLE_RESULT: 'wordle_result',
+  WORDLE_FORFEIT: 'wordle_forfeit',
 });
 
 /**

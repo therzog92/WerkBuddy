@@ -7,6 +7,7 @@
 #include "app/checklist.h"
 #include "app/desk_timer.h"
 #include "app/page_log.h"
+#include "games/wordle.h"
 #include "sim/driver.h"
 #include "sim/screenshot.h"
 #include "ui/brightness.h"
@@ -68,10 +69,15 @@ int main() {
   const char * shot = std::getenv("WERKPAGER_SHOT");
   const bool auto_shot = shot && shot[0] == '1';
 
+  if (qa_jump) {
+    wp::app::desk().setup_done = true;
+    if (!wp::app::desk().name[0]) std::snprintf(wp::app::desk().name, sizeof(wp::app::desk().name), "Tommy");
+  }
+
   /* Normal boot: splash → setup (first run) or hub. QA env vars skip splash. */
   if (!qa_jump && !auto_shot) wp::ui::go_splash();
   else if (!wp::app::desk().setup_done) wp::ui::go_setup();
-  else wp::ui::go_hub();
+  else if (!qa_jump) wp::ui::go_hub();
 
   /* WERKPAGER_SCREEN=<name> — jump to any screen for visual QA / README shots. */
   if (qa_jump) {
@@ -84,8 +90,14 @@ int main() {
     else if (is("idle")) go_idle();
     else if (is("werk")) go_werk();
     else if (is("compose")) {
-      if (desk().peer_count > 0) go_compose(desk().peers[0]);
-      else go_werk();
+      Desk & d = desk();
+      if (d.peer_count > 0) go_compose(d.peers[0]);
+      else {
+        Peer p{};
+        std::snprintf(p.id, sizeof(p.id), "mac-will");
+        std::snprintf(p.name, sizeof(p.name), "Will");
+        go_compose(p);
+      }
     }
     else if (is("outgoing")) {
       Desk & d = desk();
@@ -207,6 +219,38 @@ int main() {
     else if (is("db-play")) games_debug_show("db", "play");
     else if (is("scoreboard")) go_scoreboard();
     else if (is("2048") || is("g2048")) go_g2048();
+    else if (is("wordle")) go_wordle();
+    else if (is("wordle-pick")) {
+      wp::app::begin_match(wp::app::GameKind::Wordle, "mac-will");
+      wp::app::WordleGame & g = wp::app::wordle();
+      g.active = true;
+      g.waiting = false;
+      g.my_word_picked = false;
+      std::snprintf(g.opp_id, sizeof(g.opp_id), "mac-will");
+      std::snprintf(g.opp_name, sizeof(g.opp_name), "Will");
+      go_wordle();
+    }
+    else if (is("wordle-play")) {
+      wp::app::begin_match(wp::app::GameKind::Wordle, "mac-will");
+      wp::app::WordleGame & g = wp::app::wordle();
+      g.active = true;
+      g.waiting = false;
+      g.my_word_picked = true;
+      g.opp_word_ready = true;
+      std::snprintf(g.opp_id, sizeof(g.opp_id), "mac-will");
+      std::snprintf(g.opp_name, sizeof(g.opp_name), "Will");
+      std::snprintf(g.word_for_opp, sizeof(g.word_for_opp), "TWINK");
+      std::snprintf(g.my_target, sizeof(g.my_target), "PRIDE");
+      std::memcpy(g.attempts[0].word, "QUEER", 5);
+      wp::games::wordle::evaluate_guess("QUEER", "PRIDE", g.attempts[0].states);
+      std::memcpy(g.attempts[1].word, "TRADE", 5);
+      wp::games::wordle::evaluate_guess("TRADE", "PRIDE", g.attempts[1].states);
+      g.attempt_count = 2;
+      g.current_input[0] = 'P';
+      g.current_input[1] = 'O';
+      g.current_len = 2;
+      go_wordle();
+    }
     else if (is("utilsfolder") || is("utils")) go_utils_folder();
     else if (is("timer")) go_timer();
     else if (is("checklist")) {

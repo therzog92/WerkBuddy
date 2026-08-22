@@ -217,6 +217,7 @@ void go_game(GameKind kind) {
     case GameKind::Mem: ui::go_memory(); break;
     case GameKind::Rv: ui::go_reversi(); break;
     case GameKind::Db: ui::go_dots(); break;
+    case GameKind::Wordle: ui::go_wordle(); break;
     default: break;
   }
 }
@@ -314,6 +315,7 @@ void remove_remote_game(GameKind kind, const proto::Msg & m, const char * score_
       case GameKind::Mem: waiting = slot->g.mem.waiting; break;
       case GameKind::Rv: waiting = slot->g.rv.waiting; break;
       case GameKind::Db: waiting = slot->g.db.waiting; break;
+      case GameKind::Wordle: waiting = slot->g.wordle.waiting; break;
       default: break;
     }
     if (!waiting) score_log::note(score_name, m.from_name, score_log::Outcome::ForfeitOpp);
@@ -629,6 +631,7 @@ bool blocks_while_dnd(proto::MsgType t) {
     case T::StttInvite:
     case T::RvInvite:
     case T::DbInvite:
+    case T::WordleInvite:
     case T::DoodleStroke:
     case T::DoodleClear:
       return true;
@@ -1230,6 +1233,75 @@ void handle_msg(const proto::Msg & m) {
     }
     case proto::MsgType::DbForfeit: {
       remove_remote_game(GameKind::Db, m, "Dots & Boxes", "Dots & Boxes");
+      return;
+    }
+
+    /* —— Wordle —— */
+    case proto::MsgType::WordleInvite: {
+      int idx = -1;
+      if (!receive_invite(GameKind::Wordle, m, idx)) return;
+      ui::toast_fmt("%s challenged you - Wordle", m.from_name);
+      return;
+    }
+    case proto::MsgType::WordleAccept: {
+      const int idx = find_slot(GameKind::Wordle, m.from_id);
+      GameSlot * slot = slot_at(idx);
+      if (!slot || slot->invite_pending) return;
+      WordleGame & g = slot->g.wordle;
+      if (!g.active || !g.waiting) return;
+      g.waiting = false;
+      copy_str(g.opp_name, proto::kMaxName, m.from_name);
+      note_turn_start(idx);
+      refresh_viewing(GameKind::Wordle, m.from_id);
+      return;
+    }
+    case proto::MsgType::WordleDecline: {
+      const int idx = find_slot(GameKind::Wordle, m.from_id);
+      GameSlot * slot = slot_at(idx);
+      if (!slot || slot->invite_pending || !slot->g.wordle.active || !slot->g.wordle.waiting) return;
+      drop_slot_if_viewing(GameKind::Wordle, m.from_id, idx);
+      ui::toast_fmt("%s declined", m.from_name);
+      return;
+    }
+    case proto::MsgType::WordleWord: {
+      int idx = -1;
+      if (!have_live_slot(GameKind::Wordle, m, idx)) return;
+      GameSlot * slot = slot_at(idx);
+      if (!slot || slot->invite_pending) return;
+      WordleGame & g = slot->g.wordle;
+      if (m.word[0]) {
+        copy_str(g.my_target, sizeof(g.my_target), m.word);
+        for (int i = 0; i < 5 && g.my_target[i]; ++i) {
+          if (g.my_target[i] >= 'a' && g.my_target[i] <= 'z')
+            g.my_target[i] = static_cast<char>(g.my_target[i] - 'a' + 'A');
+        }
+        g.opp_word_ready = true;
+      }
+      finish_remote_move(idx, GameKind::Wordle, m.from_id, g.opp_name,
+                         !g.over && g.opp_word_ready && !g.i_won && !g.i_lost);
+      return;
+    }
+    case proto::MsgType::WordleResult: {
+      int idx = -1;
+      if (!have_live_slot(GameKind::Wordle, m, idx)) return;
+      GameSlot * slot = slot_at(idx);
+      if (!slot || slot->invite_pending) return;
+      WordleGame & g = slot->g.wordle;
+      if (m.won) {
+        if (!g.over) {
+          g.opp_won = true;
+          g.over = true;
+          g.result_dismissed = false;
+          score_log::note("Wordle", g.opp_name, score_log::Outcome::Lose);
+        }
+      } else {
+        g.opp_lost = true;
+      }
+      finish_remote_move(idx, GameKind::Wordle, m.from_id, g.opp_name, false);
+      return;
+    }
+    case proto::MsgType::WordleForfeit: {
+      remove_remote_game(GameKind::Wordle, m, "Wordle", "Wordle");
       return;
     }
 

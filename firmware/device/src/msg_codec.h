@@ -35,6 +35,8 @@ constexpr size_t kDbLineSize = kPeerHdrSize + 3;            /* 29 */
 constexpr size_t kGameProbeSize = kPeerHdrSize + 2;         /* kind + exists */
 constexpr size_t kTimeSyncSize = 2 + 6 + 4 + 4;              /* mac + unix + gen */
 constexpr size_t kDoodleStrokeHdr = kPeerHdrSize + 7;       /* + pts */
+constexpr size_t kWordleWordSize = kPeerHdrSize + 5;        /* 5-letter secret */
+constexpr size_t kWordleResultSize = kPeerHdrSize + 2;      /* won + attempts */
 
 void mac_to_id(const uint8_t mac[6], char * id, size_t id_len);
 bool id_to_mac(const char * id, uint8_t mac[6]);

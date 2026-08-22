@@ -45,6 +45,8 @@ add_executable(werkpager_sim
   src/ui/scr_page_history.cpp
   src/ui/scr_games.cpp
   src/ui/scr_g2048.cpp
+  src/ui/scr_wordle.cpp
+  src/games/wordle_dict.cpp
   src/ui/scr_scoreboard.cpp
   src/ui/scr_doodle.cpp
   src/ui/scr_settings.cpp

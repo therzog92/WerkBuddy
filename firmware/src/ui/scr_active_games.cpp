@@ -45,6 +45,7 @@ AppIcon icon_for_kind(app::GameKind kind) {
     case app::GameKind::Mem: return AppIcon::Memory;
     case app::GameKind::Rv: return AppIcon::Reversi;
     case app::GameKind::Db: return AppIcon::Dots;
+    case app::GameKind::Wordle: return AppIcon::Wordle;
     default: return AppIcon::Games;
   }
 }

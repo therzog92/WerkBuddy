@@ -47,6 +47,7 @@ IconColors colors_for(AppIcon icon) {
     case AppIcon::Dots: return {0x7a5cff, 0x4a2fbf};
     case AppIcon::Scoreboard: return {u32(theme::gold()), 0x8a6a1a};
     case AppIcon::G2048: return {0xf2b179, 0xedc22e};
+    case AppIcon::Wordle: return {0xffffff, 0xe0e0e0};
   }
   return {0x666666, 0x333333};
 }
@@ -535,6 +536,30 @@ void draw_g2048(lv_obj_t * g) {
   lv_obj_align(lab, LV_ALIGN_BOTTOM_MID, 0, -4);
 }
 
+void draw_wordle(lv_obj_t * g) {
+  const lv_color_t green = lv_color_hex(0x538d4e);
+  const lv_color_t gold = lv_color_hex(0xb59f3b);
+  const lv_color_t gray = lv_color_hex(0x3a3a3c);
+  constexpr lv_coord_t kInX = 14;
+  constexpr lv_coord_t kInY = 12;
+  constexpr lv_coord_t kCell = 12;
+  constexpr lv_coord_t kGap = 3;
+
+  /* 3x3 tile grid mimicking Wordle guesses */
+  const lv_color_t cols[3][3] = {
+    {gray, green, gray},
+    {gold, gray, green},
+    {green, green, green}
+  };
+
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) {
+      rect_bar(g, kInX + c * (kCell + kGap), kInY + r * (kCell + kGap), kCell, kCell, cols[r][c]);
+    }
+  }
+
+}
+
 void draw_icon(lv_obj_t * g, AppIcon icon) {
   switch (icon) {
     case AppIcon::Werk: draw_werk(g); break;
@@ -555,6 +580,7 @@ void draw_icon(lv_obj_t * g, AppIcon icon) {
     case AppIcon::Dots: draw_db(g); break;
     case AppIcon::Scoreboard: draw_scoreboard(g); break;
     case AppIcon::G2048: draw_g2048(g); break;
+    case AppIcon::Wordle: draw_wordle(g); break;
   }
 }
 

@@ -71,6 +71,13 @@ enum class MsgType : uint8_t {
   GameProbeReply,
   /** Offer wall clock; peer may accept via popup (does not auto-apply). */
   TimeSync,
+  /* Appended after TimeSync so v0.74 doodle/probe/clock wire IDs stay stable. */
+  WordleInvite,
+  WordleAccept,
+  WordleDecline,
+  WordleWord,
+  WordleResult,
+  WordleForfeit,
 };
 
 constexpr int kMaxName = 13;    /* 12 chars + NUL (web clamps to 12) */
@@ -116,6 +123,11 @@ struct Msg {
   /* mem — seed as u32 (device plan: u32 hash instead of string) */
   uint32_t seed = 0;
   int8_t card_a = -1, card_b = -1;
+
+  /* wordle — secret word + result */
+  char word[6] = {};
+  bool won = false;
+  uint8_t attempts = 0;
 
   /* doodle stroke */
   uint16_t stroke_id = 0;

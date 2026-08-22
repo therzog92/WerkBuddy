@@ -36,7 +36,7 @@ void style_peer_like(lv_obj_t * btn);
 void show_forfeit_confirm(lv_event_cb_t on_yes, lv_event_cb_t on_no = nullptr);
 /** Generic yes/no overlay (forfeit, clear history, etc.). */
 void show_confirm(const char * message, const char * yes_label, bool yes_danger,
-                  lv_event_cb_t on_yes, lv_event_cb_t on_no = nullptr);
+                  lv_event_cb_t on_yes, lv_event_cb_t on_no = nullptr, const char * no_label = "Cancel");
 void hide_forfeit_confirm();
 void hide_confirm();
 

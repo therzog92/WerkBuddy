@@ -443,16 +443,19 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
 
   lv_obj_t * scr = make_screen();
   make_topbar(scr, "WerkRoom", d.name);
-  lv_obj_t * body = make_body(scr, true);
+  lv_obj_t * body = make_body(scr, false);
+  lv_obj_set_style_pad_all(body, 6, 0);
+  lv_obj_set_style_pad_row(body, 5, 0);
 
   char heading[48];
   lv_snprintf(heading, sizeof(heading), "Ping to %s", peer.name);
-  make_tagline(body, heading);
+  lv_obj_t * tag = make_tagline(body, heading);
+  if (tag) lv_obj_set_style_margin_bottom(tag, 0, 0);
 
   lv_obj_t * emo_row = lv_obj_create(body);
   lv_obj_remove_style_all(emo_row);
   lv_obj_set_width(emo_row, lv_pct(100));
-  lv_obj_set_height(emo_row, 56);
+  lv_obj_set_height(emo_row, 54);
   lv_obj_set_flex_flow(emo_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_column(emo_row, 6, 0);
   lv_obj_add_flag(emo_row, LV_OBJ_FLAG_SCROLLABLE);
@@ -460,12 +463,12 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
 
   for (int i = 0; i < app::kEmojiSlots; ++i) {
     lv_obj_t * b = lv_button_create(emo_row);
-    lv_obj_set_size(b, 52, 52);
-    lv_obj_set_style_radius(b, 12, 0);
+    lv_obj_set_size(b, 50, 50);
+    lv_obj_set_style_radius(b, 10, 0);
     lv_obj_set_style_bg_color(b, theme::panel(), 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_pad_all(b, 2, 0);
-    lv_obj_t * img = make_emoji_image(b, d.emojis[i], 44);
+    lv_obj_t * img = make_emoji_image(b, d.emojis[i], 42);
     lv_obj_center(img);
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(b, on_emoji, LV_EVENT_CLICKED, (void *)(intptr_t)i);
@@ -474,8 +477,8 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
 
   /* Last slot: open full emoji palette (flat smiley = emoji-keyboard affordance). */
   g_emoji_picker_btn = lv_button_create(emo_row);
-  lv_obj_set_size(g_emoji_picker_btn, 52, 52);
-  lv_obj_set_style_radius(g_emoji_picker_btn, 12, 0);
+  lv_obj_set_size(g_emoji_picker_btn, 50, 50);
+  lv_obj_set_style_radius(g_emoji_picker_btn, 10, 0);
   lv_obj_set_style_bg_color(g_emoji_picker_btn, theme::panel(), 0);
   lv_obj_set_style_shadow_width(g_emoji_picker_btn, 0, 0);
   lv_obj_set_style_border_width(g_emoji_picker_btn, 1, 0);
@@ -484,11 +487,11 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
   make_smiley_picker_icon(g_emoji_picker_btn);
   lv_obj_add_event_cb(g_emoji_picker_btn, on_emoji_picker, LV_EVENT_CLICKED, nullptr);
 
-  /* Clear / Custom — replace the old default "Quick ping" affordance */
+  /* Clear / Custom */
   lv_obj_t * msg_actions = lv_obj_create(body);
   lv_obj_remove_style_all(msg_actions);
   lv_obj_set_width(msg_actions, lv_pct(100));
-  lv_obj_set_height(msg_actions, 42);
+  lv_obj_set_height(msg_actions, 38);
   lv_obj_set_flex_flow(msg_actions, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_column(msg_actions, 8, 0);
   lv_obj_remove_flag(msg_actions, LV_OBJ_FLAG_SCROLLABLE);
@@ -496,8 +499,8 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
   auto make_msg_action = [](lv_obj_t * parent, const char * label, lv_event_cb_t cb) {
     lv_obj_t * b = lv_button_create(parent);
     lv_obj_set_flex_grow(b, 1);
-    lv_obj_set_height(b, 40);
-    lv_obj_set_style_radius(b, 12, 0);
+    lv_obj_set_height(b, 36);
+    lv_obj_set_style_radius(b, 10, 0);
     lv_obj_set_style_bg_color(b, theme::panel(), 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_border_width(b, 1, 0);
@@ -511,21 +514,22 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
     lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
     return b;
   };
-  make_msg_action(msg_actions, LV_SYMBOL_TRASH " Clear Message", on_clear_message);
-  make_msg_action(msg_actions, LV_SYMBOL_EDIT " Custom message", on_custom_message);
+  make_msg_action(msg_actions, LV_SYMBOL_TRASH " Clear", on_clear_message);
+  make_msg_action(msg_actions, LV_SYMBOL_EDIT " Custom", on_custom_message);
 
+  /* 4 Canned message buttons at full 36px height */
   lv_obj_t * canned = lv_obj_create(body);
   lv_obj_remove_style_all(canned);
   lv_obj_set_width(canned, lv_pct(100));
-  lv_obj_set_flex_grow(canned, 1);
+  lv_obj_set_height(canned, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(canned, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(canned, 6, 0);
 
   for (int i = 0; i < app::kCannedCount; ++i) {
     lv_obj_t * b = lv_button_create(canned);
     lv_obj_set_width(b, lv_pct(100));
-    lv_obj_set_height(b, 40);
-    lv_obj_set_style_radius(b, 12, 0);
+    lv_obj_set_height(b, 38);
+    lv_obj_set_style_radius(b, 10, 0);
     lv_obj_set_style_bg_color(b, theme::panel(), 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_border_width(b, 1, 0);
@@ -533,26 +537,28 @@ lv_obj_t * pager_compose_screen(const app::Peer & peer) {
     lv_obj_t * l = lv_label_create(b);
     lv_label_set_text(l, d.canned[i]);
     lv_obj_set_style_text_color(l, theme::ink(), 0);
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
     lv_obj_center(l);
     lv_obj_add_event_cb(b, on_canned, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     g_canned_btns[i] = b;
   }
 
-  /* Preview row: selected emoji + message (web #composePreview) */
+  /* Preview row: selected emoji + message (web #composePreview) placed BELOW canned buttons, above dock */
   lv_obj_t * prev_row = lv_obj_create(body);
   lv_obj_remove_style_all(prev_row);
-  lv_obj_set_size(prev_row, lv_pct(100), 26);
+  lv_obj_set_size(prev_row, lv_pct(100), 22);
   lv_obj_set_flex_flow(prev_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_flex_align(prev_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-  lv_obj_set_style_pad_column(prev_row, 8, 0);
+  lv_obj_set_style_pad_column(prev_row, 6, 0);
   lv_obj_remove_flag(prev_row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_margin_top(prev_row, 4, 0);
 
   g_preview_img = make_emoji_image(prev_row, d.emojis[0], 20);
   lv_obj_add_flag(g_preview_img, LV_OBJ_FLAG_HIDDEN);
 
   g_preview_lbl = lv_label_create(prev_row);
   lv_obj_set_style_text_color(g_preview_lbl, theme::ink(), 0);
-  lv_obj_set_style_text_font(g_preview_lbl, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(g_preview_lbl, &lv_font_montserrat_14, 0);
 
   refresh_compose_styles();
 

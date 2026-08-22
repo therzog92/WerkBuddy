@@ -1,5 +1,8 @@
 #include "sim/driver.h"
 
+#include "app/active_games.h"
+#include "app/app.h"
+#include "app/presence.h"
 #include "sim/playthrough.h"
 #include "sim/screenshot.h"
 #include "ui/nav.h"
@@ -87,6 +90,7 @@ const char * screen_name(ui::Screen s) {
     case ui::Screen::Db: return "db";
     case ui::Screen::Scoreboard: return "scoreboard";
     case ui::Screen::G2048: return "2048";
+    case ui::Screen::Wordle: return "wordle";
     case ui::Screen::Doodle: return "doodle";
     case ui::Screen::Settings: return "settings";
     case ui::Screen::Keyboard: return "keyboard";
@@ -253,7 +257,41 @@ void handle_line(const char * line) {
     else if (!std::strcmp(where, "utils")) go_utils_folder();
     else if (!std::strcmp(where, "settings")) go_settings();
     else if (!std::strcmp(where, "werk")) go_werk();
+    else if (!std::strcmp(where, "compose")) {
+      app::note_peer_presence("mac-will", "Will", false);
+      if (app::desk().peer_count > 0) go_compose(app::desk().peers[0]);
+      else {
+        app::Peer p{};
+        std::snprintf(p.id, sizeof(p.id), "mac-will");
+        std::snprintf(p.name, sizeof(p.name), "Will");
+        go_compose(p);
+      }
+    }
     else if (!std::strcmp(where, "2048") || !std::strcmp(where, "g2048")) go_g2048();
+    else if (!std::strcmp(where, "wordle")) go_wordle();
+    else if (!std::strcmp(where, "wordle-pick")) {
+      app::begin_match(app::GameKind::Wordle, "mac-will");
+      app::WordleGame & g = app::wordle();
+      g.active = true;
+      g.waiting = false;
+      g.my_word_picked = false;
+      std::snprintf(g.opp_id, sizeof(g.opp_id), "mac-will");
+      std::snprintf(g.opp_name, sizeof(g.opp_name), "Will");
+      go_wordle();
+    }
+    else if (!std::strcmp(where, "wordle-play")) {
+      app::begin_match(app::GameKind::Wordle, "mac-will");
+      app::WordleGame & g = app::wordle();
+      g.active = true;
+      g.waiting = false;
+      g.my_word_picked = true;
+      g.opp_word_ready = true;
+      std::snprintf(g.opp_id, sizeof(g.opp_id), "mac-will");
+      std::snprintf(g.opp_name, sizeof(g.opp_name), "Will");
+      std::snprintf(g.word_for_opp, sizeof(g.word_for_opp), "TWINK");
+      std::snprintf(g.my_target, sizeof(g.my_target), "PRIDE");
+      go_wordle();
+    }
     else if (!std::strcmp(where, "doodle")) go_doodle();
     else if (!std::strcmp(where, "timer")) go_timer();
     else if (!std::strcmp(where, "checklist")) go_checklist();
@@ -261,6 +299,7 @@ void handle_line(const char * line) {
     else if (!std::strcmp(where, "scoreboard")) go_scoreboard();
     else if (!std::strcmp(where, "active") || !std::strcmp(where, "active-games")) go_active_games();
     else if (!std::strcmp(where, "ttt")) go_ttt();
+    else if (!std::strcmp(where, "idle")) go_idle();
     else if (!std::strcmp(where, "ota") || !std::strcmp(where, "updates")) go_ota_releases();
     else {
       reply("FAIL unknown-nav");

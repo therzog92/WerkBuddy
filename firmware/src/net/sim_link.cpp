@@ -101,6 +101,10 @@ struct Bot {
   games::db::State db_state;
   int8_t db_side = games::db::kP2;
 
+  /* wordle */
+  bool wordle_on = false;
+  char wordle_chosen[6] = {};
+
   bool doodle_replied = false;
 };
 
@@ -689,6 +693,40 @@ void bot_receive(Bot & b, const Msg & m) {
     }
     case MsgType::DbForfeit: {
       b.db_on = false;
+      return;
+    }
+
+    /* —— Wordle —— */
+    case MsgType::WordleInvite: {
+      b.wordle_on = true;
+      later(400, [&b]() {
+        deliver(base_msg(b, MsgType::WordleAccept));
+      });
+      /* Bot picks a secret word for the player after ~700ms */
+      later(700, [&b]() {
+        if (!b.wordle_on) return;
+        Msg out = base_msg(b, MsgType::WordleWord);
+        const int n = games::wordle::target_count();
+        const int pick = std::rand() % n;
+        const char * chosen = games::wordle::get_target_word(pick);
+        std::memcpy(out.word, chosen, games::wordle::kWordLen);
+        out.word[games::wordle::kWordLen] = '\0';
+        deliver(out);
+      });
+      return;
+    }
+    case MsgType::WordleWord: {
+      if (m.word[0]) {
+        std::memcpy(b.wordle_chosen, m.word, 6);
+      }
+      return;
+    }
+    case MsgType::WordleResult: {
+      b.wordle_on = false;
+      return;
+    }
+    case MsgType::WordleForfeit: {
+      b.wordle_on = false;
       return;
     }
 

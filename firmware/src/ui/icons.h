@@ -24,6 +24,7 @@ enum class AppIcon {
   Dots,
   Scoreboard,
   G2048,
+  Wordle,
 };
 
 /** 72×72 rounded glyph with drawn icon (matches web app-glyph look). */

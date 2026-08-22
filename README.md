@@ -3,7 +3,7 @@
 A desk-to-desk **pager** with a bunch of mini-games, built for the **Guition ESP32-4848S040** (480×480 touchscreen). Desks talk to each other directly over **ESP-NOW** — no Wi-Fi and no server required for day-to-day use.
 
 - **WerkPager** — send a quick ping (emoji + short message) to another desk and ring them.
-- **Games** — Tic-Tac-Toe, Super TTT, Connect Four, Battleship, Checkers, Memory, Reversi, Dots & Boxes, and solo 2048.
+- **Games** — Tic-Tac-Toe, Super TTT, Connect Four, Battleship, Checkers, Memory, Reversi, Dots & Boxes, Wordle, and solo 2048.
 - **Extras** — checklist, calculator, shared doodle canvas, timers, themes, and custom wallpaper.
 
 ## Screenshots

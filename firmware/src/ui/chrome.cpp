@@ -333,7 +333,7 @@ void hide_confirm() {
 void hide_forfeit_confirm() { hide_confirm(); }
 
 void show_confirm(const char * message, const char * yes_label, bool yes_danger,
-                  lv_event_cb_t on_yes, lv_event_cb_t on_no) {
+                  lv_event_cb_t on_yes, lv_event_cb_t on_no, const char * no_label) {
   hide_confirm();
   lv_obj_t * layer = lv_obj_create(lv_layer_top());
   g_confirm = layer;
@@ -382,13 +382,13 @@ void show_confirm(const char * message, const char * yes_label, bool yes_danger,
     if (user_cb) user_cb(e);
   };
 
-  dock_btn(row, "Cancel", false, false, wrap_no, (void *)on_no);
+  dock_btn(row, no_label ? no_label : "Cancel", false, false, wrap_no, (void *)on_no);
   dock_btn(row, yes_label && yes_label[0] ? yes_label : "OK", false, yes_danger, wrap_yes,
            (void *)on_yes);
 }
 
 void show_forfeit_confirm(lv_event_cb_t on_yes, lv_event_cb_t on_no) {
-  show_confirm("Are you sure you want to forfeit?", "Forfeit", true, on_yes, on_no);
+  show_confirm("Are you sure you want to forfeit?", "Forfeit", true, on_yes, on_no, nullptr);
 }
 
 }  // namespace ui

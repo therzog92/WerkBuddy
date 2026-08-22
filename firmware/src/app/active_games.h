@@ -12,7 +12,7 @@ constexpr int kMaxActiveGames = 24;
 /** 24h of powered-on monotonic time before the desk-to-move auto-forfeits. */
 constexpr uint32_t kTurnForfeitMs = 24u * 60u * 60u * 1000u;
 
-enum class GameKind : uint8_t { Ttt = 0, Sttt, C4, Bs, Ck, Mem, Rv, Db, Count };
+enum class GameKind : uint8_t { Ttt = 0, Sttt, C4, Bs, Ck, Mem, Rv, Db, Wordle, Count };
 
 struct GameSlot {
   bool used = false;
@@ -29,6 +29,7 @@ struct GameSlot {
     MemGame mem;
     RvGame rv;
     DbGame db;
+    WordleGame wordle;
     Payload() { std::memset(this, 0, sizeof(*this)); }
   } g;
 };
@@ -93,6 +94,7 @@ CkGame & ck();
 MemGame & mem();
 RvGame & rv();
 DbGame & db();
+WordleGame & wordle();
 
 /** List helpers for Active Games UI: write indices sorted your-turn first. */
 int list_sorted(int * out_indices, int max_out);

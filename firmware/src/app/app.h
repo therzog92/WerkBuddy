@@ -11,6 +11,7 @@
 #include "games/dots.h"
 #include "games/memory.h"
 #include "games/reversi.h"
+#include "games/wordle.h"
 #include "protocol/messages.h"
 
 #include <cstdint>
@@ -23,7 +24,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "0.80";
+constexpr const char * kFirmwareVersion = "1.0";
 /** Runtime version (sim OTA can change this; empty desk field → kFirmwareVersion). */
 const char * firmware_version();
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
@@ -147,13 +148,34 @@ struct DbGame {
   games::db::State state;
 };
 
+struct WordleGame {
+  bool active = false, waiting = false, over = false, result_dismissed = false;
+  char opp_id[proto::kMaxId] = {};
+  char opp_name[proto::kMaxName] = {};
+  /* Word picking state */
+  bool my_word_picked = false;
+  char word_for_opp[6] = {};
+  bool opp_word_ready = false;
+  char my_target[6] = {};
+  /* Wordle guessing state */
+  games::wordle::Attempt attempts[games::wordle::kMaxAttempts] = {};
+  int attempt_count = 0;
+  char current_input[6] = {};
+  int current_len = 0;
+  bool i_won = false;
+  bool i_lost = false;
+  bool opp_won = false;
+  bool opp_lost = false;
+  games::wordle::TileState key_states[26] = {};
+};
+
 struct Desk {
   char id[proto::kMaxId] = "mac-tommy";
   char name[proto::kMaxName] = {}; /* empty until setup / NVS load */
   uint8_t theme = 0;
   uint8_t bg_preset = 0; /* background::Preset — used when no custom photo */
   uint8_t timeout_id = 2;  /* 0=1m 1=3m 2=5m 3=10m 4=off — default 5m */
-  uint8_t idle_mode = 1;   /* 0=black 1=clock */
+  uint8_t idle_mode = 1;   /* 0=black 1=clock 2=bounce */
   uint8_t brightness = 85; /* 10..100; pages force full */
   /**
    * Pager incoming-flash speed: 0=Relaxed 1=Classic 2=Strobe (CRT-like).

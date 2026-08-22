@@ -64,7 +64,10 @@ bool load(app::Desk & d) {
     } else if (!std::strcmp(key, "timeout_v")) {
       timeout_scheme = std::atoi(val);
     } else if (!std::strcmp(key, "idle_mode")) {
-      d.idle_mode = (uint8_t)std::atoi(val) ? 1 : 0;
+      int m = std::atoi(val);
+      if (m < 0) m = 0;
+      if (m > 2) m = 2;
+      d.idle_mode = (uint8_t)m;
     } else if (!std::strcmp(key, "brightness")) {
       int b = std::atoi(val);
       if (b < 10) b = 10;

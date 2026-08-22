@@ -26,6 +26,7 @@ enum class Screen {
   Db,
   Scoreboard,
   G2048,
+  Wordle,
   Doodle,
   Settings,
   Keyboard,
@@ -65,6 +66,7 @@ void go_reversi();
 void go_dots();
 void go_scoreboard();
 void go_g2048();
+void go_wordle();
 
 void go_doodle();
 void go_settings();

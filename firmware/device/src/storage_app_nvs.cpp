@@ -26,7 +26,8 @@ bool load(app::Desk & d) {
   if (d.theme > 7) d.theme = 0;
   d.bg_preset = (uint8_t)prefs.getUChar("bg_preset", d.bg_preset);
   d.timeout_id = (uint8_t)prefs.getUChar("timeout", d.timeout_id);
-  d.idle_mode = (uint8_t)prefs.getUChar("idle_mode", d.idle_mode) ? 1 : 0;
+  const uint8_t im = prefs.getUChar("idle_mode", d.idle_mode);
+  d.idle_mode = (im <= 2) ? im : 1;
   d.brightness = (uint8_t)prefs.getUChar("brightness", d.brightness);
   if (d.brightness < 10) d.brightness = 10;
   d.flash_id = (uint8_t)prefs.getUChar("flash_id", d.flash_id);

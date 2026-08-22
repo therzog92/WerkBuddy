@@ -1,4 +1,4 @@
-﻿#include "ui/scr_settings.h"
+#include "ui/scr_settings.h"
 
 #include "app/app.h"
 #include "app/background.h"
@@ -1410,6 +1410,13 @@ lv_obj_t * settings_screen() {
          app::desk().idle_mode = 1;
          app::save();
          chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))), 1);
+       },
+       nullptr);
+  chip(idle, "Bounce", d.idle_mode == 2,
+       [](lv_event_t * e) {
+         app::desk().idle_mode = 2;
+         app::save();
+         chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))), 2);
        },
        nullptr);
 

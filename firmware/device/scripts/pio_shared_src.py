@@ -29,3 +29,9 @@ env.BuildSources(
     str(shared / "ui"),
     "+<*> -<fonts.cpp> -<emoji_badge.cpp> -<emoji_palette.cpp>",
 )
+
+env.BuildSources(
+    join(build, "games"),
+    str(shared / "games"),
+    "+<*>",
+)

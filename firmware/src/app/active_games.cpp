@@ -58,6 +58,7 @@ const char * opp_id_of(const GameSlot & s) {
     case GameKind::Mem: return s.g.mem.opp_id;
     case GameKind::Rv: return s.g.rv.opp_id;
     case GameKind::Db: return s.g.db.opp_id;
+    case GameKind::Wordle: return s.g.wordle.opp_id;
     default: return "";
   }
 }
@@ -73,6 +74,7 @@ const char * opp_name_of(const GameSlot & s) {
     case GameKind::Mem: return s.g.mem.opp_name;
     case GameKind::Rv: return s.g.rv.opp_name;
     case GameKind::Db: return s.g.db.opp_name;
+    case GameKind::Wordle: return s.g.wordle.opp_name;
     default: return "";
   }
 }
@@ -89,6 +91,7 @@ bool slot_live(const GameSlot & s) {
     case GameKind::Mem: return s.g.mem.active;
     case GameKind::Rv: return s.g.rv.active;
     case GameKind::Db: return s.g.db.active;
+    case GameKind::Wordle: return s.g.wordle.active;
     default: return false;
   }
 }
@@ -103,6 +106,7 @@ ui::Screen screen_for(GameKind k) {
     case GameKind::Mem: return ui::Screen::Mem;
     case GameKind::Rv: return ui::Screen::Rv;
     case GameKind::Db: return ui::Screen::Db;
+    case GameKind::Wordle: return ui::Screen::Wordle;
     default: return ui::Screen::Hub;
   }
 }
@@ -117,6 +121,7 @@ void go_kind(GameKind k) {
     case GameKind::Mem: ui::go_memory(); break;
     case GameKind::Rv: ui::go_reversi(); break;
     case GameKind::Db: ui::go_dots(); break;
+    case GameKind::Wordle: ui::go_wordle(); break;
     default: ui::go_hub(); break;
   }
 }
@@ -137,6 +142,7 @@ void send_forfeit(GameKind k, const char * to_id) {
     case GameKind::Mem: m.type = proto::MsgType::MemForfeit; break;
     case GameKind::Rv: m.type = proto::MsgType::RvForfeit; break;
     case GameKind::Db: m.type = proto::MsgType::DbForfeit; break;
+    case GameKind::Wordle: m.type = proto::MsgType::WordleForfeit; break;
     default: return;
   }
   fill_from(m);
@@ -155,6 +161,7 @@ void send_decline(GameKind k, const char * to_id) {
     case GameKind::Mem: m.type = proto::MsgType::MemDecline; break;
     case GameKind::Rv: m.type = proto::MsgType::RvDecline; break;
     case GameKind::Db: m.type = proto::MsgType::DbDecline; break;
+    case GameKind::Wordle: m.type = proto::MsgType::WordleDecline; break;
     default: return;
   }
   fill_from(m);
@@ -173,6 +180,7 @@ bool outgoing_wait(const GameSlot & s) {
     case GameKind::Mem: return s.g.mem.active && s.g.mem.waiting;
     case GameKind::Rv: return s.g.rv.active && s.g.rv.waiting;
     case GameKind::Db: return s.g.db.active && s.g.db.waiting;
+    case GameKind::Wordle: return s.g.wordle.active && s.g.wordle.waiting;
     default: return false;
   }
 }
@@ -205,7 +213,7 @@ bool on_game_board_ui() {
   using S = ui::Screen;
   const S s = ui::current_screen();
   return s == S::Ttt || s == S::Sttt || s == S::C4 || s == S::Bs || s == S::Ck || s == S::Mem ||
-         s == S::Rv || s == S::Db;
+         s == S::Rv || s == S::Db || s == S::Wordle;
 }
 
 void schedule_persist() {
@@ -336,6 +344,7 @@ bool slot_is_over(const GameSlot & s) {
     case GameKind::Mem: return s.g.mem.over;
     case GameKind::Rv: return s.g.rv.over;
     case GameKind::Db: return s.g.db.over;
+    case GameKind::Wordle: return s.g.wordle.over;
     default: return false;
   }
 }
@@ -469,6 +478,7 @@ const char * kind_name(GameKind kind) {
     case GameKind::Mem: return "Memory";
     case GameKind::Rv: return "Reversi";
     case GameKind::Db: return "Dots & Boxes";
+    case GameKind::Wordle: return "Wordle";
     default: return "Game";
   }
 }
@@ -493,6 +503,11 @@ bool is_my_turn(const GameSlot & s) {
       return s.g.rv.active && !s.g.rv.waiting && !s.g.rv.over && s.g.rv.turn == s.g.rv.my_color;
     case GameKind::Db:
       return s.g.db.active && !s.g.db.waiting && !s.g.db.over && s.g.db.turn == s.g.db.my_side;
+    case GameKind::Wordle:
+      if (!s.g.wordle.active || s.g.wordle.over || s.g.wordle.waiting) return false;
+      if (!s.g.wordle.my_word_picked) return true;
+      if (s.g.wordle.opp_word_ready && !s.g.wordle.i_won && !s.g.wordle.i_lost) return true;
+      return false;
     default: return false;
   }
 }
@@ -578,6 +593,10 @@ RvGame & rv() {
 DbGame & db() {
   GameSlot * s = focused_kind(GameKind::Db);
   return s ? s->g.db : game_dummy<DbGame>();
+}
+WordleGame & wordle() {
+  GameSlot * s = focused_kind(GameKind::Wordle);
+  return s ? s->g.wordle : game_dummy<WordleGame>();
 }
 
 bool begin_match(GameKind kind, const char * peer_id) {
