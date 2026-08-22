@@ -1311,6 +1311,7 @@ void handle_msg(const proto::Msg & m) {
       if (!slot || slot->invite_pending) return;
       WordleGame & g = slot->g.wordle;
       if (m.word[0]) {
+        if (g.opp_word_ready) return;
         copy_str(g.my_target, sizeof(g.my_target), m.word);
         for (int i = 0; i < 5 && g.my_target[i]; ++i) {
           if (g.my_target[i] >= 'a' && g.my_target[i] <= 'z')

@@ -246,7 +246,7 @@ void show_wordle_result(lv_obj_t * scr) {
       lv_snprintf(them, sizeof(them), "%s: got it", g.opp_name);
     else
       lv_snprintf(them, sizeof(them), "%s: missed", g.opp_name);
-    lv_snprintf(sbuf, sizeof(sbuf), "%s  ·  %s", me, them);
+    lv_snprintf(sbuf, sizeof(sbuf), "%s  -  %s", me, them);
   } else {
     lv_snprintf(sbuf, sizeof(sbuf), "Waiting for %s...", g.opp_name);
   }
@@ -669,7 +669,7 @@ lv_obj_t * game_wordle_screen() {
     lv_obj_t * scr = make_screen();
     bind_wordle_scr(scr);
     char sub[48];
-    lv_snprintf(sub, sizeof(sub), "%s · pick for %s", g.race ? "Race" : "Classic", g.opp_name);
+    lv_snprintf(sub, sizeof(sub), "%s - pick for %s", g.race ? "Race" : "Classic", g.opp_name);
     make_topbar(scr, "WORDLE", app::desk().name, sub);
 
     lv_obj_t * body = make_body(scr, false);
