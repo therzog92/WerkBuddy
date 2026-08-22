@@ -299,7 +299,7 @@ void schedule_persist() {
 
 void forfeit_tick(lv_timer_t * /*t*/) {
   /* NVS writes stall the RGB panel — defer so Hub/Idle paints settle first. */
-  if (g_persist_dirty && !on_game_board_ui()) schedule_persist();
+  if (g_persist_dirty && ui::current_screen() == ui::Screen::Idle) schedule_persist();
   const uint32_t now = mono_ms();
   resync_live_games(now);
   for (int i = 0; i < kMaxActiveGames; ++i) {
