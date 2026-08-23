@@ -36,9 +36,7 @@ static Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
     TFT_G0, TFT_G1, TFT_G2, TFT_G3, TFT_G4, TFT_G5,
     TFT_B0, TFT_B1, TFT_B2, TFT_B3, TFT_B4,
     1 /* hsync_pol */, 10 /* hfp */, 8 /* hpw */, 50 /* hbp */,
-    1 /* vsync_pol */, 10 /* vfp */, 8 /* vpw */, 20 /* vbp */,
-    0 /* pclk_active_neg */, GFX_NOT_DEFINED /* prefer_speed */, false /* useBigEndian */,
-    0 /* de_idle_high */, 0 /* pclk_idle_high */, 480 * 10 /* bounce_buffer_size_px */);
+    1 /* vsync_pol */, 10 /* vfp */, 8 /* vpw */, 20 /* vbp */);
 
 static Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
     TFT_WIDTH, TFT_HEIGHT, rgbpanel, TFT_ROTATION, true /* auto_flush */,
@@ -106,7 +104,7 @@ void setup() {
   if (!gfx->begin()) Serial.println("gfx->begin() FAILED");
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, HIGH);
-  gfx->fillScreen(0x0000);
+  gfx->fillScreen(BLACK);
 
   lv_init();
   lv_tick_set_cb(my_tick);
