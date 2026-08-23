@@ -24,7 +24,7 @@ constexpr int kMaxPeers = 8;
 constexpr int kEmojiSlots = 7; /* compose shows these + a full-palette picker */
 constexpr int kCannedCount = 4;
 /** Build default shown in Updates UI; bump when shipping a Release. */
-constexpr const char * kFirmwareVersion = "1.0.1";
+constexpr const char * kFirmwareVersion = "1.1";
 /** Apply a release tag (leading v stripped). Persists. Sim-only until device OTA. */
 void set_firmware_version(const char * tag);
 
