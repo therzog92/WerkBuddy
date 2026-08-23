@@ -22,6 +22,7 @@ GameSlot g_slots[kMaxActiveGames];
 int g_focus = -1;
 lv_timer_t * g_forfeit_timer = nullptr;
 bool g_persist_dirty = false;
+bool g_persist_scheduled = false;
 
 /* Last outbound game packet per slot — RAM only (not in the NVS blob). */
 proto::Msg g_last_out[kMaxActiveGames];
@@ -287,25 +288,19 @@ bool on_game_board_ui() {
          s == S::Rv || s == S::Db || s == S::Wordle;
 }
 
-lv_timer_t * g_persist_timer = nullptr;
-
-void persist_cb(lv_timer_t * /*t*/) {
-  if (g_persist_dirty) persist_now();
-}
-
 void schedule_persist() {
-  if (!g_persist_timer) {
-    g_persist_timer = lv_timer_create(persist_cb, 1500, nullptr);
-    lv_timer_set_repeat_count(g_persist_timer, 1);
-  } else {
-    lv_timer_set_repeat_count(g_persist_timer, 1);
-    lv_timer_reset(g_persist_timer);
-  }
+  if (g_persist_scheduled) return;
+  g_persist_scheduled = true;
+  schedule(400, [](void * /*ud*/) {
+    g_persist_scheduled = false;
+    if (g_persist_dirty) persist_now();
+  }, nullptr);
 }
 
 void forfeit_tick(lv_timer_t * /*t*/) {
   if (g_persist_dirty) schedule_persist();
   const uint32_t now = mono_ms();
+  resync_live_games(now);
   for (int i = 0; i < kMaxActiveGames; ++i) {
     GameSlot & s = g_slots[i];
     if (!slot_live(s) || s.invite_pending) continue;
