@@ -103,7 +103,6 @@ bool load(app::Desk & d) {
   }
 
   prefs.end();
-  digitalWrite(TFT_BL, HIGH);
   return true;
 }
 
@@ -256,6 +255,7 @@ bool save_timer_blob(const void * src, size_t len) {
   if (!src || !len) {
     prefs.remove("tmr");
     prefs.end();
+    digitalWrite(TFT_BL, HIGH);
     return true;
   }
   const bool ok = prefs.putBytes("tmr", src, len) == len;
