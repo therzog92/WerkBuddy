@@ -734,7 +734,17 @@ void handle_msg(const proto::Msg & m) {
   /* Implicit Outbox ACKing: If we receive any game message from them, 
    * they must have received our last move. Clear our outbox for this game. */
   GameKind kind = msg_type_to_kind(m.type);
-  if (kind != GameKind::Count) outbox_clear_for_game(m.from_id, kind);
+  if (kind != GameKind::Count) {
+    outbox_clear_for_game(m.from_id, kind);
+
+    /* Send Explicit ACK back so they stop retrying! */
+    proto::Msg ack{};
+    ack.type = proto::MsgType::Ack;
+    copy_str(ack.to_id, proto::kMaxId, m.from_id);
+    ack.emoji[0] = (char)((int)kind + 1); /* +1 to avoid NUL byte */
+    ack.emoji[1] = '\0';
+    net::link_send(ack);
+  }
 
   switch (m.type) {
     case proto::MsgType::Discover: {
@@ -782,6 +792,11 @@ void handle_msg(const proto::Msg & m) {
     }
 
     case proto::MsgType::Ack: {
+      if (m.emoji[0] != '\0') {
+        outbox_clear_for_game(m.from_id, static_cast<GameKind>(m.emoji[0] - 1));
+        return;
+      }
+
       outbox_clear_calls(m.from_id);
       if (d.outgoing.active) {
         d.outgoing.active = false;
