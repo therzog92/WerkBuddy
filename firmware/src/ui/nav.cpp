@@ -331,7 +331,6 @@ void wake_from_idle() {
 void sync_ui() {
   const app::Desk & d = app::desk();
   if (d.incoming.active) {
-    if (g_screen == Screen::Idle) wake_from_idle();
     go_incoming();
     return;
   }

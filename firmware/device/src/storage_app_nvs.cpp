@@ -256,7 +256,6 @@ bool save_timer_blob(const void * src, size_t len) {
     prefs.remove("tmr");
     prefs.end();
     digitalWrite(TFT_BL, HIGH);
-    return true;
   }
   const bool ok = prefs.putBytes("tmr", src, len) == len;
   prefs.end();
