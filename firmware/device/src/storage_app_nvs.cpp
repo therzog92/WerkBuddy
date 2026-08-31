@@ -3,6 +3,8 @@
 #include "app/app.h"
 
 #include <Preferences.h>
+#include <Arduino.h>
+#include "board.h"
 #include <cstdio>
 #include <cstring>
 
@@ -192,7 +194,9 @@ bool load_games_blob(void * dst, size_t * len_io) {
 }
 
 bool save_games_blob(const void * src, size_t len) {
-  if (!prefs.begin("werkpager", false)) return false;
+  digitalWrite(TFT_BL, LOW);
+
+  if (!prefs.begin("werkpager", false)) { digitalWrite(TFT_BL, HIGH); return false; }
   if (!src || !len) {
     prefs.putUInt("glen", 0);
     for (int i = 0; i < kMaxChunks; ++i) {
@@ -201,11 +205,11 @@ bool save_games_blob(const void * src, size_t len) {
       prefs.remove(key);
     }
     prefs.end();
-    return true;
+    digitalWrite(TFT_BL, HIGH); return true;
   }
   if (len > kChunk * kMaxChunks) {
     prefs.end();
-    return false;
+    digitalWrite(TFT_BL, HIGH); return false;
   }
   const auto * in = static_cast<const uint8_t *>(src);
   size_t off = 0;
@@ -216,7 +220,7 @@ bool save_games_blob(const void * src, size_t len) {
     const size_t n = len - off > kChunk ? kChunk : len - off;
     if (prefs.putBytes(key, in + off, n) != n) {
       prefs.end();
-      return false;
+      digitalWrite(TFT_BL, HIGH); return false;
     }
     off += n;
   }
@@ -227,7 +231,7 @@ bool save_games_blob(const void * src, size_t len) {
   }
   prefs.putUInt("glen", (uint32_t)len);
   prefs.end();
-  return true;
+  digitalWrite(TFT_BL, HIGH); return true;
 }
 
 bool load_timer_blob(void * dst, size_t * len_io) {
@@ -246,14 +250,16 @@ bool load_timer_blob(void * dst, size_t * len_io) {
 }
 
 bool save_timer_blob(const void * src, size_t len) {
-  if (!prefs.begin("werkpager", false)) return false;
+  digitalWrite(TFT_BL, LOW);
+  if (!prefs.begin("werkpager", false)) { digitalWrite(TFT_BL, HIGH); return false; }
   if (!src || !len) {
     prefs.remove("tmr");
     prefs.end();
-    return true;
+    digitalWrite(TFT_BL, HIGH);
   }
   const bool ok = prefs.putBytes("tmr", src, len) == len;
   prefs.end();
+  digitalWrite(TFT_BL, HIGH);
   return ok;
 }
 

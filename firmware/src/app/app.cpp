@@ -622,9 +622,81 @@ void adjust_clock_days(int days) {
   note_clock_synced();
 }
 
+/* --- Outbox Logic for Retransmitting Dropped Moves --- */
+struct OutboxEntry {
+  bool active = false;
+  uint32_t queued_ms = 0;
+  proto::Msg msg;
+};
+constexpr int kOutboxSize = 8;
+static OutboxEntry g_outbox[kOutboxSize];
+
+static GameKind msg_type_to_kind(proto::MsgType t) {
+  using T = proto::MsgType;
+  switch (t) {
+    case T::TttInvite: case T::TttAccept: case T::TttDecline: case T::TttMove: case T::TttForfeit: return GameKind::Ttt;
+    case T::C4Invite: case T::C4Accept: case T::C4Decline: case T::C4Drop: case T::C4Forfeit: return GameKind::C4;
+    case T::BsInvite: case T::BsAccept: case T::BsDecline: case T::BsReady: case T::BsFire: case T::BsResult: case T::BsForfeit: return GameKind::Bs;
+    case T::CkInvite: case T::CkAccept: case T::CkDecline: case T::CkMove: case T::CkForfeit: return GameKind::Ck;
+    case T::MemInvite: case T::MemAccept: case T::MemDecline: case T::MemFlip: case T::MemForfeit: return GameKind::Mem;
+    case T::StttInvite: case T::StttAccept: case T::StttDecline: case T::StttMove: case T::StttForfeit: return GameKind::Sttt;
+    case T::RvInvite: case T::RvAccept: case T::RvDecline: case T::RvMove: case T::RvForfeit: return GameKind::Rv;
+    case T::DbInvite: case T::DbAccept: case T::DbDecline: case T::DbLine: case T::DbForfeit: return GameKind::Db;
+    case T::WordleInvite: case T::WordleAccept: case T::WordleDecline: case T::WordleWord: case T::WordleResult: case T::WordleForfeit: return GameKind::Wordle;
+    default: return GameKind::Count;
+  }
+}
+
+static void outbox_push(const proto::Msg & m) {
+  if (m.type == proto::MsgType::Discover || m.type == proto::MsgType::DiscoverReply || 
+      m.type == proto::MsgType::Status || m.type == proto::MsgType::TimeSync ||
+      m.type == proto::MsgType::GameProbe || m.type == proto::MsgType::GameProbeReply ||
+      m.type == proto::MsgType::DoodleStroke || m.type == proto::MsgType::DoodleClear) return;
+  if (!m.to_id[0]) return; 
+
+  int oldest = 0;
+  for (int i = 0; i < kOutboxSize; ++i) {
+    if (!g_outbox[i].active) {
+      g_outbox[i].active = true;
+      g_outbox[i].queued_ms = lv_tick_get();
+      g_outbox[i].msg = m;
+      return;
+    }
+    if (g_outbox[i].queued_ms < g_outbox[oldest].queued_ms) oldest = i;
+  }
+  g_outbox[oldest].queued_ms = lv_tick_get();
+  g_outbox[oldest].msg = m;
+}
+
+static void outbox_clear_for_game(const char * peer_id, GameKind kind) {
+  if (kind == GameKind::Count) return;
+  for (int i = 0; i < kOutboxSize; ++i) {
+    if (g_outbox[i].active && std::strcmp(g_outbox[i].msg.to_id, peer_id) == 0) {
+      if (msg_type_to_kind(g_outbox[i].msg.type) == kind) g_outbox[i].active = false;
+    }
+  }
+}
+
+static void outbox_clear_calls(const char * peer_id) {
+  for (int i = 0; i < kOutboxSize; ++i) {
+    if (g_outbox[i].active && std::strcmp(g_outbox[i].msg.to_id, peer_id) == 0) {
+      if (g_outbox[i].msg.type == proto::MsgType::Call) g_outbox[i].active = false;
+    }
+  }
+}
+
+static void outbox_flush_for_peer(const char * peer_id) {
+  for (int i = 0; i < kOutboxSize; ++i) {
+    if (g_outbox[i].active && std::strcmp(g_outbox[i].msg.to_id, peer_id) == 0) {
+      net::link_send(g_outbox[i].msg);
+    }
+  }
+}
+
 void send(const proto::Msg & msg) {
   net::link_send(msg);
   note_sent_game(msg);
+  outbox_push(msg);
 }
 
 namespace {
@@ -659,6 +731,21 @@ void handle_msg(const proto::Msg & m) {
 
   if (d.dnd && blocks_while_dnd(m.type)) return;
 
+  /* Implicit Outbox ACKing: If we receive any game message from them, 
+   * they must have received our last move. Clear our outbox for this game. */
+  GameKind kind = msg_type_to_kind(m.type);
+  if (kind != GameKind::Count) {
+    outbox_clear_for_game(m.from_id, kind);
+
+    /* Send Explicit ACK back so they stop retrying! */
+    proto::Msg ack{};
+    ack.type = proto::MsgType::Ack;
+    copy_str(ack.to_id, proto::kMaxId, m.from_id);
+    ack.emoji[0] = (char)((int)kind + 1); /* +1 to avoid NUL byte */
+    ack.emoji[1] = '\0';
+    net::link_send(ack);
+  }
+
   switch (m.type) {
     case proto::MsgType::Discover: {
       note_peer_presence(m.from_id, m.from_name, m.hit);
@@ -688,6 +775,7 @@ void handle_msg(const proto::Msg & m) {
 
     case proto::MsgType::Status: {
       note_peer_presence(m.from_id, m.from_name, m.hit);
+      outbox_flush_for_peer(m.from_id);
       return;
     }
 
@@ -704,6 +792,12 @@ void handle_msg(const proto::Msg & m) {
     }
 
     case proto::MsgType::Ack: {
+      if (m.emoji[0] != '\0') {
+        outbox_clear_for_game(m.from_id, static_cast<GameKind>(m.emoji[0] - 1));
+        return;
+      }
+
+      outbox_clear_calls(m.from_id);
       if (d.outgoing.active) {
         d.outgoing.active = false;
         ui::sync_ui();

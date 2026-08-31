@@ -628,7 +628,7 @@ lv_obj_t * game_wordle_screen() {
       fill_msg_ids(m, inv2.from_id);
       app::send(m);
       app::end_focused();
-      go_game_back();
+      go_hub();
     });
     dock_btn(dock, "Accept", true, false, [](lv_event_t * /*e*/) {
       app::Invite & inv2 = app::invite_ref(app::GameKind::Wordle);
