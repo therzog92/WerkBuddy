@@ -296,14 +296,7 @@ void on_send(lv_event_t * /*e*/) {
 }
 
 void on_cancel_ping(lv_event_t * /*e*/) {
-  app::Desk & d = app::desk();
-  if (!d.outgoing.active) return;
-  proto::Msg m;
-  m.type = proto::MsgType::Clear;
-  std::snprintf(m.from_id, sizeof(m.from_id), "%s", d.id);
-  std::snprintf(m.from_name, sizeof(m.from_name), "%s", d.name);
-  app::send(m);
-  d.outgoing.active = false;
+  app::cancel_outgoing_page();
   sync_ui();
   toast("Ping cancelled");
 }

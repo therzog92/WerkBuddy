@@ -248,6 +248,8 @@ void add_peer(const char * id, const char * name);
 void touch_peer_name(const char * id, const char * name);
 void remove_peer(const char * id);
 
+void cancel_outgoing_page();
+
 /* —— time (manual / SNTP / peer TimeSync; NVS survives power loss) —— */
 void local_time(std::tm * out);
 /** Current wall time as UTC unix seconds (offset applied). */

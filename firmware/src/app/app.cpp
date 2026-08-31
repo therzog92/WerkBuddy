@@ -118,11 +118,10 @@ void page_timeout_cb(lv_timer_t * /*t*/) {
     d.incoming.active = false;
     ui::sync_ui();
     ui::toast("Page dismissed");
-    return;
   }
   if (d.outgoing.active && d.outgoing.started_ms &&
       lv_tick_elaps(d.outgoing.started_ms) >= kPageAutoDismissMs) {
-    d.outgoing.active = false;
+    cancel_outgoing_page();
     ui::sync_ui();
     ui::toast("No answer");
   }
@@ -689,6 +688,21 @@ static void outbox_clear_calls(const char * peer_id) {
   }
 }
 
+void cancel_outgoing_page() {
+  Desk & d = g_desk;
+  if (!d.outgoing.active) return;
+  outbox_clear_calls(d.outgoing.to_id);
+  
+  proto::Msg m{};
+  m.type = proto::MsgType::Clear;
+  copy_str(m.from_id, proto::kMaxId, d.id);
+  copy_str(m.from_name, proto::kMaxName, d.name);
+  copy_str(m.to_id, proto::kMaxId, d.outgoing.to_id);
+  net::link_send(m);
+  
+  d.outgoing.active = false;
+}
+
 static void outbox_flush_for_peer(const char * peer_id) {
   for (int i = 0; i < kOutboxSize; ++i) {
     if (g_outbox[i].active && std::strcmp(g_outbox[i].msg.to_id, peer_id) == 0) {
@@ -740,14 +754,6 @@ void handle_msg(const proto::Msg & m) {
   GameKind kind = msg_type_to_kind(m.type);
   if (kind != GameKind::Count) {
     outbox_clear_for_game(m.from_id, kind);
-
-    /* Send Explicit ACK back so they stop retrying! */
-    proto::Msg ack{};
-    ack.type = proto::MsgType::Ack;
-    copy_str(ack.to_id, proto::kMaxId, m.from_id);
-    ack.emoji[0] = (char)((int)kind + 1); /* +1 to avoid NUL byte */
-    ack.emoji[1] = '\0';
-    net::link_send(ack);
   }
 
   switch (m.type) {
@@ -798,11 +804,6 @@ void handle_msg(const proto::Msg & m) {
     }
 
     case proto::MsgType::Ack: {
-      if (m.emoji[0] != '\0') {
-        outbox_clear_for_game(m.from_id, static_cast<GameKind>(m.emoji[0] - 1));
-        return;
-      }
-
       outbox_clear_calls(m.from_id);
       if (d.outgoing.active && same(m.from_id, d.outgoing.to_id)) {
         d.outgoing.active = false;
