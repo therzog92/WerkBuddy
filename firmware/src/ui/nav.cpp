@@ -152,7 +152,13 @@ void go_compose_refresh() {
 }
 
 void go_outgoing() { load(pager_outgoing_screen(), Screen::Outgoing); }
-void go_incoming() { load(pager_incoming_screen(), Screen::Incoming); }
+void go_incoming() {
+  brightness::set_panel_on(true);
+  /* Duplicate Call packets must not rebuild — a full-screen CLICKED wash would
+   * fire Acknowledge from the previous tap and reset the 2 min dismiss clock. */
+  if (g_screen == Screen::Incoming) return;
+  load(pager_incoming_screen(), Screen::Incoming);
+}
 
 void go_games_folder() { load(games_folder_screen(), Screen::GamesFolder); }
 void go_active_games() { load(active_games_screen(), Screen::ActiveGames); }

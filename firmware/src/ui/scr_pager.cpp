@@ -283,6 +283,7 @@ void on_send(lv_event_t * /*e*/) {
   std::snprintf(m.message, sizeof(m.message), "%s", g_compose_message);
 
   d.outgoing.active = true;
+  d.outgoing.started_ms = lv_tick_get();
   std::snprintf(d.outgoing.to_id, sizeof(d.outgoing.to_id), "%s", g_compose_peer.id);
   std::snprintf(d.outgoing.to_name, sizeof(d.outgoing.to_name), "%s", g_compose_peer.name);
   std::snprintf(d.outgoing.emoji, sizeof(d.outgoing.emoji), "%s", m.emoji);
@@ -310,6 +311,8 @@ void on_cancel_ping(lv_event_t * /*e*/) {
 void on_shantay(lv_event_t * /*e*/) {
   app::Desk & d = app::desk();
   if (!d.incoming.active) return;
+  /* Ignore a click that was already down when this full-screen wash appeared. */
+  if (d.incoming.started_ms && lv_tick_elaps(d.incoming.started_ms) < 400) return;
   proto::Msg m;
   m.type = proto::MsgType::Ack;
   std::snprintf(m.from_id, sizeof(m.from_id), "%s", d.id);

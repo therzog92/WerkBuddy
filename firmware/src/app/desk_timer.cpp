@@ -75,7 +75,6 @@ void on_tick(lv_timer_t * /*t*/) {
     s.remaining_ms = next;
   }
   if (sec_changed) {
-    persist_now();
     notify();
   }
 }

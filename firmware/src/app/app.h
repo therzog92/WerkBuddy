@@ -44,6 +44,7 @@ struct IncomingCall {
 
 struct OutgoingCall {
   bool active = false;
+  uint32_t started_ms = 0;
   char to_id[proto::kMaxId] = {};
   char to_name[proto::kMaxName] = {};
   char emoji[proto::kMaxEmoji] = {};

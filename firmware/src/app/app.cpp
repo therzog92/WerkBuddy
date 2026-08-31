@@ -111,18 +111,21 @@ void on_clock_offer_no(lv_event_t * /*e*/) {
 
 void page_timeout_cb(lv_timer_t * /*t*/) {
   Desk & d = g_desk;
-  if (!d.incoming.active) return;
-  if (lv_tick_elaps(d.incoming.started_ms) < kPageAutoDismissMs) return;
-  proto::Msg m{};
-  m.type = proto::MsgType::Ack;
-  copy_str(m.from_id, sizeof(m.from_id), d.id);
-  copy_str(m.from_name, sizeof(m.from_name), d.name);
-  copy_str(m.to_id, sizeof(m.to_id), d.incoming.from_id);
-  copy_str(m.for_call_from_id, sizeof(m.for_call_from_id), d.incoming.from_id);
-  send(m);
-  d.incoming.active = false;
-  ui::sync_ui();
-  ui::toast("Page dismissed");
+  /* Do not send Ack on timeout — that looked like they tapped Acknowledge while
+   * their desk was still flashing (duplicate Call kept resetting the timer). */
+  if (d.incoming.active && d.incoming.started_ms &&
+      lv_tick_elaps(d.incoming.started_ms) >= kPageAutoDismissMs) {
+    d.incoming.active = false;
+    ui::sync_ui();
+    ui::toast("Page dismissed");
+    return;
+  }
+  if (d.outgoing.active && d.outgoing.started_ms &&
+      lv_tick_elaps(d.outgoing.started_ms) >= kPageAutoDismissMs) {
+    d.outgoing.active = false;
+    ui::sync_ui();
+    ui::toast("No answer");
+  }
 }
 
 /* —— schedule helper —— */
@@ -591,6 +594,7 @@ void note_clock_synced() {
 #endif
   g_desk.wall_epoch = w;
   g_desk.clock_sync_gen = w;
+  desk_timer::rebase_wall();
   save();
   broadcast_time_sync();
 }
@@ -780,13 +784,15 @@ void handle_msg(const proto::Msg & m) {
     }
 
     case proto::MsgType::Call: {
+      const bool same_page = d.incoming.active && same(d.incoming.from_id, m.from_id);
       d.incoming.active = true;
-      d.incoming.started_ms = lv_tick_get();
       copy_str(d.incoming.from_id, proto::kMaxId, m.from_id);
       copy_str(d.incoming.from_name, proto::kMaxName, m.from_name);
       copy_str(d.incoming.emoji, proto::kMaxEmoji, m.emoji);
       copy_str(d.incoming.message, proto::kMaxMessage, m.message);
-      page_log::add(page_log::Dir::In, m.from_name, m.emoji, m.message);
+      /* Keep the original start so ESP-NOW duplicates cannot reset the 2 min dismiss. */
+      if (!same_page || !d.incoming.started_ms) d.incoming.started_ms = lv_tick_get();
+      if (!same_page) page_log::add(page_log::Dir::In, m.from_name, m.emoji, m.message);
       ui::sync_ui();
       return;
     }
@@ -798,7 +804,7 @@ void handle_msg(const proto::Msg & m) {
       }
 
       outbox_clear_calls(m.from_id);
-      if (d.outgoing.active) {
+      if (d.outgoing.active && same(m.from_id, d.outgoing.to_id)) {
         d.outgoing.active = false;
         ui::sync_ui();
         ui::toast_fmt("%s acknowledged", m.from_name);

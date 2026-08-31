@@ -102,6 +102,7 @@ int main() {
     else if (is("outgoing")) {
       Desk & d = desk();
       d.outgoing.active = true;
+      d.outgoing.started_ms = lv_tick_get();
       std::snprintf(d.outgoing.to_id, sizeof(d.outgoing.to_id), "mac-will");
       std::snprintf(d.outgoing.to_name, sizeof(d.outgoing.to_name), "Will");
       std::snprintf(d.outgoing.emoji, sizeof(d.outgoing.emoji), "👑");
