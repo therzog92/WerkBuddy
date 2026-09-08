@@ -598,6 +598,27 @@ void note_clock_synced() {
   broadcast_time_sync();
 }
 
+void set_clock(const std::tm & tm) {
+  const std::time_t t = std::mktime(const_cast<std::tm *>(&tm));
+  if (t < 0) return;
+  timeval tv{t, 0};
+  settimeofday(&tv, nullptr);
+  
+#if defined(WP_DEVICE)
+  std::time_t curr_t;
+  std::time(&curr_t);
+  if (curr_t < 1700000000u) {
+    /* Manual set before SNTP ever synced. 
+     * Since desk relies on central epoch, this fake wall MUST be pushed to NVS. */
+    g_desk.wall_epoch = curr_t;
+    g_desk.clock_sync_gen = wall_unix();
+    save();
+  }
+#endif
+  desk_timer::rebase_wall();
+  broadcast_time_sync();
+}
+
 void set_clock_local(int year, int mon, int day, int hour, int min) {
   std::tm target{};
   target.tm_year = year - 1900;
