@@ -319,18 +319,9 @@ void rebase_wall() {
   for (int i = 0; i < kSlots; ++i) {
     Slot & s = g_slots[i];
     if (s.state != State::Running) continue;
-    if (s.ends_at_wall >= 1700000000u) {
-      if (wall >= s.ends_at_wall) {
-        fire_done(i);
-      } else {
-        s.remaining_ms = (s.ends_at_wall - wall) * 1000u;
-        s.ends_at_ms = lv_tick_get() + s.remaining_ms;
-      }
-    } else {
-      s.remaining_ms = remaining_ms(i);
-      s.ends_at_ms = lv_tick_get() + s.remaining_ms;
-      s.ends_at_wall = wall + (s.remaining_ms + 999) / 1000;
-    }
+    s.remaining_ms = remaining_ms(i);
+    s.ends_at_ms = lv_tick_get() + s.remaining_ms;
+    s.ends_at_wall = wall + (s.remaining_ms + 999) / 1000;
   }
   persist_now();
 }
