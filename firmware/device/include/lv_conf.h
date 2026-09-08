@@ -55,7 +55,7 @@
     /*Size of the memory available for `lv_malloc()` in bytes (>= 2kB)*/
     /* Shared UI is heavier than the thin shell.
      * Large bitmaps (doodle canvas) live in PSRAM, not here. */
-    #define LV_MEM_SIZE (64U * 1024U)
+    #define LV_MEM_SIZE (128U * 1024U)
 
 
     /*Size of the memory expand for `lv_malloc()` in bytes*/

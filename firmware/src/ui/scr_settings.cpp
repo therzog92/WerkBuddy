@@ -1318,54 +1318,21 @@ lv_obj_t * settings_screen() {
          nullptr);
   }
 
-  add_section(body, "Update Firmware");
-  {
-    lv_obj_t * up = lv_button_create(body);
-    lv_obj_set_width(up, lv_pct(100));
-    lv_obj_set_height(up, 44);
-    lv_obj_set_style_bg_color(up, theme::gold(), 0);
-    lv_obj_set_style_shadow_width(up, 0, 0);
-    lv_obj_set_style_radius(up, 12, 0);
-    lv_obj_t * ul = lv_label_create(up);
-    lv_label_set_text(ul, "Upload from phone");
-    lv_obj_set_style_text_color(ul, lv_color_hex(0x1a1224), 0);
-    lv_obj_set_style_text_font(ul, &lv_font_montserrat_14, 0);
-    lv_obj_center(ul);
-    lv_obj_add_event_cb(up, [](lv_event_t * /*e*/) { go_fw_upload(); }, LV_EVENT_CLICKED, nullptr);
-
-    lv_obj_t * ota = lv_button_create(body);
-    lv_obj_set_width(ota, lv_pct(100));
-    lv_obj_set_height(ota, 44);
-    lv_obj_set_style_bg_color(ota, theme::panel(), 0);
-    lv_obj_set_style_shadow_width(ota, 0, 0);
-    lv_obj_set_style_radius(ota, 12, 0);
-    lv_obj_t * ol = lv_label_create(ota);
-    lv_label_set_text(ol, "GitHub OTA (Wi-Fi)");
-    lv_obj_set_style_text_color(ol, theme::ink(), 0);
-    lv_obj_set_style_text_font(ol, &lv_font_montserrat_14, 0);
-    lv_obj_center(ol);
-    lv_obj_add_event_cb(
-        ota,
-        [](lv_event_t * /*e*/) {
-          if (!app::desk().wifi_ssid[0]) {
-            toast("Save a Wi-Fi network first");
-            return;
-          }
-#ifdef WP_DEVICE
-          toast("Joining Wi-Fi...");
-          char err[64] = {};
-          if (!wifi_jobs::join_sta(err, sizeof(err))) {
-            toast(err[0] ? err : "Wi-Fi join failed");
-            return;
-          }
-          go_ota_releases();
-#else
-          app::desk().wifi_connected = true; /* STA up for Updates UI */
-          go_ota_releases();
-#endif
-        },
-        LV_EVENT_CLICKED, nullptr);
-  }
+    add_section(body, "Update Firmware");
+    {
+      lv_obj_t * up = lv_button_create(body);
+      lv_obj_set_width(up, lv_pct(100));
+      lv_obj_set_height(up, 44);
+      lv_obj_set_style_bg_color(up, theme::gold(), 0);
+      lv_obj_set_style_shadow_width(up, 0, 0);
+      lv_obj_set_style_radius(up, 12, 0);
+      lv_obj_t * ul = lv_label_create(up);
+      lv_label_set_text(ul, "Upload from phone");
+      lv_obj_set_style_text_color(ul, lv_color_hex(0x1a1224), 0);
+      lv_obj_set_style_text_font(ul, &lv_font_montserrat_14, 0);
+      lv_obj_center(ul);
+      lv_obj_add_event_cb(up, [](lv_event_t * /*e*/) { go_fw_upload(); }, LV_EVENT_CLICKED, nullptr);
+    }
 
   }
 
