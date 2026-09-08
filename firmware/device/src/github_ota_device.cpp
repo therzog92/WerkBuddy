@@ -143,7 +143,7 @@ bool https_get_body(const char * url, std::string & body, char * err, int err_ca
   body.clear();
   WiFiClientSecure client;
   client.setInsecure();
-  client.setHandshakeTimeout(30000);
+  client.setHandshakeTimeout(30);
   HTTPClient http;
   http.setTimeout(20000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -152,7 +152,12 @@ bool https_get_body(const char * url, std::string & body, char * err, int err_ca
     set_err(err, err_cap, "HTTP begin failed");
     return false;
   }
-  const int code = http.GET();
+  int code = -1;
+  for (int tries = 0; tries < 5; ++tries) {
+    code = http.GET();
+    if (code != -1) break; /* -1 is connection refused / DNS failed */
+    delay(1000);
+  }
   if (code != HTTP_CODE_OK) {
     char msg[48];
     std::snprintf(msg, sizeof(msg), "HTTP %d", code);
@@ -242,7 +247,7 @@ bool install_bin_progress(const char * url, ProgressFn cb, void * user, char * e
   for (int hop = 0; hop < 5; ++hop) {
     WiFiClientSecure client;
     client.setInsecure();
-    client.setHandshakeTimeout(30000);
+    client.setHandshakeTimeout(30);
     HTTPClient http;
     http.setTimeout(60000);
     http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
@@ -252,7 +257,12 @@ bool install_bin_progress(const char * url, ProgressFn cb, void * user, char * e
       return false;
     }
 
-    const int code = http.GET();
+    int code = -1;
+    for (int tries = 0; tries < 5; ++tries) {
+      code = http.GET();
+      if (code != -1) break;
+      delay(1000);
+    }
     Serial.printf("OTA hop %d code=%d len=%d\n", hop, code, (int)http.getLocation().length());
     if (code == HTTP_CODE_MOVED_PERMANENTLY || code == HTTP_CODE_FOUND ||
         code == HTTP_CODE_SEE_OTHER || code == HTTP_CODE_TEMPORARY_REDIRECT) {
