@@ -9,7 +9,7 @@ namespace wp {
 namespace sim {
 namespace github_ota {
 
-constexpr int kMaxReleases = 16;
+constexpr int kMaxReleases = 5;
 constexpr int kTagLen = 32;
 constexpr int kNameLen = 64;
 constexpr int kUrlLen = 256;

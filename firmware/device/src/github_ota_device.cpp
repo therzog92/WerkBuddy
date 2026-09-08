@@ -143,6 +143,7 @@ bool https_get_body(const char * url, std::string & body, char * err, int err_ca
   body.clear();
   WiFiClientSecure client;
   client.setInsecure();
+  client.setHandshakeTimeout(30000);
   HTTPClient http;
   http.setTimeout(20000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -241,6 +242,7 @@ bool install_bin_progress(const char * url, ProgressFn cb, void * user, char * e
   for (int hop = 0; hop < 5; ++hop) {
     WiFiClientSecure client;
     client.setInsecure();
+    client.setHandshakeTimeout(30000);
     HTTPClient http;
     http.setTimeout(60000);
     http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
