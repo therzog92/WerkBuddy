@@ -98,6 +98,7 @@ struct PersistBlob {
 constexpr uint32_t kPersistMagic = 0x544D5231u; /* TMR1 */
 
 void persist_now() {
+  if (!g_persist_armed) return;
 #if defined(WP_DEVICE)
   PersistBlob b{};
   b.magic = kPersistMagic;
