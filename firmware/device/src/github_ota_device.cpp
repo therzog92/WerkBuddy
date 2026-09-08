@@ -8,6 +8,7 @@
 #include <Update.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_heap_caps.h>
 
 #include <cstdio>
 #include <cstring>
@@ -154,6 +155,9 @@ bool https_get_body(const char * url, std::string & body, char * err, int err_ca
   }
   int code = -1;
   for (int tries = 0; tries < 5; ++tries) {
+    Serial.printf("OTA fetch try %d - internal free: %u, largest block: %u\n", tries,
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     code = http.GET();
     if (code != -1) break; /* -1 is connection refused / DNS failed */
     delay(1000);
