@@ -125,19 +125,26 @@ void restore_from_blob() {
     s.remaining_ms = b.remaining_ms[i] ? b.remaining_ms[i] : s.duration_ms;
     s.ends_at_wall = b.ends_at_wall[i];
     const auto st = static_cast<State>(b.state[i]);
-    if (st == State::Running && s.ends_at_wall && wall >= 1700000000u) {
-      if (wall >= s.ends_at_wall) {
-        s.state = State::Finished;
-        s.remaining_ms = 0;
-        s.ends_at_wall = 0;
-        s.ends_at_ms = 0;
+    if (st == State::Running && s.ends_at_wall) {
+      if (wall >= 1700000000u) {
+        if (wall >= s.ends_at_wall) {
+          s.state = State::Finished;
+          s.remaining_ms = 0;
+          s.ends_at_wall = 0;
+          s.ends_at_ms = 0;
+        } else {
+          s.state = State::Running;
+          s.remaining_ms = (s.ends_at_wall - wall) * 1000u;
+          s.ends_at_ms = lv_tick_get() + s.remaining_ms;
+        }
       } else {
+        /* No valid wall yet. Resume ticking from persisted remaining_ms (which is the starting duration).
+         * Keep ends_at_wall intact so when rebase_wall() is called later, it can fast-forward! */
         s.state = State::Running;
-        s.remaining_ms = (s.ends_at_wall - wall) * 1000u;
+        if (s.remaining_ms < 1000) s.remaining_ms = s.duration_ms;
         s.ends_at_ms = lv_tick_get() + s.remaining_ms;
       }
     } else if (st == State::Running) {
-      /* No valid wall yet — resume from last persisted remaining. */
       s.state = State::Running;
       if (s.remaining_ms < 1000) s.remaining_ms = s.duration_ms;
       s.ends_at_ms = lv_tick_get() + s.remaining_ms;
@@ -308,15 +315,22 @@ void set_listener(ListenFn fn) { g_listen = fn; }
 
 void rebase_wall() {
   const uint32_t wall = app::wall_unix();
+  if (wall < 1700000000u) return;
   for (int i = 0; i < kSlots; ++i) {
     Slot & s = g_slots[i];
     if (s.state != State::Running) continue;
-    s.remaining_ms = remaining_ms(i);
-    s.ends_at_ms = lv_tick_get() + s.remaining_ms;
-    if (wall >= 1700000000u)
+    if (s.ends_at_wall >= 1700000000u) {
+      if (wall >= s.ends_at_wall) {
+        fire_done(i);
+      } else {
+        s.remaining_ms = (s.ends_at_wall - wall) * 1000u;
+        s.ends_at_ms = lv_tick_get() + s.remaining_ms;
+      }
+    } else {
+      s.remaining_ms = remaining_ms(i);
+      s.ends_at_ms = lv_tick_get() + s.remaining_ms;
       s.ends_at_wall = wall + (s.remaining_ms + 999) / 1000;
-    else
-      s.ends_at_wall = 0;
+    }
   }
   persist_now();
 }
