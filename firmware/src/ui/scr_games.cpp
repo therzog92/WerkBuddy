@@ -157,11 +157,8 @@ bool guard_peer_challenge(lv_event_t * e) {
 }
 
 bool guard_active_move(const char * opp_id) {
-  if (!opp_id || !opp_id[0]) return true;
-  if (!app::peer_present(opp_id)) {
-    toast("Opponent is away");
-    return false;
-  }
+  /* Game moves are stored in the outbox indefinitely, allowing true async play
+   * even if the opponent is currently away. */
   return true;
 }
 

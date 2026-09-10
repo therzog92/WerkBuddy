@@ -1334,6 +1334,29 @@ lv_obj_t * settings_screen() {
       lv_obj_add_event_cb(up, [](lv_event_t * /*e*/) { go_fw_upload(); }, LV_EVENT_CLICKED, nullptr);
     }
 
+  }
+
+  if (g_settings_tab == SettingsTab::Display) {
+  add_section(body, "Screen timeout");
+  lv_obj_t * to = lv_obj_create(body);
+  lv_obj_remove_style_all(to);
+  lv_obj_set_width(to, lv_pct(100));
+  lv_obj_set_height(to, 40);
+  lv_obj_set_flex_flow(to, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(to, 6, 0);
+  const app::TimeoutSpec * specs = app::timeout_specs();
+  for (int i = 0; i < app::kTimeoutCount; ++i) {
+    chip(to, specs[i].label, d.timeout_id == (uint8_t)i,
+         [](lv_event_t * e) {
+           const auto id = (uint8_t)(intptr_t)lv_event_get_user_data(e);
+           app::desk().timeout_id = id;
+           app::save();
+           /* stay put — go_settings() would jump scroll to top */
+           chip_row_select(lv_obj_get_parent(static_cast<lv_obj_t *>(lv_event_get_target(e))),
+                           (int)id);
+         },
+         (void *)(intptr_t)i);
+  }
 
   add_section(body, "When idle");
   lv_obj_t * idle = lv_obj_create(body);

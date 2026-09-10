@@ -755,10 +755,7 @@ void handle_msg(const proto::Msg & m) {
    * the moment the acceptor enters the game. Preserve the existing DND flag since
    * only Status packets carry the true DND state. */
   if (m.from_id[0]) {
-    const int pidx = peer_index(m.from_id);
-    if (pidx >= 0) {
-      note_peer_presence(m.from_id, m.from_name, peer_remote_dnd(m.from_id));
-    }
+    note_peer_presence(m.from_id, m.from_name, peer_remote_dnd(m.from_id));
   }
 
   /* Implicit Outbox ACKing: If we receive any game message from them,

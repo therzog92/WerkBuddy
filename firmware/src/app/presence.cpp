@@ -89,10 +89,7 @@ bool peer_contact_ok_id(const char * id, char * why, size_t why_n) {
     return false;
   }
   const Desk & d = desk();
-  if (!peer_present_idx(idx)) {
-    if (why && why_n) lv_snprintf(why, (uint32_t)why_n, "%s is not nearby", d.peers[idx].name);
-    return false;
-  }
+  /* Allow queuing messages for offline peers so they deliver when peer returns. */
   if (g_peer_remote_dnd[idx]) {
     if (why && why_n) lv_snprintf(why, (uint32_t)why_n, "%s is busy", d.peers[idx].name);
     return false;

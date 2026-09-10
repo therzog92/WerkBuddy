@@ -267,9 +267,8 @@ void on_send(lv_event_t * /*e*/) {
   app::Desk & d = app::desk();
   if (d.outgoing.active || d.incoming.active) return;
 
-  char why[48];
-  if (!app::peer_contact_ok_id(g_compose_peer.id, why, sizeof(why))) {
-    toast(why);
+  if (g_compose_peer.id[0] && app::peer_remote_dnd(g_compose_peer.id)) {
+    toast("Peer is busy");
     return;
   }
 
