@@ -749,7 +749,19 @@ void handle_msg(const proto::Msg & m) {
 
   if (d.dnd && blocks_while_dnd(m.type)) return;
 
-  /* Implicit Outbox ACKing: If we receive any game message from them, 
+  /* Any packet from a peer proves they are live — refresh their presence timestamp.
+   * This is critical for game invites: the invite packet arrives before the next
+   * Status beacon, so without this, guard_active_move() returns "Opponent is away"
+   * the moment the acceptor enters the game. Preserve the existing DND flag since
+   * only Status packets carry the true DND state. */
+  if (m.from_id[0]) {
+    const int pidx = peer_index(m.from_id);
+    if (pidx >= 0) {
+      note_peer_presence(m.from_id, m.from_name, peer_remote_dnd(m.from_id));
+    }
+  }
+
+  /* Implicit Outbox ACKing: If we receive any game message from them,
    * they must have received our last move. Clear our outbox for this game. */
   GameKind kind = msg_type_to_kind(m.type);
   if (kind != GameKind::Count) {
